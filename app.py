@@ -14,6 +14,50 @@ def home():
 def markets():
     return jsonify(["Futures","NASDAQ","DowJones","Gold","NaturalGas","Forex"])
 
+@app.route("/openapi.json")
+def openapi():
+    return {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "WickSense API",
+            "version": "1.0"
+        },
+        "paths": {
+            "/markets": {
+                "get": {
+                    "summary": "Get supported markets",
+                    "responses": {
+                        "200": {
+                            "description": "List of markets"
+                        }
+                    }
+                }
+            },
+            "/backtest": {
+                "post": {
+                    "summary": "Run a backtest",
+                    "requestBody": {
+                        "content": {
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "market": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Backtest results"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 @app.route("/backtest", methods=["POST"])
 def backtest():
 
@@ -43,4 +87,5 @@ def backtest():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+
     app.run(host="0.0.0.0", port=port)
