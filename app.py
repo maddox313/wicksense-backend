@@ -3,11 +3,14 @@ from flask_cors import CORS
 import pandas as pd
 import os
 import requests
+import json
+import uuid
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-DATA_FOLDER = "data"
+PRESETS_FILE = "presets.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -19,6 +22,9 @@ MARKET_SYMBOLS = {
 }
 
 
+# -----------------------------
+# BASIC ROUTES
+# -----------------------------
 @app.route("/")
 def home():
     return "WickSense API is running!"
@@ -36,13 +42,16 @@ def markets():
     ])
 
 
+# -----------------------------
+# OPENAPI
+# -----------------------------
 @app.route("/openapi.json")
 def openapi():
     return {
         "openapi": "3.0.0",
         "info": {
             "title": "WickSense API",
-            "version": "2.0.0"
+            "version": "3.0.0"
         },
         "servers": [
             {
@@ -55,15 +64,17 @@ def openapi():
                     "summary": "Get supported markets",
                     "responses": {
                         "200": {
-                            "description": "List of markets",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "array",
-                                        "items": {"type": "string"}
-                                    }
-                                }
-                            }
+                            "description": "List of markets"
+                        }
+                    }
+                }
+            },
+            "/signal": {
+                "post": {
+                    "summary": "Generate a signal",
+                    "responses": {
+                        "200": {
+                            "description": "Signal result"
                         }
                     }
                 }
@@ -71,75 +82,9 @@ def openapi():
             "/backtest": {
                 "post": {
                     "summary": "Run a backtest",
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            },
-                            "application/x-www-form-urlencoded": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            }
-                        }
-                    },
                     "responses": {
                         "200": {
-                            "description": "Backtest results",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "object"}
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            "/signal": {
-                "post": {
-                    "summary": "Generate a market signal",
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            },
-                            "application/x-www-form-urlencoded": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            }
-                        }
-                    },
-                    "responses": {
-                        "200": {
-                            "description": "Signal result",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "object"}
-                                }
-                            }
+                            "description": "Backtest results"
                         }
                     }
                 }
@@ -147,41 +92,55 @@ def openapi():
             "/tradeplan": {
                 "post": {
                     "summary": "Generate a trade plan",
-                    "requestBody": {
-                        "required": True,
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"},
-                                        "risk_percent": {"type": "number"},
-                                        "account_size": {"type": "number"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            },
-                            "application/x-www-form-urlencoded": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"},
-                                        "risk_percent": {"type": "number"},
-                                        "account_size": {"type": "number"}
-                                    },
-                                    "required": ["market"]
-                                }
-                            }
-                        }
-                    },
                     "responses": {
                         "200": {
-                            "description": "Trade plan result",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"type": "object"}
-                                }
-                            }
+                            "description": "Trade plan result"
+                        }
+                    }
+                }
+            },
+            "/presets": {
+                "get": {
+                    "summary": "Get all presets",
+                    "responses": {
+                        "200": {
+                            "description": "Preset list"
+                        }
+                    }
+                },
+                "post": {
+                    "summary": "Create a preset",
+                    "responses": {
+                        "200": {
+                            "description": "Preset created"
+                        }
+                    }
+                }
+            },
+            "/presets/{id}": {
+                "put": {
+                    "summary": "Update a preset",
+                    "responses": {
+                        "200": {
+                            "description": "Preset updated"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete a preset",
+                    "responses": {
+                        "200": {
+                            "description": "Preset deleted"
+                        }
+                    }
+                }
+            },
+            "/presets/{id}/duplicate": {
+                "post": {
+                    "summary": "Duplicate a preset",
+                    "responses": {
+                        "200": {
+                            "description": "Preset duplicated"
                         }
                     }
                 }
@@ -190,30 +149,35 @@ def openapi():
     }
 
 
+# -----------------------------
+# HELPERS
+# -----------------------------
+def get_request_body():
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+    return request.form.to_dict()
+
+
 def get_market_from_request():
-    market = request.form.get("market")
-
-    if not market and request.is_json:
-        body = request.get_json(silent=True) or {}
-        market = body.get("market")
-
-    return market
+    body = get_request_body()
+    return body.get("market")
 
 
 def get_float_from_request(key, default_value):
-    value = request.form.get(key)
-
-    if value is None and request.is_json:
-        body = request.get_json(silent=True) or {}
-        value = body.get(key)
-
-    if value is None:
-        return default_value
-
-    return float(value)
+    body = get_request_body()
+    value = body.get(key, default_value)
+    try:
+        return float(value)
+    except Exception:
+        return float(default_value)
 
 
-def validate_market_csv(df: pd.DataFrame):
+def get_string_from_request(key, default_value):
+    body = get_request_body()
+    return body.get(key, default_value)
+
+
+def validate_market_df(df: pd.DataFrame):
     required_cols = ["Open", "High", "Low", "Close"]
     missing = [c for c in required_cols if c not in df.columns]
     return missing
@@ -254,51 +218,51 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
 
     df = pd.DataFrame(rows)
 
-    missing = validate_market_csv(df)
+    missing = validate_market_df(df)
     if missing:
         raise ValueError(f"Live data missing required columns: {missing}")
 
     return df
 
 
-@app.route("/backtest", methods=["POST"])
-def backtest():
-    try:
-        market = get_market_from_request()
-
-        if not market:
-            return jsonify({"error": "No market was provided"}), 400
-
-        df = fetch_live_market_data(market, interval="1day", outputsize=50)
-
-        results = []
-
-        for i, row in df.iterrows():
-            action = "Buy" if row["Close"] > row["Open"] else "Sell"
-            results.append({
-                "index": int(i),
-                "action": action,
-                "price": float(row["Close"])
-            })
-
-        return jsonify({"results": results})
-
-    except Exception as e:
-        return jsonify({
-            "error": "Backtest failed",
-            "details": str(e)
-        }), 500
+def ensure_presets_file():
+    if not os.path.exists(PRESETS_FILE):
+        with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
 
 
+def load_presets():
+    ensure_presets_file()
+    with open(PRESETS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_presets(presets):
+    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
+        json.dump(presets, f, indent=2)
+
+
+def find_preset(preset_id):
+    presets = load_presets()
+    for preset in presets:
+        if preset["id"] == preset_id:
+            return preset
+    return None
+
+
+# -----------------------------
+# SIGNAL
+# -----------------------------
 @app.route("/signal", methods=["POST"])
 def signal():
     try:
         market = get_market_from_request()
+        timeframe = get_string_from_request("timeframe", "1day")
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        df = fetch_live_market_data(market, interval="1day", outputsize=20)
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=20)
         last_row = df.iloc[-1]
 
         open_price = float(last_row["Open"])
@@ -326,6 +290,7 @@ def signal():
 
         return jsonify({
             "market": market,
+            "timeframe": timeframe,
             "signal": signal_type,
             "confidence": confidence,
             "entry": close_price,
@@ -345,18 +310,76 @@ def signal():
         }), 500
 
 
-@app.route("/tradeplan", methods=["POST"])
-def tradeplan():
+# -----------------------------
+# BACKTEST
+# -----------------------------
+@app.route("/backtest", methods=["POST"])
+def backtest():
     try:
         market = get_market_from_request()
+        timeframe = get_string_from_request("timeframe", "1day")
+        _ = get_string_from_request("start_date", "")
+        _ = get_string_from_request("end_date", "")
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=50)
+
+        results = []
+        equity_curve = []
+        cash = 0.0
+        pos = 0.0
+
+        for i, row in df.iterrows():
+            action = "Buy" if row["Close"] > row["Open"] else "Sell"
+            price = float(row["Close"])
+
+            if action == "Buy":
+                pos += 1
+                cash -= price
+            elif action == "Sell" and pos > 0:
+                pos -= 1
+                cash += price
+
+            equity = cash + pos * price
+            equity_curve.append(round(equity, 4))
+
+            results.append({
+                "index": int(i),
+                "action": action,
+                "price": price
+            })
+
+        return jsonify({
+            "market": market,
+            "timeframe": timeframe,
+            "results": results,
+            "equity_curve": equity_curve
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Backtest failed",
+            "details": str(e)
+        }), 500
+
+
+# -----------------------------
+# TRADE PLAN
+# -----------------------------
+@app.route("/tradeplan", methods=["POST"])
+def tradeplan():
+    try:
+        market = get_market_from_request()
+        timeframe = get_string_from_request("timeframe", "1day")
         risk_percent = get_float_from_request("risk_percent", 1.0)
         account_size = get_float_from_request("account_size", 10000.0)
 
-        df = fetch_live_market_data(market, interval="1day", outputsize=30)
+        if not market:
+            return jsonify({"error": "No market was provided"}), 400
+
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
@@ -386,6 +409,7 @@ def tradeplan():
 
         return jsonify({
             "market": market,
+            "timeframe": timeframe,
             "signal": signal_type,
             "entry_price": round(entry, 4),
             "stop_loss": round(stop_loss, 4),
@@ -400,6 +424,128 @@ def tradeplan():
     except Exception as e:
         return jsonify({
             "error": "Trade plan generation failed",
+            "details": str(e)
+        }), 500
+
+
+# -----------------------------
+# PRESETS
+# -----------------------------
+@app.route("/presets", methods=["GET"])
+def get_presets():
+    try:
+        presets = load_presets()
+        return jsonify(presets)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to fetch presets",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/presets", methods=["POST"])
+def create_preset():
+    try:
+        body = get_request_body()
+
+        new_preset = {
+            "id": str(uuid.uuid4()),
+            "name": body.get("name", "New Preset"),
+            "market": body.get("market", "NASDAQ"),
+            "timeframe": body.get("timeframe", "1day"),
+            "risk_percent": body.get("risk_percent", 1),
+            "account_size": body.get("account_size", 10000),
+            "ma_period": body.get("ma_period", 20),
+            "vwap_enabled": body.get("vwap_enabled", True),
+            "atr_multiplier": body.get("atr_multiplier", 1.5),
+            "created_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        presets = load_presets()
+        presets.append(new_preset)
+        save_presets(presets)
+
+        return jsonify(new_preset)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to create preset",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/presets/<preset_id>", methods=["PUT"])
+def update_preset(preset_id):
+    try:
+        body = get_request_body()
+        presets = load_presets()
+
+        updated = None
+        for preset in presets:
+            if preset["id"] == preset_id:
+                preset.update(body)
+                updated = preset
+                break
+
+        if not updated:
+            return jsonify({"error": "Preset not found"}), 404
+
+        save_presets(presets)
+        return jsonify(updated)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update preset",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/presets/<preset_id>", methods=["DELETE"])
+def delete_preset(preset_id):
+    try:
+        presets = load_presets()
+        filtered = [p for p in presets if p["id"] != preset_id]
+
+        if len(filtered) == len(presets):
+            return jsonify({"error": "Preset not found"}), 404
+
+        save_presets(filtered)
+        return jsonify({"success": True, "deleted_id": preset_id})
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete preset",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/presets/<preset_id>/duplicate", methods=["POST"])
+def duplicate_preset(preset_id):
+    try:
+        presets = load_presets()
+
+        original = None
+        for preset in presets:
+            if preset["id"] == preset_id:
+                original = preset
+                break
+
+        if not original:
+            return jsonify({"error": "Preset not found"}), 404
+
+        clone = original.copy()
+        clone["id"] = str(uuid.uuid4())
+        clone["name"] = f"{original.get('name', 'Preset')} Copy"
+        clone["created_at"] = datetime.utcnow().isoformat() + "Z"
+
+        presets.append(clone)
+        save_presets(presets)
+
+        return jsonify(clone)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to duplicate preset",
             "details": str(e)
         }), 500
 
