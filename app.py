@@ -42,33 +42,49 @@ def openapi():
 
 @app.route("/backtest", methods=["POST"])
 def backtest():
+    try:
+        # Accept either form data or JSON
+        market = request.form.get("market")
 
-    market = request.form.get("market")
+        if not market and request.is_json:
+            body = request.get_json(silent=True) or {}
+            market = body.get("market")
 
-    file_path = os.path.join(DATA_FOLDER, f"{market}_historical.csv")
+        if not market:
+            return jsonify({"error": "No market was provided"}), 400
 
-    if not os.path.exists(file_path):
-        return jsonify({"error":"market data not found"})
+        file_path = os.path.join(DATA_FOLDER, f"{market}_historical.csv")
 
-    df = pd.read_csv(file_path)
+        if not os.path.exists(file_path):
+            return jsonify({
+                "error": f"Market data not found for {market}",
+                "expected_file": file_path
+            }), 404
 
-    results = []
+        df = pd.read_csv(file_path)
 
-    for i,row in df.iterrows():
+        required_cols = ["Open", "High", "Low", "Close"]
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            return jsonify({
+                "error": "CSV is missing required columns",
+                "missing_columns": missing
+            }), 400
 
-        action = "Buy" if row["Close"] > row["Open"] else "Sell"
+        results = []
 
-        results.append({
-            "index": i,
-            "action": action,
-            "price": row["Close"]
-        })
+        for i, row in df.iterrows():
+            action = "Buy" if row["Close"] > row["Open"] else "Sell"
+            results.append({
+                "index": int(i),
+                "action": action,
+                "price": float(row["Close"])
+            })
 
-    return jsonify({"results":results})
+        return jsonify({"results": results})
 
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-
-    app.run(host="0.0.0.0", port=port)
-
+    except Exception as e:
+        return jsonify({
+            "error": "Backtest failed",
+            "details": str(e)
+        }), 500
