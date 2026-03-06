@@ -1,8 +1,10 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 import pandas as pd
 import os
 
 app = Flask(__name__)
+CORS(app)
 
 DATA_FOLDER = "data"
 
@@ -10,9 +12,11 @@ DATA_FOLDER = "data"
 def home():
     return "WickSense API is running!"
 
+
 @app.route("/markets")
 def markets():
     return jsonify(["Futures","NASDAQ","DowJones","Gold","NaturalGas","Forex"])
+
 
 @app.route("/openapi.json")
 def openapi():
@@ -25,34 +29,12 @@ def openapi():
         "paths": {
             "/markets": {
                 "get": {
-                    "summary": "Get supported markets",
-                    "responses": {
-                        "200": {
-                            "description": "List of markets"
-                        }
-                    }
+                    "summary": "Get supported markets"
                 }
             },
             "/backtest": {
                 "post": {
-                    "summary": "Run a backtest",
-                    "requestBody": {
-                        "content": {
-                            "application/x-www-form-urlencoded": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "market": {"type": "string"}
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "responses": {
-                        "200": {
-                            "description": "Backtest results"
-                        }
-                    }
+                    "summary": "Run a backtest"
                 }
             }
         }
@@ -89,3 +71,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
 
     app.run(host="0.0.0.0", port=port)
+
