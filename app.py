@@ -549,7 +549,125 @@ def duplicate_preset(preset_id):
             "details": str(e)
         }), 500
 
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            os.environ.get("STRIPE_WEBHOOK_SECRET")
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        if event["type"] == "checkout.session.completed":
+            session_obj = event["data"]["object"]
+
+            customer_id = session_obj.get("customer")
+            subscription_id = session_obj.get("subscription")
+
+            metadata = session_obj.get("metadata", {}) or {}
+            user_id = metadata.get("user_id")
+            plan = metadata.get("plan", "pro")
+
+            data = {
+                "user_id": user_id,
+                "plan": plan,
+                "stripe_customer_id": customer_id,
+                "stripe_subscription_id": subscription_id,
+                "status": "active"
+            }
+
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            }
+
+            resp = requests.post(
+                f"{SUPABASE_URL}/rest/v1/subscriptions",
+                json=data,
+                headers=headers,
+                timeout=20
+            )
+
+            if resp.status_code >= 400:
+                return jsonify({
+                    "error": "Failed to save subscription to Supabase",
+                    "details": resp.text
+                }), 500
+
+        elif event["type"] == "customer.subscription.updated":
+            sub = event["data"]["object"]
+
+            customer_id = sub.get("customer")
+            subscription_id = sub.get("id")
+            status = sub.get("status")
+            current_period_end = sub.get("current_period_end")
+
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            update_data = {
+                "status": status,
+                "current_period_end": datetime.utcfromtimestamp(current_period_end).isoformat() + "Z" if current_period_end else None
+            }
+
+            resp = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/subscriptions?stripe_subscription_id=eq.{subscription_id}",
+                json=update_data,
+                headers=headers,
+                timeout=20
+            )
+
+            if resp.status_code >= 400:
+                return jsonify({
+                    "error": "Failed to update subscription in Supabase",
+                    "details": resp.text
+                }), 500
+
+        elif event["type"] == "customer.subscription.deleted":
+            sub = event["data"]["object"]
+
+            subscription_id = sub.get("id")
+
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            update_data = {
+                "status": "canceled"
+            }
+
+            resp = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/subscriptions?stripe_subscription_id=eq.{subscription_id}",
+                json=update_data,
+                headers=headers,
+                timeout=20
+            )
+
+            if resp.status_code >= 400:
+                return jsonify({
+                    "error": "Failed to cancel subscription in Supabase",
+                    "details": resp.text
+                }), 500
+
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
