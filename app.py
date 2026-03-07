@@ -17,12 +17,13 @@ CORS(app)
 PRESETS_FILE = "presets.json"
 
 MARKET_SYMBOLS = {
-    "Forex": "EUR/USD",
+     "Forex": "EUR/USD",
     "Gold": "XAU/USD",
-    "NaturalGas": "NG/USD",
-    "NASDAQ": "IXIC",
-    "DowJones": "DJI",
-    "Futures": "ES"
+    "NaturalGas": "UNG",
+    "NASDAQ": "QQQ",
+    "DowJones": "DIA",
+    "Futures": "SPY"
+}
 }
 
 
@@ -769,6 +770,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
