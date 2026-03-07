@@ -148,56 +148,55 @@ def openapi():
                         }
                     }
                 }
-            }
-        }
-    },
-"/create-checkout-session": {
-    "post": {
-        "summary": "Create a Stripe checkout session",
-        "requestBody": {
-            "required": True,
-            "content": {
-                "application/json": {
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "price_id": {"type": "string"},
-                            "user_id": {"type": "string"},
-                            "plan": {"type": "string"},
-                            "success_url": {"type": "string"},
-                            "cancel_url": {"type": "string"}
-                        },
-                        "required": ["price_id", "user_id", "success_url", "cancel_url"]
-                    }
-                },
-                "application/x-www-form-urlencoded": {
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "price_id": {"type": "string"},
-                            "user_id": {"type": "string"},
-                            "plan": {"type": "string"},
-                            "success_url": {"type": "string"},
-                            "cancel_url": {"type": "string"}
-                        },
-                        "required": ["price_id", "user_id", "success_url", "cancel_url"]
-                    }
-                }
-            }
-        },
-        "responses": {
-            "200": {
-                "description": "Stripe checkout session created",
-                "content": {
-                    "application/json": {
-                        "schema": {"type": "object"}
+            },
+            "/create-checkout-session": {
+                "post": {
+                    "summary": "Create a Stripe checkout session",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "price_id": {"type": "string"},
+                                        "user_id": {"type": "string"},
+                                        "plan": {"type": "string"},
+                                        "success_url": {"type": "string"},
+                                        "cancel_url": {"type": "string"}
+                                    },
+                                    "required": ["price_id", "user_id", "success_url", "cancel_url"]
+                                }
+                            },
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "price_id": {"type": "string"},
+                                        "user_id": {"type": "string"},
+                                        "plan": {"type": "string"},
+                                        "success_url": {"type": "string"},
+                                        "cancel_url": {"type": "string"}
+                                    },
+                                    "required": ["price_id", "user_id", "success_url", "cancel_url"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Stripe checkout session created",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"type": "object"}
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
-
 # -----------------------------
 # HELPERS
 # -----------------------------
@@ -770,6 +769,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
