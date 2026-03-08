@@ -297,7 +297,106 @@ def find_preset(preset_id):
         if preset["id"] == preset_id:
             return preset
     return None
+def add_indicators(df: pd.DataFrame):
+    df = df.copy()
 
+    df["UpperWick"] = df["High"] - df[["Open", "Close"]].max(axis=1)
+    df["LowerWick"] = df[["Open", "Close"]].min(axis=1) - df["Low"]
+    df["BodySize"] = (df["Close"] - df["Open"]).abs()
+    df["Range"] = df["High"] - df["Low"]
+
+    df["MA20"] = df["Close"].rolling(20).mean()
+
+    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+    df["VWAP"] = typical_price.expanding().mean()
+
+    df["Support"] = df["Low"].rolling(10).min()
+    df["Resistance"] = df["High"].rolling(10).max()
+
+    return df
+
+
+def evaluate_signal(df: pd.DataFrame):
+    df = add_indicators(df)
+    row = df.iloc[-1]
+
+    close_price = float(row["Close"])
+    open_price = float(row["Open"])
+    upper_wick = float(row["UpperWick"])
+    lower_wick = float(row["LowerWick"])
+    ma20 = float(row["MA20"]) if pd.notna(row["MA20"]) else close_price
+    vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
+    support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
+    resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
+
+    bullish_points = 0
+    bearish_points = 0
+    reasons = []
+
+    # Wick dominance
+    if lower_wick > upper_wick * 1.2:
+        bullish_points += 1
+        reasons.append("Lower wick dominant")
+    elif upper_wick > lower_wick * 1.2:
+        bearish_points += 1
+        reasons.append("Upper wick dominant")
+
+    # Candle body direction
+    if close_price > open_price:
+        bullish_points += 1
+        reasons.append("Bullish candle close")
+    elif close_price < open_price:
+        bearish_points += 1
+        reasons.append("Bearish candle close")
+
+    # Moving average filter
+    if close_price > ma20:
+        bullish_points += 1
+        reasons.append("Price above MA20")
+    elif close_price < ma20:
+        bearish_points += 1
+        reasons.append("Price below MA20")
+
+    # VWAP filter
+    if close_price > vwap:
+        bullish_points += 1
+        reasons.append("Price above VWAP")
+    elif close_price < vwap:
+        bearish_points += 1
+        reasons.append("Price below VWAP")
+
+    # Support / resistance proximity
+    support_distance = abs(close_price - support)
+    resistance_distance = abs(resistance - close_price)
+
+    if support_distance < resistance_distance:
+        bullish_points += 1
+        reasons.append("Closer to support than resistance")
+    elif resistance_distance < support_distance:
+        bearish_points += 1
+        reasons.append("Closer to resistance than support")
+
+    if bullish_points > bearish_points:
+        signal_type = "Bullish"
+    elif bearish_points > bullish_points:
+        signal_type = "Bearish"
+    else:
+        signal_type = "Neutral"
+
+    total_points = bullish_points + bearish_points
+    confidence = 50 if total_points == 0 else round((max(bullish_points, bearish_points) / total_points) * 100, 2)
+
+    return {
+        "signal": signal_type,
+        "confidence": confidence,
+        "reasons": reasons,
+        "ma20": round(ma20, 4),
+        "vwap": round(vwap, 4),
+        "support": round(support, 4),
+        "resistance": round(resistance, 4),
+        "upper_wick": round(upper_wick, 4),
+        "lower_wick": round(lower_wick, 4)
+    }
 
 # -----------------------------
 # SIGNAL
@@ -770,6 +869,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
