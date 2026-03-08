@@ -510,23 +510,31 @@ def tradeplan():
             return jsonify({"error": "No market was provided"}), 400
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+        df = add_indicators(df)
+        signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
         entry = float(last_row["Close"])
-
         atr = (recent_rows["High"] - recent_rows["Low"]).mean()
         if atr <= 0:
             atr = entry * 0.01
 
-        signal_type = "Buy" if last_row["Close"] > last_row["Open"] else "Sell"
+        signal_type = signal_data["signal"]
 
-        if signal_type == "Buy":
-            stop_loss = entry - atr * 1.5
-            take_profit = entry + atr * 3.0
+        if signal_type == "Bullish":
+            stop_loss = min(float(last_row["Support"]), entry - atr * 1.5)
+            take_profit = entry + (entry - stop_loss) * 2.0
+            trade_side = "Buy"
+        elif signal_type == "Bearish":
+            stop_loss = max(float(last_row["Resistance"]), entry + atr * 1.5)
+            take_profit = entry - (stop_loss - entry) * 2.0
+            trade_side = "Sell"
         else:
-            stop_loss = entry + atr * 1.5
-            take_profit = entry - atr * 3.0
+            return jsonify({
+                "error": "No strong trade setup found",
+                "details": "Signal is neutral"
+            }), 400
 
         risk_amount = account_size * (risk_percent / 100.0)
         stop_distance = abs(entry - stop_loss)
@@ -540,7 +548,7 @@ def tradeplan():
         return jsonify({
             "market": market,
             "timeframe": timeframe,
-            "signal": signal_type,
+            "signal": trade_side,
             "entry_price": round(entry, 4),
             "stop_loss": round(stop_loss, 4),
             "take_profit": round(take_profit, 4),
@@ -548,7 +556,11 @@ def tradeplan():
             "risk_amount": round(risk_amount, 2),
             "position_size": round(position_size, 4),
             "expected_rr": round(expected_rr, 2),
-            "reason": "ATR-based trade generator using latest live candle direction"
+            "ma20": signal_data["ma20"],
+            "vwap": signal_data["vwap"],
+            "support": signal_data["support"],
+            "resistance": signal_data["resistance"],
+            "reason": ", ".join(signal_data["reasons"])
         })
 
     except Exception as e:
@@ -556,7 +568,6 @@ def tradeplan():
             "error": "Trade plan generation failed",
             "details": str(e)
         }), 500
-
 
 # -----------------------------
 # PRESETS
@@ -851,6 +862,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
