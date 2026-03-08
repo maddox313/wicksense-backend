@@ -462,7 +462,73 @@ def backtest():
         pos = 0.0
 
         for i, row in df.iterrows():
-            action = "Buy" if row["Close"] > row["Open"] else "Sell"
+            df = add_indicators(df)
+results = []
+equity_curve = []
+cash = 0.0
+pos = 0.0
+
+for i in range(len(df)):
+    row = df.iloc[i]
+
+    if pd.isna(row["MA20"]) or pd.isna(row["VWAP"]) or pd.isna(row["Support"]) or pd.isna(row["Resistance"]):
+        continue
+
+    bullish_points = 0
+    bearish_points = 0
+
+    if row["LowerWick"] > row["UpperWick"] * 1.2:
+        bullish_points += 1
+    elif row["UpperWick"] > row["LowerWick"] * 1.2:
+        bearish_points += 1
+
+    if row["Close"] > row["Open"]:
+        bullish_points += 1
+    elif row["Close"] < row["Open"]:
+        bearish_points += 1
+
+    if row["Close"] > row["MA20"]:
+        bullish_points += 1
+    elif row["Close"] < row["MA20"]:
+        bearish_points += 1
+
+    if row["Close"] > row["VWAP"]:
+        bullish_points += 1
+    elif row["Close"] < row["VWAP"]:
+        bearish_points += 1
+
+    support_distance = abs(row["Close"] - row["Support"])
+    resistance_distance = abs(row["Resistance"] - row["Close"])
+
+    if support_distance < resistance_distance:
+        bullish_points += 1
+    elif resistance_distance < support_distance:
+        bearish_points += 1
+
+    if bullish_points > bearish_points:
+        action = "Buy"
+    elif bearish_points > bullish_points:
+        action = "Sell"
+    else:
+        action = "Hold"
+
+    price = float(row["Close"])
+
+    if action == "Buy":
+        pos += 1
+        cash -= price
+    elif action == "Sell" and pos > 0:
+        pos -= 1
+        cash += price
+
+    equity = cash + pos * price
+    equity_curve.append(round(equity, 4))
+
+    results.append({
+        "index": int(i),
+        "action": action,
+        "price": price
+    })
             price = float(row["Close"])
 
             if action == "Buy":
@@ -862,6 +928,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
