@@ -410,45 +410,27 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        df = fetch_live_market_data(market, interval=timeframe, outputsize=20)
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+        signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
-
-        open_price = float(last_row["Open"])
-        high_price = float(last_row["High"])
-        low_price = float(last_row["Low"])
-        close_price = float(last_row["Close"])
-
-        upper_wick = high_price - max(open_price, close_price)
-        lower_wick = min(open_price, close_price) - low_price
-        candle_range = high_price - low_price if high_price != low_price else 1
-
-        if close_price > open_price:
-            signal_type = "Bullish"
-        elif close_price < open_price:
-            signal_type = "Bearish"
-        else:
-            signal_type = "Neutral"
-
-        wick_bias = "Lower wick dominant" if lower_wick > upper_wick else "Upper wick dominant"
-
-        confidence = round(
-            50 + (max(upper_wick, lower_wick) / candle_range) * 40,
-            2
-        )
 
         return jsonify({
             "market": market,
             "timeframe": timeframe,
-            "signal": signal_type,
-            "confidence": confidence,
-            "entry": close_price,
-            "open": open_price,
-            "high": high_price,
-            "low": low_price,
-            "close": close_price,
-            "upper_wick": round(upper_wick, 4),
-            "lower_wick": round(lower_wick, 4),
-            "reason": f"{wick_bias}; latest candle closed {'above' if close_price > open_price else 'below' if close_price < open_price else 'at'} open."
+            "signal": signal_data["signal"],
+            "confidence": signal_data["confidence"],
+            "entry": float(last_row["Close"]),
+            "open": float(last_row["Open"]),
+            "high": float(last_row["High"]),
+            "low": float(last_row["Low"]),
+            "close": float(last_row["Close"]),
+            "upper_wick": signal_data["upper_wick"],
+            "lower_wick": signal_data["lower_wick"],
+            "ma20": signal_data["ma20"],
+            "vwap": signal_data["vwap"],
+            "support": signal_data["support"],
+            "resistance": signal_data["resistance"],
+            "reason": ", ".join(signal_data["reasons"])
         })
 
     except Exception as e:
@@ -869,6 +851,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
