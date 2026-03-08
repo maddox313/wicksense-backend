@@ -417,6 +417,25 @@ def evaluate_signal(df: pd.DataFrame):
         "lower_wick": round(lower_wick, 4)
     }
 
+def scan_markets():
+    markets = [
+        "NASDAQ",
+        "DowJones",
+        "Gold",
+        "Forex",
+        "Futures"
+    ]
+
+    for market in markets:
+        try:
+            df = fetch_live_market_data(market, "15min", 30)
+            signal_data = evaluate_signal(df)
+
+            if signal_data["confidence"] >= 80:
+                print(f"Strong signal detected: {market}")
+
+        except Exception as e:
+            print("Scan error:", e)
 # -----------------------------
 # SIGNAL
 # -----------------------------
@@ -928,6 +947,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
