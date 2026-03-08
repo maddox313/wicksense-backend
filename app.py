@@ -211,6 +211,25 @@ def get_market_from_request():
     body = get_request_body()
     return body.get("market")
 
+def normalize_interval(interval: str) -> str:
+    interval_map = {
+        "1m": "1min",
+        "5m": "5min",
+        "15m": "15min",
+        "30m": "30min",
+        "45m": "45min",
+        "1h": "1h",
+        "2h": "2h",
+        "4h": "4h",
+        "8h": "8h",
+        "1d": "1day",
+        "1w": "1week",
+        "1mo": "1month",
+        "1day": "1day",
+        "1week": "1week",
+        "1month": "1month"
+    }
+    return interval_map.get(interval, interval)
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
@@ -405,7 +424,7 @@ def evaluate_signal(df: pd.DataFrame):
 def signal():
     try:
         market = get_market_from_request()
-        timeframe = get_string_from_request("timeframe", "1day")
+        timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
@@ -447,7 +466,7 @@ def signal():
 def backtest():
     try:
         market = get_market_from_request()
-        timeframe = get_string_from_request("timeframe", "1day")
+        timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         _ = get_string_from_request("start_date", "")
         _ = get_string_from_request("end_date", "")
 
@@ -549,7 +568,7 @@ def backtest():
 def tradeplan():
     try:
         market = get_market_from_request()
-        timeframe = get_string_from_request("timeframe", "1day")
+        timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         risk_percent = get_float_from_request("risk_percent", 1.0)
         account_size = get_float_from_request("account_size", 10000.0)
 
@@ -909,6 +928,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
