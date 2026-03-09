@@ -336,6 +336,29 @@ def add_indicators(df: pd.DataFrame):
 
     return df
 
+def detect_wick_pattern(row):
+    body = abs(row["Close"] - row["Open"])
+    upper_wick = row["UpperWick"]
+    lower_wick = row["LowerWick"]
+    candle_range = row["Range"] if row["Range"] != 0 else 1
+
+    # Doji: very small body relative to full candle range
+    if body <= candle_range * 0.15:
+        return "Doji"
+
+    # Hammer: long lower wick, small upper wick
+    if lower_wick > body * 2 and upper_wick <= body * 0.5:
+        return "Hammer"
+
+    # Shooting Star: long upper wick, small lower wick
+    if upper_wick > body * 2 and lower_wick <= body * 0.5:
+        return "Shooting Star"
+
+    # Pin Bar: one wick clearly dominates and body is relatively small
+    if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
+        return "Pin Bar"
+
+    return None
 
 def evaluate_signal(df: pd.DataFrame):
     df = add_indicators(df)
@@ -1025,6 +1048,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
