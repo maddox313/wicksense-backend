@@ -431,7 +431,7 @@ def scan_markets():
             df = fetch_live_market_data(market, "15min", 30)
             signal_data = evaluate_signal(df)
 
-            if signal_data["confidence"] >= 70:
+            if signal_data["confidence"] >= 60:
                 print(f"Strong signal detected: {market}")
 
         except Exception as e:
@@ -947,6 +947,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
