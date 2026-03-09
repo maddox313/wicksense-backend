@@ -562,6 +562,20 @@ def scan_markets():
 
     return scan_results
 
+@app.route("/scan-markets", methods=["GET"])
+def scan_markets_route():
+    try:
+        results = scan_markets()
+        return jsonify({
+            "status": "scan completed",
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Market scan failed",
+            "details": str(e)
+        }), 500
+
 
 # -----------------------------
 # SIGNAL
@@ -1079,6 +1093,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
