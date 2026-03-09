@@ -342,27 +342,6 @@ def detect_wick_pattern(row):
     lower_wick = row["LowerWick"]
     candle_range = row["Range"] if row["Range"] != 0 else 1
 
-    # Doji: very small body relative to full candle range
-    if body <= candle_range * 0.15:
-        return "Doji"
-
-    # Hammer: long lower wick, small upper wick
-    if lower_wick > body * 2 and upper_wick <= body * 0.5:
-        return "Hammer"
-
-    # Shooting Star: long upper wick, small lower wick
-    if upper_wick > body * 2 and lower_wick <= body * 0.5:
-        return "Shooting Star"
-
-    # Pin Bar: one wick clearly dominates and body is relatively small
-    if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
-        return "Pin Bar"
-def detect_wick_pattern(row):
-    body = abs(row["Close"] - row["Open"])
-    upper_wick = row["UpperWick"]
-    lower_wick = row["LowerWick"]
-    candle_range = row["Range"] if row["Range"] != 0 else 1
-
     # Doji: very small body relative to candle range
     if body <= candle_range * 0.15:
         return "Doji"
@@ -503,13 +482,13 @@ def scan_markets():
             reason_text = ", ".join(signal_data["reasons"])
             entry_price = float(last_row["Close"])
 
-            market_result = {
+            result = {
                 "market": market,
                 "signal": signal_data["signal"],
                 "confidence": signal_data["confidence"],
                 "entry": entry_price,
-                "reason": reason_text
-                "pattern": signal_data["pattern"],
+                "reason": reason_text,
+                "pattern": signal_data["pattern"]
             }
 
             scan_results.append(market_result)
@@ -596,7 +575,7 @@ def signal():
         signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
 
-        return jsonify({
+          return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -614,6 +593,7 @@ def signal():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
+        })
             
         })
 
@@ -776,7 +756,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-        return jsonify({
+                return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -793,10 +773,9 @@ def tradeplan():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
-            
         })
-
-    except Exception as e:
+            
+        except Exception as e:
         return jsonify({
             "error": "Trade plan generation failed",
             "details": str(e)
@@ -1095,6 +1074,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
