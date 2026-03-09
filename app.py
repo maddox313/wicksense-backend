@@ -453,12 +453,16 @@ def scan_markets():
             if signal_data["confidence"] >= 60 and signal_data["signal"] != "Neutral":
                 print(f"Strong signal detected: {market}")
 
-                send_signal_email(
-                    market=market,
-                    signal=signal_data["signal"],
-                    confidence=signal_data["confidence"],
-                    reason=reason_text,
-                    entry=entry_price
+                try:
+                    send_signal_email(
+                        market=market,
+                        signal=signal_data["signal"],
+                        confidence=signal_data["confidence"],
+                        reason=reason_text,
+                        entry=entry_price
+                    )
+                except Exception as email_error:
+                    print(f"Email error for {market}: {email_error}")
                 )
 
         except Exception as e:
@@ -1022,6 +1026,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
