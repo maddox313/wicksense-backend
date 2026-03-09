@@ -7,6 +7,8 @@ import json
 import uuid
 from datetime import datetime
 import stripe
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -1020,6 +1022,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
