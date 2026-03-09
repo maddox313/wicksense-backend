@@ -9,10 +9,12 @@ from datetime import datetime
 import stripe
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
 app = Flask(__name__)
 CORS(app)
 
@@ -26,7 +28,6 @@ MARKET_SYMBOLS = {
     "DowJones": "DIA",
     "Futures": "SPY"
 }
-
 
 
 # -----------------------------
@@ -200,6 +201,8 @@ def openapi():
             }
         }
     }
+
+
 # -----------------------------
 # HELPERS
 # -----------------------------
@@ -212,6 +215,7 @@ def get_request_body():
 def get_market_from_request():
     body = get_request_body()
     return body.get("market")
+
 
 def normalize_interval(interval: str) -> str:
     interval_map = {
@@ -232,6 +236,7 @@ def normalize_interval(interval: str) -> str:
         "1month": "1month"
     }
     return interval_map.get(interval, interval)
+
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
@@ -318,6 +323,8 @@ def find_preset(preset_id):
         if preset["id"] == preset_id:
             return preset
     return None
+
+
 def add_indicators(df: pd.DataFrame):
     df = df.copy()
 
@@ -336,30 +343,28 @@ def add_indicators(df: pd.DataFrame):
 
     return df
 
+
 def detect_wick_pattern(row):
     body = abs(row["Close"] - row["Open"])
     upper_wick = row["UpperWick"]
     lower_wick = row["LowerWick"]
     candle_range = row["Range"] if row["Range"] != 0 else 1
 
-    # Doji: very small body relative to candle range
     if body <= candle_range * 0.15:
         return "Doji"
 
-    # Hammer: long lower wick, very small upper wick
     if lower_wick > body * 2 and upper_wick <= body * 0.5:
         return "Hammer"
 
-    # Shooting Star: long upper wick, very small lower wick
     if upper_wick > body * 2 and lower_wick <= body * 0.5:
         return "Shooting Star"
 
-    # Pin Bar: one wick dominates and body is relatively small
     if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
         return "Pin Bar"
 
     return None
-       
+
+
 def evaluate_signal(df: pd.DataFrame):
     df = add_indicators(df)
     row = df.iloc[-1]
@@ -379,7 +384,6 @@ def evaluate_signal(df: pd.DataFrame):
     bearish_points = 0
     reasons = []
 
-    # Wick dominance
     if lower_wick > upper_wick * 1.2:
         bullish_points += 1
         reasons.append("Lower wick dominant")
@@ -387,7 +391,6 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Upper wick dominant")
 
-    # Candle direction
     if close_price > open_price:
         bullish_points += 1
         reasons.append("Bullish candle close")
@@ -395,7 +398,6 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Bearish candle close")
 
-    # Moving average filter
     if close_price > ma20:
         bullish_points += 1
         reasons.append("Price above MA20")
@@ -403,7 +405,6 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Price below MA20")
 
-    # VWAP filter
     if close_price > vwap:
         bullish_points += 1
         reasons.append("Price above VWAP")
@@ -411,7 +412,6 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Price below VWAP")
 
-    # Support / resistance proximity
     support_distance = abs(close_price - support)
     resistance_distance = abs(resistance - close_price)
 
@@ -422,7 +422,6 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Closer to resistance than support")
 
-    # Pattern recognition
     if pattern == "Hammer":
         bullish_points += 2
         reasons.append("Hammer pattern detected")
@@ -461,61 +460,7 @@ def evaluate_signal(df: pd.DataFrame):
         "upper_wick": round(upper_wick, 4),
         "lower_wick": round(lower_wick, 4)
     }
-def scan_markets():
-    markets = [
-        "NASDAQ",
-        "DowJones",
-        "Gold",
-        "Forex",
-        "Futures",
-        "NaturalGas"
-    ]
 
-    scan_results = []
-
-    for market in markets:
-        try:
-            df = fetch_live_market_data(market, "15min", 30)
-            signal_data = evaluate_signal(df)
-            last_row = df.iloc[-1]
-
-            reason_text = ", ".join(signal_data["reasons"])
-            entry_price = float(last_row["Close"])
-
-            result = {
-                "market": market,
-                "signal": signal_data["signal"],
-                "confidence": signal_data["confidence"],
-                "entry": entry_price,
-                "reason": reason_text,
-                "pattern": signal_data["pattern"]
-            }
-
-            scan_results.append(market_result)
-
-            if signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral":
-                print(f"Strong signal detected: {market}")
-
-                try:
-                    send_signal_email(
-                        market=market,
-                        signal=signal_data["signal"],
-                        confidence=signal_data["confidence"],
-                        reason=reason_text,
-                        entry=entry_price,
-                        pattern=signal_data["pattern"]
-                    )
-                except Exception as email_error:
-                    print(f"Email error for {market}: {email_error}")
-
-        except Exception as e:
-            print(f"Scan error: {e}")
-            scan_results.append({
-                "market": market,
-                "error": str(e)
-            })
-
-    return scan_results
 
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -559,6 +504,65 @@ def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
         print(f"Email sent: status={response.status_code}")
     except Exception as e:
         print("Email failed:", str(e))
+
+
+def scan_markets():
+    markets = [
+        "NASDAQ",
+        "DowJones",
+        "Gold",
+        "Forex",
+        "Futures",
+        "NaturalGas"
+    ]
+
+    scan_results = []
+
+    for market in markets:
+        try:
+            df = fetch_live_market_data(market, "15min", 30)
+            signal_data = evaluate_signal(df)
+            last_row = df.iloc[-1]
+
+            reason_text = ", ".join(signal_data["reasons"])
+            entry_price = float(last_row["Close"])
+
+            result = {
+                "market": market,
+                "signal": signal_data["signal"],
+                "confidence": signal_data["confidence"],
+                "entry": entry_price,
+                "reason": reason_text,
+                "pattern": signal_data["pattern"]
+            }
+
+            scan_results.append(result)
+
+            if signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral":
+                print(f"Strong signal detected: {market}")
+
+                try:
+                    send_signal_email(
+                        market=market,
+                        signal=signal_data["signal"],
+                        confidence=signal_data["confidence"],
+                        reason=reason_text,
+                        entry=entry_price,
+                        pattern=signal_data["pattern"]
+                    )
+                except Exception as email_error:
+                    print(f"Email error for {market}: {email_error}")
+
+        except Exception as e:
+            print(f"Scan error: {e}")
+            scan_results.append({
+                "market": market,
+                "error": str(e)
+            })
+
+    return scan_results
+
+
 # -----------------------------
 # SIGNAL
 # -----------------------------
@@ -575,7 +579,7 @@ def signal():
         signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
 
-          return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -593,8 +597,6 @@ def signal():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
-        })
-            
         })
 
     except Exception as e:
@@ -706,6 +708,7 @@ def backtest():
             "details": str(e)
         }), 500
 
+
 # -----------------------------
 # TRADE PLAN
 # -----------------------------
@@ -756,7 +759,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-                return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -774,12 +777,13 @@ def tradeplan():
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
         })
-            
-        except Exception as e:
+
+    except Exception as e:
         return jsonify({
             "error": "Trade plan generation failed",
             "details": str(e)
         }), 500
+
 
 # -----------------------------
 # PRESETS
@@ -902,6 +906,7 @@ def duplicate_preset(preset_id):
             "details": str(e)
         }), 500
 
+
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
@@ -958,7 +963,6 @@ def stripe_webhook():
         elif event["type"] == "customer.subscription.updated":
             sub = event["data"]["object"]
 
-            customer_id = sub.get("customer")
             subscription_id = sub.get("id")
             status = sub.get("status")
             current_period_end = sub.get("current_period_end")
@@ -989,7 +993,6 @@ def stripe_webhook():
 
         elif event["type"] == "customer.subscription.deleted":
             sub = event["data"]["object"]
-
             subscription_id = sub.get("id")
 
             headers = {
@@ -1019,6 +1022,7 @@ def stripe_webhook():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
@@ -1071,11 +1075,10 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
 
 
 
