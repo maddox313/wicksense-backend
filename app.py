@@ -423,26 +423,50 @@ def scan_markets():
         "DowJones",
         "Gold",
         "Forex",
-        "Futures"
+        "Futures",
+        "NaturalGas"
     ]
+
+    scan_results = []
 
     for market in markets:
         try:
             df = fetch_live_market_data(market, "15min", 30)
             signal_data = evaluate_signal(df)
+            last_row = df.iloc[-1]
+
+            reason_text = ", ".join(signal_data["reasons"])
+            entry_price = float(last_row["Close"])
+
+            result = {
+                "market": market,
+                "signal": signal_data["signal"],
+                "confidence": signal_data["confidence"],
+                "entry": entry_price,
+                "reason": reason_text
+            }
+
+            scan_results.append(result)
 
             if signal_data["confidence"] >= 60 and signal_data["signal"] != "Neutral":
                 print(f"Strong signal detected: {market}")
+
                 send_signal_email(
                     market=market,
                     signal=signal_data["signal"],
                     confidence=signal_data["confidence"],
-                    reason=result["reason"],
-                    entry=result["entry"]
+                    reason=reason_text,
+                    entry=entry_price
                 )
 
         except Exception as e:
-            print("Scan error:", e)
+            print(f"Scan error: {e}")
+            scan_results.append({
+                "market": market,
+                "error": str(e)
+            })
+
+    return scan_results
 
 def send_signal_email(market, signal, confidence, reason, entry):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -996,6 +1020,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
