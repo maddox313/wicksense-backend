@@ -431,11 +431,60 @@ def scan_markets():
             df = fetch_live_market_data(market, "15min", 30)
             signal_data = evaluate_signal(df)
 
-            if signal_data["confidence"] >= 60:
+            if signal_data["confidence"] >= 60 and signal_data["signal"] != "Neutral":
                 print(f"Strong signal detected: {market}")
+                send_signal_email(
+                    market=market,
+                    signal=signal_data["signal"],
+                    confidence=signal_data["confidence"],
+                    reason=result["reason"],
+                    entry=result["entry"]
+                )
 
         except Exception as e:
             print("Scan error:", e)
+
+def send_signal_email(market, signal, confidence, reason, entry):
+    sender_email = os.environ.get("ALERT_FROM_EMAIL")
+    recipient_email = os.environ.get("ALERT_TO_EMAIL")
+    sendgrid_api_key = os.environ.get("SENDGRID_API_KEY")
+
+    print("DEBUG EMAIL CONFIG:")
+    print("ALERT_FROM_EMAIL =", sender_email)
+    print("ALERT_TO_EMAIL =", recipient_email)
+    print("SENDGRID_API_KEY exists =", bool(sendgrid_api_key))
+
+    if not sender_email or not recipient_email or not sendgrid_api_key:
+        print("Email alert skipped: missing ALERT_FROM_EMAIL, ALERT_TO_EMAIL, or SENDGRID_API_KEY")
+        return
+
+    subject = f"WickSense Alert: {market} {signal}"
+    html_content = f"""
+    <html>
+      <body>
+        <h2>WickSense Signal Alert</h2>
+        <p><strong>Market:</strong> {market}</p>
+        <p><strong>Signal:</strong> {signal}</p>
+        <p><strong>Confidence:</strong> {confidence}%</p>
+        <p><strong>Entry:</strong> {entry}</p>
+        <p><strong>Reason:</strong> {reason}</p>
+      </body>
+    </html>
+    """
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=recipient_email,
+        subject=subject,
+        html_content=html_content
+    )
+
+    try:
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+        print(f"Email sent: status={response.status_code}")
+    except Exception as e:
+        print("Email failed:", str(e))
 # -----------------------------
 # SIGNAL
 # -----------------------------
@@ -947,6 +996,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
