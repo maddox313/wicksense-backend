@@ -357,9 +357,30 @@ def detect_wick_pattern(row):
     # Pin Bar: one wick clearly dominates and body is relatively small
     if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
         return "Pin Bar"
+def detect_wick_pattern(row):
+    body = abs(row["Close"] - row["Open"])
+    upper_wick = row["UpperWick"]
+    lower_wick = row["LowerWick"]
+    candle_range = row["Range"] if row["Range"] != 0 else 1
+
+    # Doji: very small body relative to candle range
+    if body <= candle_range * 0.15:
+        return "Doji"
+
+    # Hammer: long lower wick, very small upper wick
+    if lower_wick > body * 2 and upper_wick <= body * 0.5:
+        return "Hammer"
+
+    # Shooting Star: long upper wick, very small lower wick
+    if upper_wick > body * 2 and lower_wick <= body * 0.5:
+        return "Shooting Star"
+
+    # Pin Bar: one wick dominates and body is relatively small
+    if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
+        return "Pin Bar"
 
     return None
-
+       
 def evaluate_signal(df: pd.DataFrame):
     df = add_indicators(df)
     row = df.iloc[-1]
@@ -372,6 +393,7 @@ def evaluate_signal(df: pd.DataFrame):
     vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
     support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
     resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
+
     pattern = detect_wick_pattern(row)
 
     bullish_points = 0
@@ -386,7 +408,7 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Upper wick dominant")
 
-    # Candle body direction
+    # Candle direction
     if close_price > open_price:
         bullish_points += 1
         reasons.append("Bullish candle close")
@@ -437,7 +459,7 @@ def evaluate_signal(df: pd.DataFrame):
         elif upper_wick > lower_wick:
             bearish_points += 1
             reasons.append("Bearish Pin Bar detected")
-    
+
     if bullish_points > bearish_points:
         signal_type = "Bullish"
     elif bearish_points > bullish_points:
@@ -448,7 +470,7 @@ def evaluate_signal(df: pd.DataFrame):
     total_points = bullish_points + bearish_points
     confidence = 50 if total_points == 0 else round((max(bullish_points, bearish_points) / total_points) * 100, 2)
 
-        return {
+    return {
         "signal": signal_type,
         "confidence": confidence,
         "reasons": reasons,
@@ -460,7 +482,6 @@ def evaluate_signal(df: pd.DataFrame):
         "upper_wick": round(upper_wick, 4),
         "lower_wick": round(lower_wick, 4)
     }
-
 def scan_markets():
     markets = [
         "NASDAQ",
@@ -580,6 +601,7 @@ def signal():
             "timeframe": timeframe,
             "signal": signal_data["signal"],
             "confidence": signal_data["confidence"],
+            "pattern": signal_data["pattern"],
             "entry": float(last_row["Close"]),
             "open": float(last_row["Open"]),
             "high": float(last_row["High"]),
@@ -592,7 +614,7 @@ def signal():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
-            "pattern": signal_data["pattern"],
+            
         })
 
     except Exception as e:
@@ -758,6 +780,7 @@ def tradeplan():
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
+            "pattern": signal_data["pattern"],
             "entry_price": round(entry, 4),
             "stop_loss": round(stop_loss, 4),
             "take_profit": round(take_profit, 4),
@@ -770,7 +793,7 @@ def tradeplan():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
-            "pattern": signal_data["pattern"],
+            
         })
 
     except Exception as e:
@@ -1072,6 +1095,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
