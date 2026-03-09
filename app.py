@@ -488,6 +488,7 @@ def scan_markets():
                 "confidence": signal_data["confidence"],
                 "entry": entry_price,
                 "reason": reason_text
+                "pattern": signal_data["pattern"],
             }
 
             scan_results.append(market_result)
@@ -589,6 +590,7 @@ def signal():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
+            "pattern": signal_data["pattern"],
         })
 
     except Exception as e:
@@ -766,6 +768,7 @@ def tradeplan():
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
             "reason": ", ".join(signal_data["reasons"])
+            "pattern": signal_data["pattern"],
         })
 
     except Exception as e:
@@ -1067,6 +1070,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
