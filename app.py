@@ -440,7 +440,7 @@ def scan_markets():
             reason_text = ", ".join(signal_data["reasons"])
             entry_price = float(last_row["Close"])
 
-            result = {
+            market_result = {
                 "market": market,
                 "signal": signal_data["signal"],
                 "confidence": signal_data["confidence"],
@@ -448,7 +448,7 @@ def scan_markets():
                 "reason": reason_text
             }
 
-            scan_results.append(result)
+            scan_results.append(market_result)
 
             if signal_data["confidence"] >= 60 and signal_data["signal"] != "Neutral":
                 print(f"Strong signal detected: {market}")
@@ -463,7 +463,6 @@ def scan_markets():
                     )
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
-                )
 
         except Exception as e:
             print(f"Scan error: {e}")
@@ -1026,6 +1025,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
