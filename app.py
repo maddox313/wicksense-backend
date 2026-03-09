@@ -493,7 +493,7 @@ def scan_markets():
 
             scan_results.append(market_result)
 
-            if signal_data["confidence"] >= 60 and signal_data["signal"] != "Neutral":
+            if signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral":
                 print(f"Strong signal detected: {market}")
 
                 try:
@@ -502,7 +502,8 @@ def scan_markets():
                         signal=signal_data["signal"],
                         confidence=signal_data["confidence"],
                         reason=reason_text,
-                        entry=entry_price
+                        entry=entry_price,
+                        pattern=signal_data["pattern"]
                     )
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
@@ -516,7 +517,7 @@ def scan_markets():
 
     return scan_results
 
-def send_signal_email(market, signal, confidence, reason, entry):
+def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
     recipient_email = os.environ.get("ALERT_TO_EMAIL")
     sendgrid_api_key = os.environ.get("SENDGRID_API_KEY")
@@ -540,6 +541,7 @@ def send_signal_email(market, signal, confidence, reason, entry):
         <p><strong>Confidence:</strong> {confidence}%</p>
         <p><strong>Entry:</strong> {entry}</p>
         <p><strong>Reason:</strong> {reason}</p>
+        <p><strong>Pattern:</strong> {pattern or 'None'}</p>
       </body>
     </html>
     """
@@ -1070,6 +1072,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
