@@ -372,6 +372,7 @@ def evaluate_signal(df: pd.DataFrame):
     vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
     support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
     resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
+    pattern = detect_wick_pattern(row)
 
     bullish_points = 0
     bearish_points = 0
@@ -420,6 +421,23 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Closer to resistance than support")
 
+    # Pattern recognition
+    if pattern == "Hammer":
+        bullish_points += 2
+        reasons.append("Hammer pattern detected")
+    elif pattern == "Shooting Star":
+        bearish_points += 2
+        reasons.append("Shooting Star pattern detected")
+    elif pattern == "Doji":
+        reasons.append("Doji pattern detected")
+    elif pattern == "Pin Bar":
+        if lower_wick > upper_wick:
+            bullish_points += 1
+            reasons.append("Bullish Pin Bar detected")
+        elif upper_wick > lower_wick:
+            bearish_points += 1
+            reasons.append("Bearish Pin Bar detected")
+    
     if bullish_points > bearish_points:
         signal_type = "Bullish"
     elif bearish_points > bullish_points:
@@ -430,10 +448,11 @@ def evaluate_signal(df: pd.DataFrame):
     total_points = bullish_points + bearish_points
     confidence = 50 if total_points == 0 else round((max(bullish_points, bearish_points) / total_points) * 100, 2)
 
-    return {
+        return {
         "signal": signal_type,
         "confidence": confidence,
         "reasons": reasons,
+        "pattern": pattern,
         "ma20": round(ma20, 4),
         "vwap": round(vwap, 4),
         "support": round(support, 4),
@@ -1048,6 +1067,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
