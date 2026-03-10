@@ -951,11 +951,12 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
-        signal_data = evaluate_signal(df)
-        last_row = df.iloc[-1]
+df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+signal_data = evaluate_signal(df)
+mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+last_row = df.iloc[-1]
 
-        return jsonify({
+         return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -977,6 +978,9 @@ def signal():
             "trendline": signal_data["trendline"],
             "strategy_breakdown": signal_data["strategy_breakdown"],
             "confluence_bonus": signal_data["confluence_bonus"],
+            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
+            "timeframe_alignment": mtf_data["timeframe_alignment"],
+            "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
         })
 
@@ -1465,6 +1469,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
