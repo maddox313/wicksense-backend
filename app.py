@@ -733,9 +733,10 @@ def scan_markets():
             scan_results.append(result)
 
             should_alert = (
-                signal_data["confidence"] >= 80 and
-                signal_data["signal"] != "Neutral"
-            ) or signal_data["breakout"] is not None or signal_data["trendline"] is not None
+                (signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral")
+                or signal_data["breakout"] is not None
+                or signal_data["trendline"] is not None
+            )
 
             if should_alert:
                 print(f"Strong signal detected: {market}")
@@ -759,8 +760,27 @@ def scan_markets():
                 "error": str(e)
             })
 
-    return scan_results
+    valid_results = [r for r in scan_results if "error" not in r]
 
+    bullish_results = [r for r in valid_results if r["signal"] == "Bullish"]
+    bearish_results = [r for r in valid_results if r["signal"] == "Bearish"]
+    breakout_results = [r for r in valid_results if r.get("breakout") is not None]
+    trendline_results = [r for r in valid_results if r.get("trendline") is not None]
+
+    bullish_results = sorted(bullish_results, key=lambda x: x["confidence"], reverse=True)
+    bearish_results = sorted(bearish_results, key=lambda x: x["confidence"], reverse=True)
+    breakout_results = sorted(breakout_results, key=lambda x: x["confidence"], reverse=True)
+    trendline_results = sorted(trendline_results, key=lambda x: x["confidence"], reverse=True)
+    all_results_sorted = sorted(valid_results, key=lambda x: x["confidence"], reverse=True)
+
+    return {
+        "top_bullish": bullish_results[0] if bullish_results else None,
+        "top_bearish": bearish_results[0] if bearish_results else None,
+        "top_breakout": breakout_results[0] if breakout_results else None,
+        "top_trendline": trendline_results[0] if trendline_results else None,
+        "all_results_sorted": all_results_sorted,
+        "raw_results": scan_results
+    }
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
@@ -768,7 +788,12 @@ def scan_markets_route():
         results = scan_markets()
         return jsonify({
             "status": "scan completed",
-            "results": results
+            "top_bullish": results["top_bullish"],
+            "top_bearish": results["top_bearish"],
+            "top_breakout": results["top_breakout"],
+            "top_trendline": results["top_trendline"],
+            "all_results_sorted": results["all_results_sorted"],
+            "raw_results": results["raw_results"]
         })
     except Exception as e:
         return jsonify({
@@ -1301,6 +1326,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
