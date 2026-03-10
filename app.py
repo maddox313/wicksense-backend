@@ -699,19 +699,16 @@ def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
 
 def scan_markets():
     markets = [
-        "NASDAQ",
-        "DowJones",
-        "Gold",
-        "Forex",
-        "Futures",
-        "NaturalGas"
-    ]
+    "NASDAQ",
+    "Gold",
+    "Forex"
+]
 
     scan_results = []
 
     for market in markets:
         try:
-            df = fetch_live_market_data(market, "15min", 30)
+            df = fetch_live_market_data(market, "15min", 15)
             signal_data = evaluate_signal(df)
             last_row = df.iloc[-1]
 
@@ -1326,6 +1323,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
