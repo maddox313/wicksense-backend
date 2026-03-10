@@ -334,12 +334,19 @@ def add_indicators(df: pd.DataFrame):
     df["Range"] = df["High"] - df["Low"]
 
     df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA50"] = df["Close"].rolling(50).mean()
 
     typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
     df["VWAP"] = typical_price.expanding().mean()
 
     df["Support"] = df["Low"].rolling(10).min()
     df["Resistance"] = df["High"].rolling(10).max()
+
+    df["PrevResistance"] = df["Resistance"].shift(1)
+    df["PrevSupport"] = df["Support"].shift(1)
+
+    df["SwingHigh"] = df["High"][(df["High"] > df["High"].shift(1)) & (df["High"] > df["High"].shift(-1))]
+    df["SwingLow"] = df["Low"][(df["Low"] < df["Low"].shift(1)) & (df["Low"] < df["Low"].shift(-1))]
 
     return df
 
@@ -365,6 +372,188 @@ def detect_wick_pattern(row):
     return None
 
 
+def wick_strategy(row, pattern):
+    bullish = 0
+    bearish = 0
+    reasons = []
+
+    if row["LowerWick"] > row["UpperWick"] * 1.2:
+        bullish += 1
+        reasons.append("Lower wick dominant")
+    elif row["UpperWick"] > row["LowerWick"] * 1.2:
+        bearish += 1
+        reasons.append("Upper wick dominant")
+
+    if pattern == "Hammer":
+        bullish += 2
+        reasons.append("Hammer pattern detected")
+    elif pattern == "Shooting Star":
+        bearish += 2
+        reasons.append("Shooting Star pattern detected")
+    elif pattern == "Doji":
+        reasons.append("Doji pattern detected")
+    elif pattern == "Pin Bar":
+        if row["LowerWick"] > row["UpperWick"]:
+            bullish += 1
+            reasons.append("Bullish Pin Bar detected")
+        elif row["UpperWick"] > row["LowerWick"]:
+            bearish += 1
+            reasons.append("Bearish Pin Bar detected")
+
+    return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+
+
+def ma_trend_strategy(row):
+    bullish = 0
+    bearish = 0
+    reasons = []
+
+    close_price = float(row["Close"])
+    ma20 = float(row["MA20"]) if pd.notna(row["MA20"]) else close_price
+    ma50 = float(row["MA50"]) if pd.notna(row["MA50"]) else close_price
+
+    if close_price > ma20:
+        bullish += 1
+        reasons.append("Price above MA20")
+    elif close_price < ma20:
+        bearish += 1
+        reasons.append("Price below MA20")
+
+    if close_price > ma50:
+        bullish += 1
+        reasons.append("Price above MA50")
+    elif close_price < ma50:
+        bearish += 1
+        reasons.append("Price below MA50")
+
+    if ma20 > ma50:
+        bullish += 1
+        reasons.append("MA20 above MA50")
+    elif ma20 < ma50:
+        bearish += 1
+        reasons.append("MA20 below MA50")
+
+    return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+
+
+def vwap_strategy(row):
+    bullish = 0
+    bearish = 0
+    reasons = []
+
+    close_price = float(row["Close"])
+    vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
+
+    if close_price > vwap:
+        bullish += 1
+        reasons.append("Price above VWAP")
+    elif close_price < vwap:
+        bearish += 1
+        reasons.append("Price below VWAP")
+
+    return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+
+
+def support_resistance_strategy(row):
+    bullish = 0
+    bearish = 0
+    reasons = []
+
+    close_price = float(row["Close"])
+    support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
+    resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
+
+    support_distance = abs(close_price - support)
+    resistance_distance = abs(resistance - close_price)
+
+    if support_distance < resistance_distance:
+        bullish += 1
+        reasons.append("Closer to support than resistance")
+    elif resistance_distance < support_distance:
+        bearish += 1
+        reasons.append("Closer to resistance than support")
+
+    return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+
+
+def breakout_strategy(row):
+    bullish = 0
+    bearish = 0
+    reasons = []
+    breakout_label = None
+
+    prev_resistance = row["PrevResistance"]
+    prev_support = row["PrevSupport"]
+    close_price = float(row["Close"])
+    open_price = float(row["Open"])
+
+    if pd.notna(prev_resistance) and close_price > float(prev_resistance) and close_price > open_price:
+        bullish += 2
+        breakout_label = "Bullish Breakout"
+        reasons.append("Closed above previous resistance")
+
+    if pd.notna(prev_support) and close_price < float(prev_support) and close_price < open_price:
+        bearish += 2
+        breakout_label = "Bearish Breakdown"
+        reasons.append("Closed below previous support")
+
+    if breakout_label is None and pd.notna(prev_resistance) and float(row["High"]) > float(prev_resistance) and close_price < float(prev_resistance):
+        bearish += 1
+        breakout_label = "Failed Bullish Breakout"
+        reasons.append("Wick swept above resistance but closed below")
+
+    if breakout_label is None and pd.notna(prev_support) and float(row["Low"]) < float(prev_support) and close_price > float(prev_support):
+        bullish += 1
+        breakout_label = "Failed Bearish Breakdown"
+        reasons.append("Wick swept below support but closed above")
+
+    return {
+        "bullish": bullish,
+        "bearish": bearish,
+        "reasons": reasons,
+        "breakout": breakout_label
+    }
+
+
+def trendline_strategy(df: pd.DataFrame):
+    bullish = 0
+    bearish = 0
+    reasons = []
+    trendline_label = None
+
+    recent = df.tail(20)
+    swing_lows = recent["SwingLow"].dropna()
+    swing_highs = recent["SwingHigh"].dropna()
+    last_close = float(recent.iloc[-1]["Close"])
+
+    if len(swing_lows) >= 2:
+        last_two_lows = swing_lows.tail(2).values
+        if last_two_lows[-1] > last_two_lows[-2]:
+            bullish += 1
+            trendline_label = "Rising Trendline Support"
+            reasons.append("Recent swing lows are rising")
+            if abs(last_close - last_two_lows[-1]) / max(last_close, 1) < 0.01:
+                bullish += 1
+                reasons.append("Price is near rising trendline support")
+
+    if len(swing_highs) >= 2:
+        last_two_highs = swing_highs.tail(2).values
+        if last_two_highs[-1] < last_two_highs[-2]:
+            bearish += 1
+            trendline_label = "Falling Trendline Resistance"
+            reasons.append("Recent swing highs are falling")
+            if abs(last_two_highs[-1] - last_close) / max(last_close, 1) < 0.01:
+                bearish += 1
+                reasons.append("Price is near falling trendline resistance")
+
+    return {
+        "bullish": bullish,
+        "bearish": bearish,
+        "reasons": reasons,
+        "trendline": trendline_label
+    }
+
+
 def evaluate_signal(df: pd.DataFrame):
     df = add_indicators(df)
     row = df.iloc[-1]
@@ -374,22 +563,28 @@ def evaluate_signal(df: pd.DataFrame):
     upper_wick = float(row["UpperWick"])
     lower_wick = float(row["LowerWick"])
     ma20 = float(row["MA20"]) if pd.notna(row["MA20"]) else close_price
+    ma50 = float(row["MA50"]) if pd.notna(row["MA50"]) else close_price
     vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
     support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
     resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
 
     pattern = detect_wick_pattern(row)
 
-    bullish_points = 0
-    bearish_points = 0
-    reasons = []
+    strategies = {
+        "wick_strategy": wick_strategy(row, pattern),
+        "ma_trend_strategy": ma_trend_strategy(row),
+        "vwap_strategy": vwap_strategy(row),
+        "support_resistance_strategy": support_resistance_strategy(row),
+        "breakout_strategy": breakout_strategy(row),
+        "trendline_strategy": trendline_strategy(df)
+    }
 
-    if lower_wick > upper_wick * 1.2:
-        bullish_points += 1
-        reasons.append("Lower wick dominant")
-    elif upper_wick > lower_wick * 1.2:
-        bearish_points += 1
-        reasons.append("Upper wick dominant")
+    bullish_points = sum(s["bullish"] for s in strategies.values())
+    bearish_points = sum(s["bearish"] for s in strategies.values())
+
+    reasons = []
+    for s in strategies.values():
+        reasons.extend(s["reasons"])
 
     if close_price > open_price:
         bullish_points += 1
@@ -397,46 +592,6 @@ def evaluate_signal(df: pd.DataFrame):
     elif close_price < open_price:
         bearish_points += 1
         reasons.append("Bearish candle close")
-
-    if close_price > ma20:
-        bullish_points += 1
-        reasons.append("Price above MA20")
-    elif close_price < ma20:
-        bearish_points += 1
-        reasons.append("Price below MA20")
-
-    if close_price > vwap:
-        bullish_points += 1
-        reasons.append("Price above VWAP")
-    elif close_price < vwap:
-        bearish_points += 1
-        reasons.append("Price below VWAP")
-
-    support_distance = abs(close_price - support)
-    resistance_distance = abs(resistance - close_price)
-
-    if support_distance < resistance_distance:
-        bullish_points += 1
-        reasons.append("Closer to support than resistance")
-    elif resistance_distance < support_distance:
-        bearish_points += 1
-        reasons.append("Closer to resistance than support")
-
-    if pattern == "Hammer":
-        bullish_points += 2
-        reasons.append("Hammer pattern detected")
-    elif pattern == "Shooting Star":
-        bearish_points += 2
-        reasons.append("Shooting Star pattern detected")
-    elif pattern == "Doji":
-        reasons.append("Doji pattern detected")
-    elif pattern == "Pin Bar":
-        if lower_wick > upper_wick:
-            bullish_points += 1
-            reasons.append("Bullish Pin Bar detected")
-        elif upper_wick > lower_wick:
-            bearish_points += 1
-            reasons.append("Bearish Pin Bar detected")
 
     if bullish_points > bearish_points:
         signal_type = "Bullish"
@@ -448,17 +603,37 @@ def evaluate_signal(df: pd.DataFrame):
     total_points = bullish_points + bearish_points
     confidence = 50 if total_points == 0 else round((max(bullish_points, bearish_points) / total_points) * 100, 2)
 
+    strategy_breakdown = {}
+    for name, s in strategies.items():
+        if s["bullish"] > s["bearish"]:
+            direction = "Bullish"
+        elif s["bearish"] > s["bullish"]:
+            direction = "Bearish"
+        else:
+            direction = "Neutral"
+
+        strategy_breakdown[name] = {
+            "direction": direction,
+            "bullish_score": s["bullish"],
+            "bearish_score": s["bearish"],
+            "reasons": s["reasons"]
+        }
+
     return {
         "signal": signal_type,
         "confidence": confidence,
         "reasons": reasons,
         "pattern": pattern,
         "ma20": round(ma20, 4),
+        "ma50": round(ma50, 4),
         "vwap": round(vwap, 4),
         "support": round(support, 4),
         "resistance": round(resistance, 4),
         "upper_wick": round(upper_wick, 4),
-        "lower_wick": round(lower_wick, 4)
+        "lower_wick": round(lower_wick, 4),
+        "breakout": strategies["breakout_strategy"]["breakout"],
+        "trendline": strategies["trendline_strategy"]["trendline"],
+        "strategy_breakdown": strategy_breakdown
     }
 
 
@@ -533,12 +708,20 @@ def scan_markets():
                 "confidence": signal_data["confidence"],
                 "entry": entry_price,
                 "reason": reason_text,
-                "pattern": signal_data["pattern"]
+                "pattern": signal_data["pattern"],
+                "breakout": signal_data["breakout"],
+                "trendline": signal_data["trendline"],
+                "strategy_breakdown": signal_data["strategy_breakdown"]
             }
 
             scan_results.append(result)
 
-            if signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral":
+            should_alert = (
+                signal_data["confidence"] >= 80 and
+                signal_data["signal"] != "Neutral"
+            ) or signal_data["breakout"] is not None or signal_data["trendline"] is not None
+
+            if should_alert:
                 print(f"Strong signal detected: {market}")
 
                 try:
@@ -593,7 +776,7 @@ def signal():
         signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
 
-        return jsonify({
+               return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -607,11 +790,16 @@ def signal():
             "upper_wick": signal_data["upper_wick"],
             "lower_wick": signal_data["lower_wick"],
             "ma20": signal_data["ma20"],
+            "ma50": signal_data["ma50"],
             "vwap": signal_data["vwap"],
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
+            "breakout": signal_data["breakout"],
+            "trendline": signal_data["trendline"],
+            "strategy_breakdown": signal_data["strategy_breakdown"],
             "reason": ", ".join(signal_data["reasons"])
         })
+    
 
     except Exception as e:
         return jsonify({
@@ -773,7 +961,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-        return jsonify({
+                return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -786,9 +974,13 @@ def tradeplan():
             "position_size": round(position_size, 4),
             "expected_rr": round(expected_rr, 2),
             "ma20": signal_data["ma20"],
+            "ma50": signal_data["ma50"],
             "vwap": signal_data["vwap"],
             "support": signal_data["support"],
             "resistance": signal_data["resistance"],
+            "breakout": signal_data["breakout"],
+            "trendline": signal_data["trendline"],
+            "strategy_breakdown": signal_data["strategy_breakdown"],
             "reason": ", ".join(signal_data["reasons"])
         })
 
@@ -1093,6 +1285,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
