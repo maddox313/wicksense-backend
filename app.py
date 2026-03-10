@@ -597,6 +597,61 @@ def evaluate_signal(df: pd.DataFrame):
 
     bullish_points = sum(s["bullish"] for s in strategies.values())
     bearish_points = sum(s["bearish"] for s in strategies.values())
+# --------------------------------
+# Confluence scoring
+# --------------------------------
+
+confluence_bonus = 0
+
+trend_dir = strategies["ma_trend_strategy"]["bullish"] - strategies["ma_trend_strategy"]["bearish"]
+vwap_dir = strategies["vwap_strategy"]["bullish"] - strategies["vwap_strategy"]["bearish"]
+sr_dir = strategies["support_resistance_strategy"]["bullish"] - strategies["support_resistance_strategy"]["bearish"]
+wick_dir = strategies["wick_strategy"]["bullish"] - strategies["wick_strategy"]["bearish"]
+breakout = strategies["breakout_strategy"]["breakout"]
+trendline = strategies["trendline_strategy"]["trendline"]
+
+# Trend + VWAP alignment
+if trend_dir > 0 and vwap_dir > 0:
+    bullish_points += 2
+    confluence_bonus += 2
+    reasons.append("Trend + VWAP bullish confluence")
+
+if trend_dir < 0 and vwap_dir < 0:
+    bearish_points += 2
+    confluence_bonus += 2
+    reasons.append("Trend + VWAP bearish confluence")
+
+# Support + bullish wick pattern
+if sr_dir > 0 and wick_dir > 0:
+    bullish_points += 2
+    confluence_bonus += 2
+    reasons.append("Support + wick reversal confluence")
+
+# Resistance + bearish wick pattern
+if sr_dir < 0 and wick_dir < 0:
+    bearish_points += 2
+    confluence_bonus += 2
+    reasons.append("Resistance + wick rejection confluence")
+
+# Breakout continuation
+if breakout == "Bullish Breakout" and trend_dir > 0:
+    bullish_points += 2
+    confluence_bonus += 2
+    reasons.append("Breakout + trend continuation")
+
+if breakout == "Bearish Breakdown" and trend_dir < 0:
+    bearish_points += 2
+    confluence_bonus += 2
+    reasons.append("Breakout + trend continuation")
+
+# Trendline bounce
+if trendline == "Rising Trendline Support":
+    bullish_points += 1
+    reasons.append("Trendline support bounce")
+
+if trendline == "Falling Trendline Resistance":
+    bearish_points += 1
+    reasons.append("Trendline resistance rejection")
 
     reasons = []
     for s in strategies.values():
@@ -650,6 +705,7 @@ def evaluate_signal(df: pd.DataFrame):
         "breakout": strategies["breakout_strategy"]["breakout"],
         "trendline": strategies["trendline_strategy"]["trendline"],
         "strategy_breakdown": strategy_breakdown
+        "confluence_bonus": confluence_bonus,
     }
 
 
@@ -1323,6 +1379,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
