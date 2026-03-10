@@ -107,6 +107,16 @@ def openapi():
                     }
                 }
             },
+            "/scan-markets": {
+                "get": {
+                    "summary": "Scan all markets",
+                    "responses": {
+                        "200": {
+                            "description": "Market scan results"
+                        }
+                    }
+                }
+            },
             "/presets": {
                 "get": {
                     "summary": "Get all presets",
@@ -345,8 +355,14 @@ def add_indicators(df: pd.DataFrame):
     df["PrevResistance"] = df["Resistance"].shift(1)
     df["PrevSupport"] = df["Support"].shift(1)
 
-    df["SwingHigh"] = df["High"][(df["High"] > df["High"].shift(1)) & (df["High"] > df["High"].shift(-1))]
-    df["SwingLow"] = df["Low"][(df["Low"] < df["Low"].shift(1)) & (df["Low"] < df["Low"].shift(-1))]
+    df["SwingHigh"] = df["High"][
+        (df["High"] > df["High"].shift(1)) &
+        (df["High"] > df["High"].shift(-1))
+    ]
+    df["SwingLow"] = df["Low"][
+        (df["Low"] < df["Low"].shift(1)) &
+        (df["Low"] < df["Low"].shift(-1))
+    ]
 
     return df
 
@@ -745,6 +761,7 @@ def scan_markets():
 
     return scan_results
 
+
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
     try:
@@ -776,7 +793,7 @@ def signal():
         signal_data = evaluate_signal(df)
         last_row = df.iloc[-1]
 
-               return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -799,7 +816,6 @@ def signal():
             "strategy_breakdown": signal_data["strategy_breakdown"],
             "reason": ", ".join(signal_data["reasons"])
         })
-    
 
     except Exception as e:
         return jsonify({
@@ -961,7 +977,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-                return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -1285,8 +1301,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
 
 
 
