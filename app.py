@@ -703,6 +703,94 @@ def evaluate_signal(df: pd.DataFrame):
         "confluence_bonus": confluence_bonus
     }
 
+def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30):
+    normalized_timeframe = normalize_interval(timeframe)
+    df = fetch_live_market_data(market, interval=normalized_timeframe, outputsize=outputsize)
+    signal_data = evaluate_signal(df)
+    last_row = df.iloc[-1]
+
+    return {
+        "market": market,
+        "timeframe": normalized_timeframe,
+        "signal": signal_data["signal"],
+        "confidence": signal_data["confidence"],
+        "pattern": signal_data["pattern"],
+        "entry": float(last_row["Close"]),
+        "open": float(last_row["Open"]),
+        "high": float(last_row["High"]),
+        "low": float(last_row["Low"]),
+        "close": float(last_row["Close"]),
+        "upper_wick": signal_data["upper_wick"],
+        "lower_wick": signal_data["lower_wick"],
+        "ma20": signal_data["ma20"],
+        "ma50": signal_data["ma50"],
+        "vwap": signal_data["vwap"],
+        "support": signal_data["support"],
+        "resistance": signal_data["resistance"],
+        "breakout": signal_data["breakout"],
+        "trendline": signal_data["trendline"],
+        "strategy_breakdown": signal_data["strategy_breakdown"],
+        "confluence_bonus": signal_data["confluence_bonus"],
+        "reason": ", ".join(signal_data["reasons"])
+    }
+
+
+def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
+
+    normalized = normalize_interval(base_timeframe)
+
+    timeframe_map = {
+        "15min": ["15min", "1h"],
+        "1h": ["1h", "4h"],
+        "4h": ["4h", "1day"],
+        "1day": ["1day"]
+    }
+
+    timeframes = timeframe_map.get(normalized, [normalized])
+
+    multi_timeframe = {}
+    bullish_count = 0
+    bearish_count = 0
+
+    for tf in timeframes:
+        try:
+            tf_signal = evaluate_signal_from_market(market, tf)
+
+            multi_timeframe[tf] = {
+                "signal": tf_signal["signal"],
+                "confidence": tf_signal["confidence"],
+                "pattern": tf_signal["pattern"]
+            }
+
+            if tf_signal["signal"] == "Bullish":
+                bullish_count += 1
+            elif tf_signal["signal"] == "Bearish":
+                bearish_count += 1
+
+        except Exception as e:
+            multi_timeframe[tf] = {"error": str(e)}
+
+    if bullish_count > bearish_count and bullish_count >= 2:
+        alignment = "Strong Bullish Alignment"
+        bias = "Bullish"
+    elif bearish_count > bullish_count and bearish_count >= 2:
+        alignment = "Strong Bearish Alignment"
+        bias = "Bearish"
+    elif bullish_count > bearish_count:
+        alignment = "Mild Bullish Alignment"
+        bias = "Bullish"
+    elif bearish_count > bullish_count:
+        alignment = "Mild Bearish Alignment"
+        bias = "Bearish"
+    else:
+        alignment = "Mixed / Neutral"
+        bias = "Neutral"
+
+    return {
+        "multi_timeframe": multi_timeframe,
+        "higher_timeframe_bias": bias,
+        "timeframe_alignment": alignment
+    }
 
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -1377,6 +1465,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
