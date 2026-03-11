@@ -530,6 +530,51 @@ def breakout_strategy(row):
         "breakout": breakout_label
     }
 
+def liquidity_sweep_strategy(row):
+    bullish = 0
+    bearish = 0
+    reasons = []
+    liquidity_event = None
+
+    prev_resistance = row["PrevResistance"]
+    prev_support = row["PrevSupport"]
+    high_price = float(row["High"])
+    low_price = float(row["Low"])
+    close_price = float(row["Close"])
+    open_price = float(row["Open"])
+
+    # Sweeps above resistance but fails to hold
+    if pd.notna(prev_resistance):
+        prev_resistance = float(prev_resistance)
+
+        if high_price > prev_resistance and close_price < prev_resistance:
+            bearish += 2
+            liquidity_event = "Bearish Liquidity Sweep"
+            reasons.append("Price swept above resistance and closed back below")
+
+        elif high_price > prev_resistance and close_price > prev_resistance and close_price > open_price:
+            bullish += 1
+            reasons.append("Resistance sweep held into breakout")
+
+    # Sweeps below support but fails to hold
+    if pd.notna(prev_support):
+        prev_support = float(prev_support)
+
+        if low_price < prev_support and close_price > prev_support:
+            bullish += 2
+            liquidity_event = "Bullish Liquidity Sweep"
+            reasons.append("Price swept below support and closed back above")
+
+        elif low_price < prev_support and close_price < prev_support and close_price < open_price:
+            bearish += 1
+            reasons.append("Support sweep held into breakdown")
+
+    return {
+        "bullish": bullish,
+        "bearish": bearish,
+        "reasons": reasons,
+        "liquidity_event": liquidity_event
+    }
 
 def trendline_strategy(df: pd.DataFrame):
     bullish = 0
@@ -1525,6 +1570,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
