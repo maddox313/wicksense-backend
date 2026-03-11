@@ -854,17 +854,25 @@ def scan_markets():
             reason_text = ", ".join(signal_data["reasons"])
             entry_price = float(last_row["Close"])
 
-            result = {
-                "market": market,
-                "signal": signal_data["signal"],
-                "confidence": signal_data["confidence"],
-                "entry": entry_price,
-                "reason": reason_text,
-                "pattern": signal_data["pattern"],
-                "breakout": signal_data["breakout"],
-                "trendline": signal_data["trendline"],
-                "strategy_breakdown": signal_data["strategy_breakdown"]
-            }
+           opportunity_score = (
+    signal_data["confidence"]
+    + signal_data["confluence_bonus"] * 5
+    + (10 if signal_data["breakout"] else 0)
+    + (5 if signal_data["trendline"] else 0)
+)
+
+result = {
+    "market": market,
+    "signal": signal_data["signal"],
+    "confidence": signal_data["confidence"],
+    "opportunity_score": opportunity_score,
+    "entry": entry_price,
+    "reason": reason_text,
+    "pattern": signal_data["pattern"],
+    "breakout": signal_data["breakout"],
+    "trendline": signal_data["trendline"],
+    "strategy_breakdown": signal_data["strategy_breakdown"]
+}
 
             scan_results.append(result)
 
@@ -1475,6 +1483,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
