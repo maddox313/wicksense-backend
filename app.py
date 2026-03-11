@@ -637,6 +637,7 @@ def evaluate_signal(df: pd.DataFrame):
         "vwap_strategy": vwap_strategy(row),
         "support_resistance_strategy": support_resistance_strategy(row),
         "breakout_strategy": breakout_strategy(row),
+        "liquidity_sweep_strategy": liquidity_sweep_strategy(row),
         "trendline_strategy": trendline_strategy(df)
     }
 
@@ -1570,6 +1571,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
