@@ -911,11 +911,11 @@ result = {
     breakout_results = [r for r in valid_results if r.get("breakout") is not None]
     trendline_results = [r for r in valid_results if r.get("trendline") is not None]
 
-    bullish_results = sorted(bullish_results, key=lambda x: x["confidence"], reverse=True)
-    bearish_results = sorted(bearish_results, key=lambda x: x["confidence"], reverse=True)
-    breakout_results = sorted(breakout_results, key=lambda x: x["confidence"], reverse=True)
-    trendline_results = sorted(trendline_results, key=lambda x: x["confidence"], reverse=True)
-    all_results_sorted = sorted(valid_results, key=lambda x: x["confidence"], reverse=True)
+    bullish_results = sorted(bullish_results, key=lambda x: x["opportunity_score"], reverse=True)
+    bearish_results = sorted(bearish_results, key=lambda x: x["opportunity_score"], reverse=True)
+    breakout_results = sorted(breakout_results, key=lambda x: x["opportunity_score"], reverse=True)
+    trendline_results = sorted(trendline_results, key=lambda x: x["opportunity_score"], reverse=True)
+    all_results_sorted = sorted(valid_results, key=lambda x: x["opportunity_score"], reverse=True)
 
     return {
         "top_bullish": bullish_results[0] if bullish_results else None,
@@ -1483,6 +1483,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
