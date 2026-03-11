@@ -631,7 +631,7 @@ def evaluate_signal(df: pd.DataFrame):
 
     pattern = detect_wick_pattern(row)
 
-    strategies = {
+       strategies = {
         "wick_strategy": wick_strategy(row, pattern),
         "ma_trend_strategy": ma_trend_strategy(row),
         "vwap_strategy": vwap_strategy(row),
@@ -1586,6 +1586,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
