@@ -658,6 +658,7 @@ def evaluate_signal(df: pd.DataFrame):
     sr_dir = strategies["support_resistance_strategy"]["bullish"] - strategies["support_resistance_strategy"]["bearish"]
     wick_dir = strategies["wick_strategy"]["bullish"] - strategies["wick_strategy"]["bearish"]
     breakout = strategies["breakout_strategy"]["breakout"]
+    liquidity_event = strategies["liquidity_sweep_strategy"]["liquidity_event"]
     trendline = strategies["trendline_strategy"]["trendline"]
 
     if trend_dir > 0 and vwap_dir > 0:
@@ -1571,6 +1572,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
