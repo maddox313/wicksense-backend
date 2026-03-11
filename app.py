@@ -1113,6 +1113,7 @@ def tradeplan():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         df = add_indicators(df)
         signal_data = evaluate_signal(df)
+        mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
@@ -1146,7 +1147,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-        return jsonify({
+       return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -1167,6 +1168,9 @@ def tradeplan():
             "trendline": signal_data["trendline"],
             "strategy_breakdown": signal_data["strategy_breakdown"],
             "confluence_bonus": signal_data["confluence_bonus"],
+            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
+            "timeframe_alignment": mtf_data["timeframe_alignment"],
+            "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
         })
 
@@ -1471,6 +1475,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
