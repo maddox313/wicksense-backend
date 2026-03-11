@@ -742,7 +742,7 @@ def evaluate_signal(df: pd.DataFrame):
             "reasons": s["reasons"]
         }
 
-    return {
+       return {
         "signal": signal_type,
         "confidence": confidence,
         "reasons": reasons,
@@ -755,6 +755,7 @@ def evaluate_signal(df: pd.DataFrame):
         "upper_wick": round(upper_wick, 4),
         "lower_wick": round(lower_wick, 4),
         "breakout": strategies["breakout_strategy"]["breakout"],
+        "liquidity_event": strategies["liquidity_sweep_strategy"]["liquidity_event"],
         "trendline": strategies["trendline_strategy"]["trendline"],
         "strategy_breakdown": strategy_breakdown,
         "confluence_bonus": confluence_bonus
@@ -1582,6 +1583,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
