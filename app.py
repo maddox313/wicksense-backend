@@ -928,6 +928,7 @@ def scan_markets():
                 "reason": reason_text,
                 "pattern": signal_data["pattern"],
                 "breakout": signal_data["breakout"],
+                "liquidity_event": signal_data["liquidity_event"],
                 "trendline": signal_data["trendline"],
                 "strategy_breakdown": signal_data["strategy_breakdown"]
             }
@@ -1585,6 +1586,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
