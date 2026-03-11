@@ -1147,7 +1147,7 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
 
-       return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -1475,6 +1475,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
