@@ -1157,11 +1157,12 @@ def backtest():
             "equity_curve": equity_curve
         })
 
-    except Exception as e:
+        except Exception as e:
         return jsonify({
             "error": "Backtest failed",
             "details": str(e)
         }), 500
+
 
 # -----------------------------
 # TRADE PLAN
@@ -1286,7 +1287,6 @@ def tradeplan():
             "error": "Trade plan generation failed",
             "details": str(e)
         }), 500
-
 
 # -----------------------------
 # PRESETS
@@ -1582,6 +1582,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
