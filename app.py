@@ -942,6 +942,9 @@ def scan_markets_route():
 # -----------------------------
 # SIGNAL
 # -----------------------------
+# -----------------------------
+# SIGNAL
+# -----------------------------
 @app.route("/signal", methods=["POST"])
 def signal():
     try:
@@ -951,12 +954,12 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
-signal_data = evaluate_signal(df)
-mtf_data = get_multi_timeframe_confirmation(market, timeframe)
-last_row = df.iloc[-1]
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+        signal_data = evaluate_signal(df)
+        mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+        last_row = df.iloc[-1]
 
-         return jsonify({
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -989,7 +992,6 @@ last_row = df.iloc[-1]
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
-
 
 # -----------------------------
 # BACKTEST
@@ -1469,6 +1471,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
