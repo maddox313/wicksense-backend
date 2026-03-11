@@ -1107,6 +1107,9 @@ def backtest():
 # -----------------------------
 # TRADE PLAN
 # -----------------------------
+# -----------------------------
+# TRADE PLAN
+# -----------------------------
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
     try:
@@ -1131,8 +1134,7 @@ def tradeplan():
             atr = entry * 0.01
 
         signal_type = signal_data["signal"]
-
-                breakout = signal_data["breakout"]
+        breakout = signal_data["breakout"]
         trendline = signal_data["trendline"]
         pattern = signal_data["pattern"]
 
@@ -1191,8 +1193,8 @@ def tradeplan():
             setup_quality = "B"
         else:
             setup_quality = "C"
-        
-          return jsonify({
+
+        return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -1221,7 +1223,7 @@ def tradeplan():
             "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
         })
-        
+
     except Exception as e:
         return jsonify({
             "error": "Trade plan generation failed",
@@ -1523,6 +1525,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
