@@ -934,6 +934,7 @@ def scan_markets_route():
         results = scan_markets()
         return jsonify({
             "status": "scan completed",
+            "top_overall": results["top_overall"],
             "top_bullish": results["top_bullish"],
             "top_bearish": results["top_bearish"],
             "top_breakout": results["top_breakout"],
@@ -1484,6 +1485,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
