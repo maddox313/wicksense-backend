@@ -1132,14 +1132,44 @@ def tradeplan():
 
         signal_type = signal_data["signal"]
 
+                breakout = signal_data["breakout"]
+        trendline = signal_data["trendline"]
+        pattern = signal_data["pattern"]
+
         if signal_type == "Bullish":
             stop_loss = min(float(last_row["Support"]), entry - atr * 1.5)
-            take_profit = entry + (entry - stop_loss) * 2.0
+            take_profit_1 = entry + (entry - stop_loss) * 1.5
+            take_profit_2 = entry + (entry - stop_loss) * 3.0
             trade_side = "Buy"
+
+            if breakout == "Bullish Breakout":
+                setup_type = "Bullish Breakout Continuation"
+            elif trendline == "Rising Trendline Support":
+                setup_type = "Bullish Trendline Bounce"
+            elif pattern == "Hammer":
+                setup_type = "Bullish Hammer Reversal"
+            elif pattern == "Pin Bar":
+                setup_type = "Bullish Pin Bar Setup"
+            else:
+                setup_type = "Bullish Confluence Setup"
+
         elif signal_type == "Bearish":
             stop_loss = max(float(last_row["Resistance"]), entry + atr * 1.5)
-            take_profit = entry - (stop_loss - entry) * 2.0
+            take_profit_1 = entry - (stop_loss - entry) * 1.5
+            take_profit_2 = entry - (stop_loss - entry) * 3.0
             trade_side = "Sell"
+
+            if breakout == "Bearish Breakdown":
+                setup_type = "Bearish Breakdown Continuation"
+            elif trendline == "Falling Trendline Resistance":
+                setup_type = "Bearish Trendline Rejection"
+            elif pattern == "Shooting Star":
+                setup_type = "Bearish Shooting Star Reversal"
+            elif pattern == "Pin Bar":
+                setup_type = "Bearish Pin Bar Setup"
+            else:
+                setup_type = "Bearish Confluence Setup"
+
         else:
             return jsonify({
                 "error": "No strong trade setup found",
@@ -1153,16 +1183,26 @@ def tradeplan():
             return jsonify({"error": "Stop distance was zero"}), 400
 
         position_size = risk_amount / stop_distance
-        expected_rr = abs(take_profit - entry) / abs(entry - stop_loss)
+        expected_rr = abs(take_profit_2 - entry) / abs(entry - stop_loss)
 
-        return jsonify({
+        if signal_data["confidence"] >= 85 and signal_data["confluence_bonus"] >= 4:
+            setup_quality = "A"
+        elif signal_data["confidence"] >= 75 and signal_data["confluence_bonus"] >= 2:
+            setup_quality = "B"
+        else:
+            setup_quality = "C"
+        
+          return jsonify({
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
+            "setup_type": setup_type,
+            "setup_quality": setup_quality,
             "pattern": signal_data["pattern"],
             "entry_price": round(entry, 4),
             "stop_loss": round(stop_loss, 4),
-            "take_profit": round(take_profit, 4),
+            "take_profit_1": round(take_profit_1, 4),
+            "take_profit_2": round(take_profit_2, 4),
             "risk_percent": round(risk_percent, 2),
             "risk_amount": round(risk_amount, 2),
             "position_size": round(position_size, 4),
@@ -1181,7 +1221,7 @@ def tradeplan():
             "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
         })
-
+        
     except Exception as e:
         return jsonify({
             "error": "Trade plan generation failed",
@@ -1483,6 +1523,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
