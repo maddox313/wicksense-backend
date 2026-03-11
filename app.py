@@ -918,13 +918,14 @@ result = {
     all_results_sorted = sorted(valid_results, key=lambda x: x["opportunity_score"], reverse=True)
 
     return {
-        "top_bullish": bullish_results[0] if bullish_results else None,
-        "top_bearish": bearish_results[0] if bearish_results else None,
-        "top_breakout": breakout_results[0] if breakout_results else None,
-        "top_trendline": trendline_results[0] if trendline_results else None,
-        "all_results_sorted": all_results_sorted,
-        "raw_results": scan_results
-    }
+    "top_overall": all_results_sorted[0] if all_results_sorted else None,
+    "top_bullish": bullish_results[0] if bullish_results else None,
+    "top_bearish": bearish_results[0] if bearish_results else None,
+    "top_breakout": breakout_results[0] if breakout_results else None,
+    "top_trendline": trendline_results[0] if trendline_results else None,
+    "all_results_sorted": all_results_sorted,
+    "raw_results": scan_results
+}
 
 
 @app.route("/scan-markets", methods=["GET"])
@@ -1483,6 +1484,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
