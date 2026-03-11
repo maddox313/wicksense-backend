@@ -691,6 +691,16 @@ def evaluate_signal(df: pd.DataFrame):
         confluence_bonus += 2
         reasons.append("Breakout + trend continuation")
 
+    if liquidity_event == "Bullish Liquidity Sweep" and sr_dir > 0:
+        bullish_points += 2
+        confluence_bonus += 2
+        reasons.append("Liquidity sweep + support confluence")
+
+    if liquidity_event == "Bearish Liquidity Sweep" and sr_dir < 0:
+        bearish_points += 2
+        confluence_bonus += 2
+        reasons.append("Liquidity sweep + resistance confluence")
+
     if trendline == "Rising Trendline Support":
         bullish_points += 1
         reasons.append("Trendline support bounce")
@@ -1572,6 +1582,7 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
