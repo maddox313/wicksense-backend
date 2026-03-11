@@ -513,15 +513,17 @@ def breakout_strategy(row):
         breakout_label = "Bearish Breakdown"
         reasons.append("Closed below previous support")
 
-    if breakout_label is None and pd.notna(prev_resistance) and float(row["High"]) > float(prev_resistance) and close_price < float(prev_resistance):
-        bearish += 1
-        breakout_label = "Failed Bullish Breakout"
-        reasons.append("Wick swept above resistance but closed below")
+    if pd.notna(prev_resistance) and breakout_label is None:
+        if float(row["High"]) > float(prev_resistance) and close_price < float(prev_resistance):
+            bearish += 1
+            breakout_label = "Failed Bullish Breakout"
+            reasons.append("Wick swept above resistance but closed below")
 
-    if breakout_label is None and pd.notna(prev_support) and float(row["Low"]) < float(prev_support) and close_price > float(prev_support):
-        bullish += 1
-        breakout_label = "Failed Bearish Breakdown"
-        reasons.append("Wick swept below support but closed above")
+    if pd.notna(prev_support) and breakout_label is None:
+        if float(row["Low"]) < float(prev_support) and close_price > float(prev_support):
+            bullish += 1
+            breakout_label = "Failed Bearish Breakdown"
+            reasons.append("Wick swept below support but closed above")
 
     return {
         "bullish": bullish,
@@ -529,6 +531,7 @@ def breakout_strategy(row):
         "reasons": reasons,
         "breakout": breakout_label
     }
+
 
 def liquidity_sweep_strategy(row):
     bullish = 0
@@ -543,7 +546,6 @@ def liquidity_sweep_strategy(row):
     close_price = float(row["Close"])
     open_price = float(row["Open"])
 
-    # Sweeps above resistance but fails to hold
     if pd.notna(prev_resistance):
         prev_resistance = float(prev_resistance)
 
@@ -551,12 +553,10 @@ def liquidity_sweep_strategy(row):
             bearish += 2
             liquidity_event = "Bearish Liquidity Sweep"
             reasons.append("Price swept above resistance and closed back below")
-
         elif high_price > prev_resistance and close_price > prev_resistance and close_price > open_price:
             bullish += 1
             reasons.append("Resistance sweep held into breakout")
 
-    # Sweeps below support but fails to hold
     if pd.notna(prev_support):
         prev_support = float(prev_support)
 
@@ -564,7 +564,6 @@ def liquidity_sweep_strategy(row):
             bullish += 2
             liquidity_event = "Bullish Liquidity Sweep"
             reasons.append("Price swept below support and closed back above")
-
         elif low_price < prev_support and close_price < prev_support and close_price < open_price:
             bearish += 1
             reasons.append("Support sweep held into breakdown")
@@ -575,6 +574,7 @@ def liquidity_sweep_strategy(row):
         "reasons": reasons,
         "liquidity_event": liquidity_event
     }
+
 
 def trendline_strategy(df: pd.DataFrame):
     bullish = 0
@@ -631,7 +631,7 @@ def evaluate_signal(df: pd.DataFrame):
 
     pattern = detect_wick_pattern(row)
 
-       strategies = {
+    strategies = {
         "wick_strategy": wick_strategy(row, pattern),
         "ma_trend_strategy": ma_trend_strategy(row),
         "vwap_strategy": vwap_strategy(row),
@@ -648,9 +648,6 @@ def evaluate_signal(df: pd.DataFrame):
     for s in strategies.values():
         reasons.extend(s["reasons"])
 
-    # --------------------------------
-    # Confluence scoring
-    # --------------------------------
     confluence_bonus = 0
 
     trend_dir = strategies["ma_trend_strategy"]["bullish"] - strategies["ma_trend_strategy"]["bearish"]
@@ -754,12 +751,13 @@ def evaluate_signal(df: pd.DataFrame):
         "resistance": round(resistance, 4),
         "upper_wick": round(upper_wick, 4),
         "lower_wick": round(lower_wick, 4),
-        "breakout": strategies["breakout_strategy"]["breakout"],
-        "liquidity_event": strategies["liquidity_sweep_strategy"]["liquidity_event"],
-        "trendline": strategies["trendline_strategy"]["trendline"],
+        "breakout": breakout,
+        "liquidity_event": liquidity_event,
+        "trendline": trendline,
         "strategy_breakdown": strategy_breakdown,
         "confluence_bonus": confluence_bonus
     }
+
 
 def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30):
     normalized_timeframe = normalize_interval(timeframe)
@@ -786,6 +784,7 @@ def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 3
         "support": signal_data["support"],
         "resistance": signal_data["resistance"],
         "breakout": signal_data["breakout"],
+        "liquidity_event": signal_data["liquidity_event"],
         "trendline": signal_data["trendline"],
         "strategy_breakdown": signal_data["strategy_breakdown"],
         "confluence_bonus": signal_data["confluence_bonus"],
@@ -794,7 +793,6 @@ def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 3
 
 
 def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
-
     normalized = normalize_interval(base_timeframe)
 
     timeframe_map = {
@@ -849,6 +847,7 @@ def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
         "higher_timeframe_bias": bias,
         "timeframe_alignment": alignment
     }
+
 
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -917,6 +916,7 @@ def scan_markets():
                 + signal_data["confluence_bonus"] * 5
                 + (10 if signal_data["breakout"] else 0)
                 + (5 if signal_data["trendline"] else 0)
+                + (5 if signal_data["liquidity_event"] else 0)
             )
 
             result = {
@@ -939,6 +939,7 @@ def scan_markets():
                 (signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral")
                 or signal_data["breakout"] is not None
                 or signal_data["trendline"] is not None
+                or signal_data["liquidity_event"] is not None
             )
 
             if should_alert:
@@ -1008,7 +1009,6 @@ def scan_markets_route():
         }), 500
 
 
-
 # -----------------------------
 # SIGNAL
 # -----------------------------
@@ -1060,6 +1060,7 @@ def signal():
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
+
 
 # -----------------------------
 # BACKTEST
@@ -1157,7 +1158,7 @@ def backtest():
             "equity_curve": equity_curve
         })
 
-        except Exception as e:
+    except Exception as e:
         return jsonify({
             "error": "Backtest failed",
             "details": str(e)
@@ -1287,6 +1288,7 @@ def tradeplan():
             "error": "Trade plan generation failed",
             "details": str(e)
         }), 500
+
 
 # -----------------------------
 # PRESETS
@@ -1582,7 +1584,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
 
 
 
