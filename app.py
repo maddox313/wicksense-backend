@@ -849,63 +849,107 @@ def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
     }
 
 def build_ai_explanation(signal):
-    """
-    Builds AI-style trade commentary based on signal data.
-    """
-
-    direction = signal.get("direction", "neutral")
+    signal_type = signal.get("signal", "Neutral")
     confidence = signal.get("confidence", 0)
-    pattern = signal.get("pattern", "")
-    breakout = signal.get("breakout", "")
-    trend = signal.get("trend", "")
-    vwap_position = signal.get("vwap_position", "")
-    liquidity = signal.get("liquidity_sweep", "")
-    trendline = signal.get("trendline", "")
+    pattern = signal.get("pattern")
+    breakout = signal.get("breakout")
+    liquidity_event = signal.get("liquidity_event")
+    trendline = signal.get("trendline")
+    support = signal.get("support")
+    resistance = signal.get("resistance")
+    confluence_bonus = signal.get("confluence_bonus", 0)
 
-    # AI Summary
     summary_parts = []
 
-    if trend == "bullish":
-        summary_parts.append("market trend is bullish")
-    elif trend == "bearish":
-        summary_parts.append("market trend is bearish")
+    if signal_type == "Bullish":
+        summary_parts.append("market conditions lean bullish")
+    elif signal_type == "Bearish":
+        summary_parts.append("market conditions lean bearish")
+    else:
+        summary_parts.append("market conditions are neutral")
 
-    if vwap_position == "above":
-        summary_parts.append("price is holding above VWAP")
-    elif vwap_position == "below":
-        summary_parts.append("price is trading below VWAP")
+    if confidence >= 85:
+        summary_parts.append("with very strong conviction")
+    elif confidence >= 70:
+        summary_parts.append("with solid confirmation")
+    else:
+        summary_parts.append("with moderate confirmation")
 
     if pattern:
-        summary_parts.append(f"a {pattern} candlestick pattern appeared")
-
-    ai_summary = "Current conditions suggest " + ", ".join(summary_parts) + "."
-
-    # Trade Thesis
-    thesis_parts = []
+        summary_parts.append(f"while printing a {pattern} pattern")
 
     if breakout:
-        thesis_parts.append(f"{breakout} indicates momentum expansion")
+        summary_parts.append(f"and showing {breakout.lower()} behavior")
 
-    if liquidity:
-        thesis_parts.append("a liquidity sweep suggests stop hunters were triggered")
+    ai_summary = " ".join(summary_parts) + "."
 
-    if trendline:
-        thesis_parts.append("price reacted near a trendline level")
+    thesis_parts = []
 
-    if direction == "bullish":
-        thesis_parts.append("buyers may attempt continuation higher")
-    elif direction == "bearish":
-        thesis_parts.append("sellers may attempt continuation lower")
-
-    trade_thesis = " ".join(thesis_parts) if thesis_parts else "Market structure shows potential opportunity."
-
-    # Risk Note
-    if direction == "bullish":
-        risk_note = "Loss of VWAP or breakdown below support could invalidate the bullish scenario."
-    elif direction == "bearish":
-        risk_note = "Recovery above VWAP or reclaim of resistance could invalidate the bearish scenario."
+    if signal_type == "Bullish":
+        thesis_parts.append("Buyers appear to be in control")
+    elif signal_type == "Bearish":
+        thesis_parts.append("Sellers appear to be in control")
     else:
-        risk_note = "Market remains neutral; wait for confirmation."
+        thesis_parts.append("Neither buyers nor sellers have full control yet")
+
+    if liquidity_event:
+        thesis_parts.append(
+            f"The presence of a {liquidity_event.lower()} suggests stop liquidity may have been taken before reversal or continuation"
+        )
+
+    if trendline == "Rising Trendline Support":
+        thesis_parts.append(
+            "Price is reacting near rising trendline support, which may attract dip buyers"
+        )
+
+    if trendline == "Falling Trendline Resistance":
+        thesis_parts.append(
+            "Price is reacting near falling trendline resistance, which may attract sellers"
+        )
+
+    if breakout == "Bullish Breakout":
+        thesis_parts.append(
+            "A bullish breakout suggests momentum expansion above resistance"
+        )
+
+    if breakout == "Bearish Breakdown":
+        thesis_parts.append(
+            "A bearish breakdown suggests momentum expansion below support"
+        )
+
+    if breakout == "Failed Bullish Breakout":
+        thesis_parts.append(
+            "A failed bullish breakout suggests rejection above resistance and possible downside pressure"
+        )
+
+    if breakout == "Failed Bearish Breakdown":
+        thesis_parts.append(
+            "A failed bearish breakdown suggests rejection below support and possible upside recovery"
+        )
+
+    if confluence_bonus >= 4:
+        thesis_parts.append(
+            "Multiple factors are aligned, which improves setup quality"
+        )
+    elif confluence_bonus >= 2:
+        thesis_parts.append(
+            "There is meaningful confluence supporting the setup"
+        )
+
+    trade_thesis = " ".join(thesis_parts) + "."
+
+    if signal_type == "Bullish":
+        risk_note = (
+            f"Main risk: price loses support near {support} or breaks down from the current bullish structure."
+        )
+    elif signal_type == "Bearish":
+        risk_note = (
+            f"Main risk: price reclaims resistance near {resistance} or reverses against the current bearish structure."
+        )
+    else:
+        risk_note = (
+            "Main risk: the market remains indecisive, so waiting for stronger confirmation may be safer."
+        )
 
     return {
         "ai_summary": ai_summary,
@@ -985,21 +1029,21 @@ def scan_markets():
             )
 
             result = {
-                "market": market,
-                "signal": signal_data["signal"],
-                "confidence": signal_data["confidence"],
-                "opportunity_score": opportunity_score,
-                "entry": entry_price,
-                "reason": reason_text,
-                "pattern": signal_data["pattern"],
-                "breakout": signal_data["breakout"],
-                "liquidity_event": signal_data["liquidity_event"],
-                "trendline": signal_data["trendline"],
-                "strategy_breakdown": signal_data["strategy_breakdown"]
-                "ai_summary": ai_text["ai_summary"],
-                "trade_thesis": ai_text["trade_thesis"],
-                "risk_note": ai_text["risk_note"],
-            }
+    "market": market,
+    "signal": signal_data["signal"],
+    "confidence": signal_data["confidence"],
+    "opportunity_score": opportunity_score,
+    "entry": entry_price,
+    "reason": reason_text,
+    "pattern": signal_data["pattern"],
+    "breakout": signal_data["breakout"],
+    "liquidity_event": signal_data["liquidity_event"],
+    "trendline": signal_data["trendline"],
+    "strategy_breakdown": signal_data["strategy_breakdown"],
+    "ai_summary": ai_text["ai_summary"],
+    "trade_thesis": ai_text["trade_thesis"],
+    "risk_note": ai_text["risk_note"],
+}
 
             scan_results.append(result)
 
@@ -1096,36 +1140,36 @@ def signal():
         last_row = df.iloc[-1]
 
         return jsonify({
-            "market": market,
-            "timeframe": timeframe,
-            "signal": signal_data["signal"],
-            "confidence": signal_data["confidence"],
-            "pattern": signal_data["pattern"],
-            "entry": float(last_row["Close"]),
-            "open": float(last_row["Open"]),
-            "high": float(last_row["High"]),
-            "low": float(last_row["Low"]),
-            "close": float(last_row["Close"]),
-            "upper_wick": signal_data["upper_wick"],
-            "lower_wick": signal_data["lower_wick"],
-            "ma20": signal_data["ma20"],
-            "ma50": signal_data["ma50"],
-            "vwap": signal_data["vwap"],
-            "support": signal_data["support"],
-            "resistance": signal_data["resistance"],
-            "breakout": signal_data["breakout"],
-            "liquidity_event": signal_data["liquidity_event"],
-            "trendline": signal_data["trendline"],
-            "strategy_breakdown": signal_data["strategy_breakdown"],
-            "confluence_bonus": signal_data["confluence_bonus"],
-            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-            "timeframe_alignment": mtf_data["timeframe_alignment"],
-            "multi_timeframe": mtf_data["multi_timeframe"],
-            "reason": ", ".join(signal_data["reasons"])
-            "ai_summary": ai_text["ai_summary"],
-            "trade_thesis": ai_text["trade_thesis"],
-            "risk_note": ai_text["risk_note"],
-        })
+    "market": market,
+    "timeframe": timeframe,
+    "signal": signal_data["signal"],
+    "confidence": signal_data["confidence"],
+    "pattern": signal_data["pattern"],
+    "entry": float(last_row["Close"]),
+    "open": float(last_row["Open"]),
+    "high": float(last_row["High"]),
+    "low": float(last_row["Low"]),
+    "close": float(last_row["Close"]),
+    "upper_wick": signal_data["upper_wick"],
+    "lower_wick": signal_data["lower_wick"],
+    "ma20": signal_data["ma20"],
+    "ma50": signal_data["ma50"],
+    "vwap": signal_data["vwap"],
+    "support": signal_data["support"],
+    "resistance": signal_data["resistance"],
+    "breakout": signal_data["breakout"],
+    "liquidity_event": signal_data["liquidity_event"],
+    "trendline": signal_data["trendline"],
+    "strategy_breakdown": signal_data["strategy_breakdown"],
+    "confluence_bonus": signal_data["confluence_bonus"],
+    "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
+    "timeframe_alignment": mtf_data["timeframe_alignment"],
+    "multi_timeframe": mtf_data["multi_timeframe"],
+    "reason": ", ".join(signal_data["reasons"]),
+    "ai_summary": ai_text["ai_summary"],
+    "trade_thesis": ai_text["trade_thesis"],
+    "risk_note": ai_text["risk_note"],
+})
 
     except Exception as e:
         return jsonify({
@@ -1326,38 +1370,38 @@ def tradeplan():
             setup_quality = "C"
 
         return jsonify({
-            "market": market,
-            "timeframe": timeframe,
-            "signal": trade_side,
-            "setup_type": setup_type,
-            "setup_quality": setup_quality,
-            "pattern": signal_data["pattern"],
-            "entry_price": round(entry, 4),
-            "stop_loss": round(stop_loss, 4),
-            "take_profit_1": round(take_profit_1, 4),
-            "take_profit_2": round(take_profit_2, 4),
-            "risk_percent": round(risk_percent, 2),
-            "risk_amount": round(risk_amount, 2),
-            "position_size": round(position_size, 4),
-            "expected_rr": round(expected_rr, 2),
-            "ma20": signal_data["ma20"],
-            "ma50": signal_data["ma50"],
-            "vwap": signal_data["vwap"],
-            "support": signal_data["support"],
-            "resistance": signal_data["resistance"],
-            "breakout": signal_data["breakout"],
-            "liquidity_event": signal_data["liquidity_event"],
-            "trendline": signal_data["trendline"],
-            "strategy_breakdown": signal_data["strategy_breakdown"],
-            "confluence_bonus": signal_data["confluence_bonus"],
-            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-            "timeframe_alignment": mtf_data["timeframe_alignment"],
-            "multi_timeframe": mtf_data["multi_timeframe"],
-            "reason": ", ".join(signal_data["reasons"])
-            "ai_summary": ai_text["ai_summary"],
-            "trade_thesis": ai_text["trade_thesis"],
-            "risk_note": ai_text["risk_note"],
-        })
+    "market": market,
+    "timeframe": timeframe,
+    "signal": trade_side,
+    "setup_type": setup_type,
+    "setup_quality": setup_quality,
+    "pattern": signal_data["pattern"],
+    "entry_price": round(entry, 4),
+    "stop_loss": round(stop_loss, 4),
+    "take_profit_1": round(take_profit_1, 4),
+    "take_profit_2": round(take_profit_2, 4),
+    "risk_percent": round(risk_percent, 2),
+    "risk_amount": round(risk_amount, 2),
+    "position_size": round(position_size, 4),
+    "expected_rr": round(expected_rr, 2),
+    "ma20": signal_data["ma20"],
+    "ma50": signal_data["ma50"],
+    "vwap": signal_data["vwap"],
+    "support": signal_data["support"],
+    "resistance": signal_data["resistance"],
+    "breakout": signal_data["breakout"],
+    "liquidity_event": signal_data["liquidity_event"],
+    "trendline": signal_data["trendline"],
+    "strategy_breakdown": signal_data["strategy_breakdown"],
+    "confluence_bonus": signal_data["confluence_bonus"],
+    "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
+    "timeframe_alignment": mtf_data["timeframe_alignment"],
+    "multi_timeframe": mtf_data["multi_timeframe"],
+    "reason": ", ".join(signal_data["reasons"]),
+    "ai_summary": ai_text["ai_summary"],
+    "trade_thesis": ai_text["trade_thesis"],
+    "risk_note": ai_text["risk_note"],
+})
 
     except Exception as e:
         return jsonify({
