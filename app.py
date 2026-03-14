@@ -970,6 +970,46 @@ def build_ai_explanation(signal):
         "risk_note": risk_note
     }
 
+def get_setup_type(signal_data):
+    signal_type = signal_data.get("signal", "Neutral")
+    breakout = signal_data.get("breakout")
+    trendline = signal_data.get("trendline")
+    pattern = signal_data.get("pattern")
+
+    if signal_type == "Bullish":
+        if breakout == "Bullish Breakout":
+            return "Bullish Breakout Continuation"
+        elif breakout == "Failed Bearish Breakdown":
+            return "Bullish Failed Breakdown Reversal"
+        elif trendline == "Rising Trendline Support":
+            return "Bullish Trendline Bounce"
+        elif pattern == "Hammer":
+            return "Bullish Hammer Reversal"
+        elif pattern == "Pin Bar":
+            return "Bullish Pin Bar Setup"
+        elif signal_data.get("liquidity_event") == "Bullish Liquidity Sweep":
+            return "Bullish Liquidity Sweep Reversal"
+        else:
+            return "Bullish Confluence Setup"
+
+    elif signal_type == "Bearish":
+        if breakout == "Bearish Breakdown":
+            return "Bearish Breakdown Continuation"
+        elif breakout == "Failed Bullish Breakout":
+            return "Bearish Failed Breakout Reversal"
+        elif trendline == "Falling Trendline Resistance":
+            return "Bearish Trendline Rejection"
+        elif pattern == "Shooting Star":
+            return "Bearish Shooting Star Reversal"
+        elif pattern == "Pin Bar":
+            return "Bearish Pin Bar Setup"
+        elif signal_data.get("liquidity_event") == "Bearish Liquidity Sweep":
+            return "Bearish Liquidity Sweep Reversal"
+        else:
+            return "Bearish Confluence Setup"
+
+    return "Neutral / No Clear Setup"
+
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
     recipient_email = os.environ.get("ALERT_TO_EMAIL")
