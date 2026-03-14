@@ -1068,6 +1068,7 @@ def scan_markets():
             df = fetch_live_market_data(market, "15min", 15)
             signal_data = evaluate_signal(df)
             ai_text = build_ai_explanation(signal_data)
+            setup_type = get_setup_type(signal_data)
             last_row = df.iloc[-1]
 
             reason_text = ", ".join(signal_data["reasons"])
@@ -1081,9 +1082,10 @@ def scan_markets():
                 + (5 if signal_data["liquidity_event"] else 0)
             )
 
-            result = {
+           result = {
     "market": market,
     "signal": signal_data["signal"],
+    "setup_type": setup_type,
     "confidence": signal_data["confidence"],
     "opportunity_score": opportunity_score,
     "entry": entry_price,
@@ -1189,6 +1191,7 @@ def signal():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
+        setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
 
@@ -1196,6 +1199,7 @@ def signal():
     "market": market,
     "timeframe": timeframe,
     "signal": signal_data["signal"],
+    "setup_type": setup_type,        
     "confidence": signal_data["confidence"],
     "pattern": signal_data["pattern"],
     "entry": float(last_row["Close"]),
