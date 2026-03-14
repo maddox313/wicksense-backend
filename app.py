@@ -251,6 +251,38 @@ def openapi():
             }
         }
     }
+"/signal-history": {
+    "get": {
+        "summary": "Get recent signal history",
+        "responses": {
+            "200": {
+                "description": "Recent saved signal results"
+            }
+        }
+    }
+},
+
+"/tradeplan-history": {
+    "get": {
+        "summary": "Get recent trade plan history",
+        "responses": {
+            "200": {
+                "description": "Recent saved trade plan results"
+            }
+        }
+    }
+},
+
+"/scan-history": {
+    "get": {
+        "summary": "Get recent scanner history",
+        "responses": {
+            "200": {
+                "description": "Recent saved live scanner snapshots"
+            }
+        }
+    }
+},
 
 
 # -----------------------------
@@ -1280,6 +1312,50 @@ def scanner_status():
         "last_updated": LIVE_SCAN_CACHE["last_updated"],
         "has_results": LIVE_SCAN_CACHE["results"] is not None
     })
+
+@app.route("/signal-history", methods=["GET"])
+def signal_history():
+    try:
+        history = load_history(SIGNAL_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load signal history",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/tradeplan-history", methods=["GET"])
+def tradeplan_history():
+    try:
+        history = load_history(TRADEPLAN_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load trade plan history",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/scan-history", methods=["GET"])
+def scan_history():
+    try:
+        history = load_history(SCAN_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load scan history",
+            "details": str(e)
+        }), 500
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
