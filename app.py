@@ -29,6 +29,11 @@ MARKET_SYMBOLS = {
     "Futures": "SPY"
 }
 
+LIVE_SCAN_CACHE = {
+    "last_updated": None,
+    "status": "idle",
+    "results": None
+}
 
 # -----------------------------
 # BASIC ROUTES
@@ -1156,6 +1161,57 @@ def scan_markets():
         "raw_results": scan_results
     }
 
+def refresh_live_scan():
+    global LIVE_SCAN_CACHE
+
+    try:
+        LIVE_SCAN_CACHE["status"] = "updating"
+        results = scan_markets()
+        LIVE_SCAN_CACHE["results"] = results
+        LIVE_SCAN_CACHE["last_updated"] = datetime.utcnow().isoformat() + "Z"
+        LIVE_SCAN_CACHE["status"] = "ready"
+    except Exception as e:
+        LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
+
+@app.route("/live-scan", methods=["GET"])
+def live_scan():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        return jsonify({
+            "status": LIVE_SCAN_CACHE["status"],
+            "last_updated": LIVE_SCAN_CACHE["last_updated"],
+            "results": LIVE_SCAN_CACHE["results"]
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Live scan failed",
+            "details": str(e)
+        }), 500
+
+@app.route("/refresh-live-scan", methods=["POST"])
+def refresh_live_scan_route():
+    try:
+        refresh_live_scan()
+        return jsonify({
+            "status": "live scan refreshed",
+            "last_updated": LIVE_SCAN_CACHE["last_updated"],
+            "results": LIVE_SCAN_CACHE["results"]
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Live scan refresh failed",
+            "details": str(e)
+        }), 500
+
+@app.route("/scanner-status", methods=["GET"])
+def scanner_status():
+    return jsonify({
+        "status": LIVE_SCAN_CACHE["status"],
+        "last_updated": LIVE_SCAN_CACHE["last_updated"],
+        "has_results": LIVE_SCAN_CACHE["results"] is not None
+    })
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
