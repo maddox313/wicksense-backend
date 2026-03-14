@@ -1188,7 +1188,7 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+                df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
