@@ -19,6 +19,9 @@ app = Flask(__name__)
 CORS(app)
 
 PRESETS_FILE = "presets.json"
+SIGNAL_HISTORY_FILE = "signal_history.json"
+TRADEPLAN_HISTORY_FILE = "tradeplan_history.json"
+SCAN_HISTORY_FILE = "scan_history.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -370,6 +373,29 @@ def find_preset(preset_id):
         if preset["id"] == preset_id:
             return preset
     return None
+
+def ensure_history_file(filepath):
+    if not os.path.exists(filepath):
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+
+def load_history(filepath):
+    ensure_history_file(filepath)
+    with open(filepath, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_history(filepath, items):
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2)
+
+
+def append_history(filepath, item, max_items=100):
+    history = load_history(filepath)
+    history.insert(0, item)
+    history = history[:max_items]
+    save_history(filepath, history)
 
 
 def add_indicators(df: pd.DataFrame):
@@ -1285,7 +1311,8 @@ def signal():
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
 
-        return jsonify({
+                response_data = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
             "signal": signal_data["signal"],
@@ -1316,13 +1343,10 @@ def signal():
             "ai_summary": ai_text["ai_summary"],
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
-        })
+        }
 
-    except Exception as e:
-        return jsonify({
-            "error": "Signal generation failed",
-            "details": str(e)
-        }), 500
+        append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
+        return jsonify(response_data)
 
 
 # -----------------------------
@@ -1515,7 +1539,8 @@ def tradeplan():
         else:
             setup_quality = "C"
 
-        return jsonify({
+               response_data = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
             "signal": trade_side,
@@ -1547,13 +1572,10 @@ def tradeplan():
             "ai_summary": ai_text["ai_summary"],
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
-        })
+        }
 
-    except Exception as e:
-        return jsonify({
-            "error": "Trade plan generation failed",
-            "details": str(e)
-        }), 500
+        append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
+        return jsonify(response_data)
 
 
 # -----------------------------
