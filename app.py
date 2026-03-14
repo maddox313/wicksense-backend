@@ -848,6 +848,70 @@ def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
         "timeframe_alignment": alignment
     }
 
+def build_ai_explanation(signal):
+    """
+    Builds AI-style trade commentary based on signal data.
+    """
+
+    direction = signal.get("direction", "neutral")
+    confidence = signal.get("confidence", 0)
+    pattern = signal.get("pattern", "")
+    breakout = signal.get("breakout", "")
+    trend = signal.get("trend", "")
+    vwap_position = signal.get("vwap_position", "")
+    liquidity = signal.get("liquidity_sweep", "")
+    trendline = signal.get("trendline", "")
+
+    # AI Summary
+    summary_parts = []
+
+    if trend == "bullish":
+        summary_parts.append("market trend is bullish")
+    elif trend == "bearish":
+        summary_parts.append("market trend is bearish")
+
+    if vwap_position == "above":
+        summary_parts.append("price is holding above VWAP")
+    elif vwap_position == "below":
+        summary_parts.append("price is trading below VWAP")
+
+    if pattern:
+        summary_parts.append(f"a {pattern} candlestick pattern appeared")
+
+    ai_summary = "Current conditions suggest " + ", ".join(summary_parts) + "."
+
+    # Trade Thesis
+    thesis_parts = []
+
+    if breakout:
+        thesis_parts.append(f"{breakout} indicates momentum expansion")
+
+    if liquidity:
+        thesis_parts.append("a liquidity sweep suggests stop hunters were triggered")
+
+    if trendline:
+        thesis_parts.append("price reacted near a trendline level")
+
+    if direction == "bullish":
+        thesis_parts.append("buyers may attempt continuation higher")
+    elif direction == "bearish":
+        thesis_parts.append("sellers may attempt continuation lower")
+
+    trade_thesis = " ".join(thesis_parts) if thesis_parts else "Market structure shows potential opportunity."
+
+    # Risk Note
+    if direction == "bullish":
+        risk_note = "Loss of VWAP or breakdown below support could invalidate the bullish scenario."
+    elif direction == "bearish":
+        risk_note = "Recovery above VWAP or reclaim of resistance could invalidate the bearish scenario."
+    else:
+        risk_note = "Market remains neutral; wait for confirmation."
+
+    return {
+        "ai_summary": ai_summary,
+        "trade_thesis": trade_thesis,
+        "risk_note": risk_note
+    }
 
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -906,6 +970,7 @@ def scan_markets():
         try:
             df = fetch_live_market_data(market, "15min", 15)
             signal_data = evaluate_signal(df)
+            ai_text = build_ai_explanation(signal_data)
             last_row = df.iloc[-1]
 
             reason_text = ", ".join(signal_data["reasons"])
@@ -931,6 +996,9 @@ def scan_markets():
                 "liquidity_event": signal_data["liquidity_event"],
                 "trendline": signal_data["trendline"],
                 "strategy_breakdown": signal_data["strategy_breakdown"]
+                "ai_summary": ai_text["ai_summary"],
+                "trade_thesis": ai_text["trade_thesis"],
+                "risk_note": ai_text["risk_note"],
             }
 
             scan_results.append(result)
@@ -1023,6 +1091,7 @@ def signal():
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
+        ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
 
@@ -1053,6 +1122,9 @@ def signal():
             "timeframe_alignment": mtf_data["timeframe_alignment"],
             "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
+            "ai_summary": ai_text["ai_summary"],
+            "trade_thesis": ai_text["trade_thesis"],
+            "risk_note": ai_text["risk_note"],
         })
 
     except Exception as e:
@@ -1182,6 +1254,7 @@ def tradeplan():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         df = add_indicators(df)
         signal_data = evaluate_signal(df)
+        ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
@@ -1281,6 +1354,9 @@ def tradeplan():
             "timeframe_alignment": mtf_data["timeframe_alignment"],
             "multi_timeframe": mtf_data["multi_timeframe"],
             "reason": ", ".join(signal_data["reasons"])
+            "ai_summary": ai_text["ai_summary"],
+            "trade_thesis": ai_text["trade_thesis"],
+            "risk_note": ai_text["risk_note"],
         })
 
     except Exception as e:
