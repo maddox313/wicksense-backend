@@ -1225,9 +1225,19 @@ def refresh_live_scan():
     try:
         LIVE_SCAN_CACHE["status"] = "updating"
         results = scan_markets()
+        timestamp = datetime.utcnow().isoformat() + "Z"
+
         LIVE_SCAN_CACHE["results"] = results
-        LIVE_SCAN_CACHE["last_updated"] = datetime.utcnow().isoformat() + "Z"
+        LIVE_SCAN_CACHE["last_updated"] = timestamp
         LIVE_SCAN_CACHE["status"] = "ready"
+
+        history_item = {
+            "timestamp": timestamp,
+            "status": "ready",
+            "results": results
+        }
+        append_history(SCAN_HISTORY_FILE, history_item, max_items=100)
+
     except Exception as e:
         LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
 
