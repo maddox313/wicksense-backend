@@ -848,6 +848,7 @@ def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
         "timeframe_alignment": alignment
     }
 
+
 def build_ai_explanation(signal):
     signal_type = signal.get("signal", "Neutral")
     confidence = signal.get("confidence", 0)
@@ -859,9 +860,6 @@ def build_ai_explanation(signal):
     resistance = signal.get("resistance")
     confluence_bonus = signal.get("confluence_bonus", 0)
 
-    # -----------------------------
-    # AI SUMMARY
-    # -----------------------------
     summary_parts = []
 
     if signal_type == "Bullish":
@@ -886,9 +884,6 @@ def build_ai_explanation(signal):
 
     ai_summary = " ".join(summary_parts) + "."
 
-    # -----------------------------
-    # TRADE THESIS
-    # -----------------------------
     thesis_parts = []
 
     if signal_type == "Bullish":
@@ -898,47 +893,34 @@ def build_ai_explanation(signal):
     else:
         thesis_parts.append("The market is still waiting for clearer directional control")
 
-    # Pattern-specific commentary
     if pattern == "Hammer":
         thesis_parts.append("The hammer suggests buyers stepped in aggressively after lower prices were rejected")
-
     elif pattern == "Shooting Star":
         thesis_parts.append("The shooting star suggests higher prices were rejected and sellers responded near the highs")
-
     elif pattern == "Doji":
         thesis_parts.append("The doji reflects hesitation and temporary balance between buyers and sellers")
-
     elif pattern == "Pin Bar":
         thesis_parts.append("The pin bar suggests rejection from an important price area and may signal reversal or continuation")
 
-    # Breakout-specific commentary
     if breakout == "Bullish Breakout":
         thesis_parts.append("A bullish breakout suggests momentum is expanding above resistance")
-
     elif breakout == "Bearish Breakdown":
         thesis_parts.append("A bearish breakdown suggests momentum is expanding below support")
-
     elif breakout == "Failed Bullish Breakout":
         thesis_parts.append("The failed breakout above resistance suggests a possible bull trap and downside pressure")
-
     elif breakout == "Failed Bearish Breakdown":
         thesis_parts.append("The failed breakdown below support suggests a possible bear trap and upside recovery")
 
-    # Liquidity sweep commentary
     if liquidity_event == "Bullish Liquidity Sweep":
         thesis_parts.append("The bullish liquidity sweep suggests stops below support were taken before buyers reclaimed control")
-
     elif liquidity_event == "Bearish Liquidity Sweep":
         thesis_parts.append("The bearish liquidity sweep suggests stops above resistance were taken before sellers regained control")
 
-    # Trendline commentary
     if trendline == "Rising Trendline Support":
         thesis_parts.append("Price is reacting near rising trendline support, which may act as a continuation zone for buyers")
-
     elif trendline == "Falling Trendline Resistance":
         thesis_parts.append("Price is reacting near falling trendline resistance, which may act as a rejection zone for sellers")
 
-    # Confluence commentary
     if confluence_bonus >= 4:
         thesis_parts.append("Multiple technical factors are aligned, which strengthens the overall setup quality")
     elif confluence_bonus >= 2:
@@ -948,9 +930,6 @@ def build_ai_explanation(signal):
 
     trade_thesis = " ".join(thesis_parts) + "."
 
-    # -----------------------------
-    # RISK NOTE
-    # -----------------------------
     if signal_type == "Bullish":
         risk_note = (
             f"Main risk: if price loses support near {support} and fails to hold the bullish structure, the setup may weaken quickly."
@@ -969,6 +948,7 @@ def build_ai_explanation(signal):
         "trade_thesis": trade_thesis,
         "risk_note": risk_note
     }
+
 
 def get_setup_type(signal_data):
     signal_type = signal_data.get("signal", "Neutral")
@@ -992,7 +972,7 @@ def get_setup_type(signal_data):
         else:
             return "Bullish Confluence Setup"
 
-    elif signal_type == "Bearish":
+    if signal_type == "Bearish":
         if breakout == "Bearish Breakdown":
             return "Bearish Breakdown Continuation"
         elif breakout == "Failed Bullish Breakout":
@@ -1009,6 +989,7 @@ def get_setup_type(signal_data):
             return "Bearish Confluence Setup"
 
     return "Neutral / No Clear Setup"
+
 
 def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
@@ -1082,23 +1063,23 @@ def scan_markets():
                 + (5 if signal_data["liquidity_event"] else 0)
             )
 
-           result = {
-    "market": market,
-    "signal": signal_data["signal"],
-    "setup_type": setup_type,
-    "confidence": signal_data["confidence"],
-    "opportunity_score": opportunity_score,
-    "entry": entry_price,
-    "reason": reason_text,
-    "pattern": signal_data["pattern"],
-    "breakout": signal_data["breakout"],
-    "liquidity_event": signal_data["liquidity_event"],
-    "trendline": signal_data["trendline"],
-    "strategy_breakdown": signal_data["strategy_breakdown"],
-    "ai_summary": ai_text["ai_summary"],
-    "trade_thesis": ai_text["trade_thesis"],
-    "risk_note": ai_text["risk_note"],
-}
+            result = {
+                "market": market,
+                "signal": signal_data["signal"],
+                "setup_type": setup_type,
+                "confidence": signal_data["confidence"],
+                "opportunity_score": opportunity_score,
+                "entry": entry_price,
+                "reason": reason_text,
+                "pattern": signal_data["pattern"],
+                "breakout": signal_data["breakout"],
+                "liquidity_event": signal_data["liquidity_event"],
+                "trendline": signal_data["trendline"],
+                "strategy_breakdown": signal_data["strategy_breakdown"],
+                "ai_summary": ai_text["ai_summary"],
+                "trade_thesis": ai_text["trade_thesis"],
+                "risk_note": ai_text["risk_note"],
+            }
 
             scan_results.append(result)
 
@@ -1188,7 +1169,7 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-                df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
@@ -1226,7 +1207,7 @@ def signal():
             "ai_summary": ai_text["ai_summary"],
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
-})
+        })
 
     except Exception as e:
         return jsonify({
@@ -1353,7 +1334,6 @@ def tradeplan():
             return jsonify({"error": "No market was provided"}), 400
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
-        df = add_indicators(df)
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
@@ -1371,7 +1351,7 @@ def tradeplan():
         pattern = signal_data["pattern"]
 
         if signal_type == "Bullish":
-            stop_loss = min(float(last_row["Support"]), entry - atr * 1.5)
+            stop_loss = min(float(signal_data["support"]), entry - atr * 1.5)
             take_profit_1 = entry + (entry - stop_loss) * 1.5
             take_profit_2 = entry + (entry - stop_loss) * 3.0
             trade_side = "Buy"
@@ -1388,7 +1368,7 @@ def tradeplan():
                 setup_type = "Bullish Confluence Setup"
 
         elif signal_type == "Bearish":
-            stop_loss = max(float(last_row["Resistance"]), entry + atr * 1.5)
+            stop_loss = max(float(signal_data["resistance"]), entry + atr * 1.5)
             take_profit_1 = entry - (stop_loss - entry) * 1.5
             take_profit_2 = entry - (stop_loss - entry) * 3.0
             trade_side = "Sell"
@@ -1427,38 +1407,38 @@ def tradeplan():
             setup_quality = "C"
 
         return jsonify({
-    "market": market,
-    "timeframe": timeframe,
-    "signal": trade_side,
-    "setup_type": setup_type,
-    "setup_quality": setup_quality,
-    "pattern": signal_data["pattern"],
-    "entry_price": round(entry, 4),
-    "stop_loss": round(stop_loss, 4),
-    "take_profit_1": round(take_profit_1, 4),
-    "take_profit_2": round(take_profit_2, 4),
-    "risk_percent": round(risk_percent, 2),
-    "risk_amount": round(risk_amount, 2),
-    "position_size": round(position_size, 4),
-    "expected_rr": round(expected_rr, 2),
-    "ma20": signal_data["ma20"],
-    "ma50": signal_data["ma50"],
-    "vwap": signal_data["vwap"],
-    "support": signal_data["support"],
-    "resistance": signal_data["resistance"],
-    "breakout": signal_data["breakout"],
-    "liquidity_event": signal_data["liquidity_event"],
-    "trendline": signal_data["trendline"],
-    "strategy_breakdown": signal_data["strategy_breakdown"],
-    "confluence_bonus": signal_data["confluence_bonus"],
-    "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-    "timeframe_alignment": mtf_data["timeframe_alignment"],
-    "multi_timeframe": mtf_data["multi_timeframe"],
-    "reason": ", ".join(signal_data["reasons"]),
-    "ai_summary": ai_text["ai_summary"],
-    "trade_thesis": ai_text["trade_thesis"],
-    "risk_note": ai_text["risk_note"],
-})
+            "market": market,
+            "timeframe": timeframe,
+            "signal": trade_side,
+            "setup_type": setup_type,
+            "setup_quality": setup_quality,
+            "pattern": signal_data["pattern"],
+            "entry_price": round(entry, 4),
+            "stop_loss": round(stop_loss, 4),
+            "take_profit_1": round(take_profit_1, 4),
+            "take_profit_2": round(take_profit_2, 4),
+            "risk_percent": round(risk_percent, 2),
+            "risk_amount": round(risk_amount, 2),
+            "position_size": round(position_size, 4),
+            "expected_rr": round(expected_rr, 2),
+            "ma20": signal_data["ma20"],
+            "ma50": signal_data["ma50"],
+            "vwap": signal_data["vwap"],
+            "support": signal_data["support"],
+            "resistance": signal_data["resistance"],
+            "breakout": signal_data["breakout"],
+            "liquidity_event": signal_data["liquidity_event"],
+            "trendline": signal_data["trendline"],
+            "strategy_breakdown": signal_data["strategy_breakdown"],
+            "confluence_bonus": signal_data["confluence_bonus"],
+            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
+            "timeframe_alignment": mtf_data["timeframe_alignment"],
+            "multi_timeframe": mtf_data["multi_timeframe"],
+            "reason": ", ".join(signal_data["reasons"]),
+            "ai_summary": ai_text["ai_summary"],
+            "trade_thesis": ai_text["trade_thesis"],
+            "risk_note": ai_text["risk_note"],
+        })
 
     except Exception as e:
         return jsonify({
@@ -1761,8 +1741,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
 
 
 
