@@ -22,6 +22,7 @@ PRESETS_FILE = "presets.json"
 SIGNAL_HISTORY_FILE = "signal_history.json"
 TRADEPLAN_HISTORY_FILE = "tradeplan_history.json"
 SCAN_HISTORY_FILE = "scan_history.json"
+TRADE_JOURNAL_FILE = "trade_journal.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -176,6 +177,43 @@ def openapi():
                     }
                 }
             },
+            "/trade-journal": {
+    "get": {
+        "summary": "Get trade journal entries",
+        "responses": {
+            "200": {
+                "description": "List of trade journal entries"
+            }
+        }
+    },
+    "post": {
+        "summary": "Create a trade journal entry",
+        "responses": {
+            "200": {
+                "description": "Trade journal entry created"
+            }
+        }
+    }
+},
+
+"/trade-journal/{entry_id}": {
+    "put": {
+        "summary": "Update a trade journal entry",
+        "responses": {
+            "200": {
+                "description": "Trade journal entry updated"
+            }
+        }
+    },
+    "delete": {
+        "summary": "Delete a trade journal entry",
+        "responses": {
+            "200": {
+                "description": "Trade journal entry deleted"
+            }
+        }
+    }
+},
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -426,6 +464,42 @@ def append_history(filepath, item, max_items=100):
     history.insert(0, item)
     history = history[:max_items]
     save_history(filepath, history)
+
+def find_journal_entry(entry_id):
+    journal = load_history(TRADE_JOURNAL_FILE)
+    for entry in journal:
+        if entry["id"] == entry_id:
+            return entry
+    return None
+
+
+def update_journal_entry(entry_id, updates):
+    journal = load_history(TRADE_JOURNAL_FILE)
+    updated_entry = None
+
+    for entry in journal:
+        if entry["id"] == entry_id:
+            entry.update(updates)
+            entry["updated_at"] = datetime.utcnow().isoformat() + "Z"
+            updated_entry = entry
+            break
+
+    if updated_entry is None:
+        return None
+
+    save_history(TRADE_JOURNAL_FILE, journal)
+    return updated_entry
+
+
+def delete_journal_entry_by_id(entry_id):
+    journal = load_history(TRADE_JOURNAL_FILE)
+    filtered = [entry for entry in journal if entry["id"] != entry_id]
+
+    if len(filtered) == len(journal):
+        return False
+
+    save_history(TRADE_JOURNAL_FILE, filtered)
+    return True
 
 
 def add_indicators(df: pd.DataFrame):
@@ -1360,6 +1434,89 @@ def scan_history():
             "details": str(e)
         }), 500
 
+@app.route("/trade-journal", methods=["GET"])
+def get_trade_journal():
+    try:
+        journal = load_history(TRADE_JOURNAL_FILE)
+        return jsonify({
+            "count": len(journal),
+            "items": journal
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load trade journal",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal", methods=["POST"])
+def create_trade_journal_entry():
+    try:
+        body = get_request_body()
+
+        entry = {
+            "id": str(uuid.uuid4()),
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "market": body.get("market"),
+            "timeframe": body.get("timeframe"),
+            "side": body.get("side"),
+            "setup_type": body.get("setup_type"),
+            "entry_price": body.get("entry_price"),
+            "stop_loss": body.get("stop_loss"),
+            "take_profit": body.get("take_profit"),
+            "outcome": body.get("outcome", "open"),
+            "pnl": body.get("pnl"),
+            "rating": body.get("rating"),
+            "status": body.get("status", "planned"),
+            "notes": body.get("notes", ""),
+            "emotion": body.get("emotion", ""),
+            "mistake_tag": body.get("mistake_tag", "")
+        }
+
+        append_history(TRADE_JOURNAL_FILE, entry, max_items=500)
+        return jsonify(entry)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to create trade journal entry",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal/<entry_id>", methods=["PUT"])
+def update_trade_journal_entry(entry_id):
+    try:
+        body = get_request_body()
+        updated_entry = update_journal_entry(entry_id, body)
+
+        if not updated_entry:
+            return jsonify({"error": "Trade journal entry not found"}), 404
+
+        return jsonify(updated_entry)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update trade journal entry",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal/<entry_id>", methods=["DELETE"])
+def delete_trade_journal_entry(entry_id):
+    try:
+        deleted = delete_journal_entry_by_id(entry_id)
+
+        if not deleted:
+            return jsonify({"error": "Trade journal entry not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "deleted_id": entry_id
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete trade journal entry",
+            "details": str(e)
+        }), 500
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
