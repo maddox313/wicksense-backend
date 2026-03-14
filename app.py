@@ -38,6 +38,7 @@ LIVE_SCAN_CACHE = {
     "results": None
 }
 
+
 # -----------------------------
 # BASIC ROUTES
 # -----------------------------
@@ -280,6 +281,7 @@ def openapi():
         }
     }
 
+
 # -----------------------------
 # HELPERS
 # -----------------------------
@@ -400,6 +402,7 @@ def find_preset(preset_id):
         if preset["id"] == preset_id:
             return preset
     return None
+
 
 def ensure_history_file(filepath):
     if not os.path.exists(filepath):
@@ -1246,6 +1249,7 @@ def scan_markets():
         "raw_results": scan_results
     }
 
+
 def refresh_live_scan():
     global LIVE_SCAN_CACHE
 
@@ -1268,6 +1272,7 @@ def refresh_live_scan():
     except Exception as e:
         LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
 
+
 @app.route("/live-scan", methods=["GET"])
 def live_scan():
     try:
@@ -1285,6 +1290,7 @@ def live_scan():
             "details": str(e)
         }), 500
 
+
 @app.route("/refresh-live-scan", methods=["POST"])
 def refresh_live_scan_route():
     try:
@@ -1300,6 +1306,7 @@ def refresh_live_scan_route():
             "details": str(e)
         }), 500
 
+
 @app.route("/scanner-status", methods=["GET"])
 def scanner_status():
     return jsonify({
@@ -1307,6 +1314,7 @@ def scanner_status():
         "last_updated": LIVE_SCAN_CACHE["last_updated"],
         "has_results": LIVE_SCAN_CACHE["results"] is not None
     })
+
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
@@ -1352,6 +1360,7 @@ def scan_history():
             "details": str(e)
         }), 500
 
+
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
     try:
@@ -1392,7 +1401,7 @@ def signal():
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         last_row = df.iloc[-1]
 
-                response_data = {
+        response_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
@@ -1428,6 +1437,12 @@ def signal():
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
         return jsonify(response_data)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Signal generation failed",
+            "details": str(e)
+        }), 500
 
 
 # -----------------------------
@@ -1620,7 +1635,7 @@ def tradeplan():
         else:
             setup_quality = "C"
 
-               response_data = {
+        response_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
@@ -1657,6 +1672,12 @@ def tradeplan():
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
         return jsonify(response_data)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Trade plan generation failed",
+            "details": str(e)
+        }), 500
 
 
 # -----------------------------
@@ -1953,10 +1974,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
 
 
 
