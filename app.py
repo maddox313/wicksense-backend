@@ -991,7 +991,18 @@ def get_setup_type(signal_data):
     return "Neutral / No Clear Setup"
 
 
-def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
+def send_signal_email(
+    market,
+    signal,
+    confidence,
+    reason,
+    entry,
+    pattern=None,
+    setup_type=None,
+    ai_summary=None,
+    trade_thesis=None,
+    risk_note=None
+):
     sender_email = os.environ.get("ALERT_FROM_EMAIL")
     recipient_email = os.environ.get("ALERT_TO_EMAIL")
     sendgrid_api_key = os.environ.get("SENDGRID_API_KEY")
@@ -1006,16 +1017,22 @@ def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
         return
 
     subject = f"WickSense Alert: {market} {signal}"
+
     html_content = f"""
     <html>
       <body>
         <h2>WickSense Signal Alert</h2>
         <p><strong>Market:</strong> {market}</p>
         <p><strong>Signal:</strong> {signal}</p>
+        <p><strong>Setup Type:</strong> {setup_type or 'N/A'}</p>
         <p><strong>Confidence:</strong> {confidence}%</p>
         <p><strong>Entry:</strong> {entry}</p>
-        <p><strong>Reason:</strong> {reason}</p>
         <p><strong>Pattern:</strong> {pattern or 'None'}</p>
+        <p><strong>Reason:</strong> {reason}</p>
+        <hr>
+        <p><strong>AI Summary:</strong> {ai_summary or 'N/A'}</p>
+        <p><strong>Trade Thesis:</strong> {trade_thesis or 'N/A'}</p>
+        <p><strong>Risk Note:</strong> {risk_note or 'N/A'}</p>
       </body>
     </html>
     """
@@ -1033,7 +1050,6 @@ def send_signal_email(market, signal, confidence, reason, entry, pattern=None):
         print(f"Email sent: status={response.status_code}")
     except Exception as e:
         print("Email failed:", str(e))
-
 
 def scan_markets():
     markets = [
@@ -1095,12 +1111,17 @@ def scan_markets():
 
                 try:
                     send_signal_email(
-                        market=market,
-                        signal=signal_data["signal"],
-                        confidence=signal_data["confidence"],
-                        reason=reason_text,
-                        entry=entry_price,
-                        pattern=signal_data["pattern"]
+                         market=market,
+                         signal=signal_data["signal"],
+                         confidence=signal_data["confidence"],
+                         reason=reason_text,
+                         entry=entry_price,
+                         pattern=signal_data["pattern"],
+                         setup_type=setup_type,
+                         ai_summary=ai_text["ai_summary"],
+                         trade_thesis=ai_text["trade_thesis"],
+                         risk_note=ai_text["risk_note"]
+)
                     )
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
