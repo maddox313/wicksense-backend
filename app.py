@@ -116,65 +116,65 @@ def openapi():
                 }
             },
             "/live-scan": {
-    "get": {
-        "summary": "Get latest cached market scan results",
-        "responses": {
-            "200": {
-                "description": "Cached market scan results with status and last updated timestamp"
-            }
-        }
-    }
-},
-"/refresh-live-scan": {
-    "post": {
-        "summary": "Force refresh the market scanner cache",
-        "responses": {
-            "200": {
-                "description": "Live scan refreshed and cache updated"
-            }
-        }
-    }
-},
-"/scanner-status": {
-    "get": {
-        "summary": "Get current scanner status and cache state",
-        "responses": {
-            "200": {
-                "description": "Scanner status including last update time and cache availability"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get latest cached market scan results",
+                    "responses": {
+                        "200": {
+                            "description": "Cached market scan results with status and last updated timestamp"
+                        }
+                    }
+                }
+            },
+            "/refresh-live-scan": {
+                "post": {
+                    "summary": "Force refresh the market scanner cache",
+                    "responses": {
+                        "200": {
+                            "description": "Live scan refreshed and cache updated"
+                        }
+                    }
+                }
+            },
+            "/scanner-status": {
+                "get": {
+                    "summary": "Get current scanner status and cache state",
+                    "responses": {
+                        "200": {
+                            "description": "Scanner status including last update time and cache availability"
+                        }
+                    }
+                }
+            },
             "/signal-history": {
-    "get": {
-        "summary": "Get recent signal history",
-        "responses": {
-            "200": {
-                "description": "Recent saved signal results"
-            }
-        }
-    }
-},
-"/tradeplan-history": {
-    "get": {
-        "summary": "Get recent trade plan history",
-        "responses": {
-            "200": {
-                "description": "Recent saved trade plan results"
-            }
-        }
-    }
-},
-"/scan-history": {
-    "get": {
-        "summary": "Get recent scanner history",
-        "responses": {
-            "200": {
-                "description": "Recent saved live scanner snapshots"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get recent signal history",
+                    "responses": {
+                        "200": {
+                            "description": "Recent saved signal results"
+                        }
+                    }
+                }
+            },
+            "/tradeplan-history": {
+                "get": {
+                    "summary": "Get recent trade plan history",
+                    "responses": {
+                        "200": {
+                            "description": "Recent saved trade plan results"
+                        }
+                    }
+                }
+            },
+            "/scan-history": {
+                "get": {
+                    "summary": "Get recent scanner history",
+                    "responses": {
+                        "200": {
+                            "description": "Recent saved live scanner snapshots"
+                        }
+                    }
+                }
+            },
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -279,7 +279,6 @@ def openapi():
             }
         }
     }
-
 
 # -----------------------------
 # HELPERS
