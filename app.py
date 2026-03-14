@@ -1109,19 +1109,18 @@ def scan_markets():
             if should_alert:
                 print(f"Strong signal detected: {market}")
 
-                try:
+                                try:
                     send_signal_email(
-                         market=market,
-                         signal=signal_data["signal"],
-                         confidence=signal_data["confidence"],
-                         reason=reason_text,
-                         entry=entry_price,
-                         pattern=signal_data["pattern"],
-                         setup_type=setup_type,
-                         ai_summary=ai_text["ai_summary"],
-                         trade_thesis=ai_text["trade_thesis"],
-                         risk_note=ai_text["risk_note"]
-)
+                        market=market,
+                        signal=signal_data["signal"],
+                        confidence=signal_data["confidence"],
+                        reason=reason_text,
+                        entry=entry_price,
+                        pattern=signal_data["pattern"],
+                        setup_type=setup_type,
+                        ai_summary=ai_text["ai_summary"],
+                        trade_thesis=ai_text["trade_thesis"],
+                        risk_note=ai_text["risk_note"]
                     )
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
