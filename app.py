@@ -859,6 +859,9 @@ def build_ai_explanation(signal):
     resistance = signal.get("resistance")
     confluence_bonus = signal.get("confluence_bonus", 0)
 
+    # -----------------------------
+    # AI SUMMARY
+    # -----------------------------
     summary_parts = []
 
     if signal_type == "Bullish":
@@ -883,72 +886,82 @@ def build_ai_explanation(signal):
 
     ai_summary = " ".join(summary_parts) + "."
 
+    # -----------------------------
+    # TRADE THESIS
+    # -----------------------------
     thesis_parts = []
 
     if signal_type == "Bullish":
-        thesis_parts.append("Buyers appear to be in control")
+        thesis_parts.append("Buyers appear to be in control of the current structure")
     elif signal_type == "Bearish":
-        thesis_parts.append("Sellers appear to be in control")
+        thesis_parts.append("Sellers appear to be in control of the current structure")
     else:
-        thesis_parts.append("Neither buyers nor sellers have full control yet")
+        thesis_parts.append("The market is still waiting for clearer directional control")
 
-    if liquidity_event:
-        thesis_parts.append(
-            f"The presence of a {liquidity_event.lower()} suggests stop liquidity may have been taken before reversal or continuation"
-        )
+    # Pattern-specific commentary
+    if pattern == "Hammer":
+        thesis_parts.append("The hammer suggests buyers stepped in aggressively after lower prices were rejected")
 
-    if trendline == "Rising Trendline Support":
-        thesis_parts.append(
-            "Price is reacting near rising trendline support, which may attract dip buyers"
-        )
+    elif pattern == "Shooting Star":
+        thesis_parts.append("The shooting star suggests higher prices were rejected and sellers responded near the highs")
 
-    if trendline == "Falling Trendline Resistance":
-        thesis_parts.append(
-            "Price is reacting near falling trendline resistance, which may attract sellers"
-        )
+    elif pattern == "Doji":
+        thesis_parts.append("The doji reflects hesitation and temporary balance between buyers and sellers")
 
+    elif pattern == "Pin Bar":
+        thesis_parts.append("The pin bar suggests rejection from an important price area and may signal reversal or continuation")
+
+    # Breakout-specific commentary
     if breakout == "Bullish Breakout":
-        thesis_parts.append(
-            "A bullish breakout suggests momentum expansion above resistance"
-        )
+        thesis_parts.append("A bullish breakout suggests momentum is expanding above resistance")
 
-    if breakout == "Bearish Breakdown":
-        thesis_parts.append(
-            "A bearish breakdown suggests momentum expansion below support"
-        )
+    elif breakout == "Bearish Breakdown":
+        thesis_parts.append("A bearish breakdown suggests momentum is expanding below support")
 
-    if breakout == "Failed Bullish Breakout":
-        thesis_parts.append(
-            "A failed bullish breakout suggests rejection above resistance and possible downside pressure"
-        )
+    elif breakout == "Failed Bullish Breakout":
+        thesis_parts.append("The failed breakout above resistance suggests a possible bull trap and downside pressure")
 
-    if breakout == "Failed Bearish Breakdown":
-        thesis_parts.append(
-            "A failed bearish breakdown suggests rejection below support and possible upside recovery"
-        )
+    elif breakout == "Failed Bearish Breakdown":
+        thesis_parts.append("The failed breakdown below support suggests a possible bear trap and upside recovery")
 
+    # Liquidity sweep commentary
+    if liquidity_event == "Bullish Liquidity Sweep":
+        thesis_parts.append("The bullish liquidity sweep suggests stops below support were taken before buyers reclaimed control")
+
+    elif liquidity_event == "Bearish Liquidity Sweep":
+        thesis_parts.append("The bearish liquidity sweep suggests stops above resistance were taken before sellers regained control")
+
+    # Trendline commentary
+    if trendline == "Rising Trendline Support":
+        thesis_parts.append("Price is reacting near rising trendline support, which may act as a continuation zone for buyers")
+
+    elif trendline == "Falling Trendline Resistance":
+        thesis_parts.append("Price is reacting near falling trendline resistance, which may act as a rejection zone for sellers")
+
+    # Confluence commentary
     if confluence_bonus >= 4:
-        thesis_parts.append(
-            "Multiple factors are aligned, which improves setup quality"
-        )
+        thesis_parts.append("Multiple technical factors are aligned, which strengthens the overall setup quality")
     elif confluence_bonus >= 2:
-        thesis_parts.append(
-            "There is meaningful confluence supporting the setup"
-        )
+        thesis_parts.append("There is meaningful confluence supporting the setup")
+    else:
+        thesis_parts.append("The setup is present, but broader confluence is still limited")
 
     trade_thesis = " ".join(thesis_parts) + "."
 
+    # -----------------------------
+    # RISK NOTE
+    # -----------------------------
     if signal_type == "Bullish":
         risk_note = (
-            f"Main risk: price loses support near {support} or breaks down from the current bullish structure."
+            f"Main risk: if price loses support near {support} and fails to hold the bullish structure, the setup may weaken quickly."
         )
     elif signal_type == "Bearish":
         risk_note = (
-            f"Main risk: price reclaims resistance near {resistance} or reverses against the current bearish structure."
+            f"Main risk: if price reclaims resistance near {resistance} and invalidates the bearish structure, downside momentum may fade."
         )
     else:
         risk_note = (
-            "Main risk: the market remains indecisive, so waiting for stronger confirmation may be safer."
+            "Main risk: the market is still mixed, so waiting for stronger confirmation may reduce false signals."
         )
 
     return {
