@@ -1051,6 +1051,7 @@ def send_signal_email(
     except Exception as e:
         print("Email failed:", str(e))
 
+
 def scan_markets():
     markets = [
         "NASDAQ",
@@ -1109,7 +1110,7 @@ def scan_markets():
             if should_alert:
                 print(f"Strong signal detected: {market}")
 
-                                try:
+                try:
                     send_signal_email(
                         market=market,
                         signal=signal_data["signal"],
@@ -1761,11 +1762,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
 
 
 
