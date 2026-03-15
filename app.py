@@ -1255,6 +1255,37 @@ def send_signal_email(
     except Exception as e:
         print("Email failed:", str(e))
 
+def does_result_match_rule(result, rule):
+    if not rule.get("is_enabled", True):
+        return False
+
+    if rule.get("market") and result.get("market") != rule.get("market"):
+        return False
+
+    if rule.get("signal") and result.get("signal") != rule.get("signal"):
+        return False
+
+    if rule.get("setup_type") and result.get("setup_type") != rule.get("setup_type"):
+        return False
+
+    minimum_confidence = rule.get("minimum_confidence")
+    if minimum_confidence is not None:
+        try:
+            if float(result.get("confidence", 0)) < float(minimum_confidence):
+                return False
+        except Exception:
+            return False
+
+    if rule.get("require_breakout") and not result.get("breakout"):
+        return False
+
+    if rule.get("require_liquidity_event") and not result.get("liquidity_event"):
+        return False
+
+    if rule.get("require_trendline") and not result.get("trendline"):
+        return False
+
+    return True
 
 def scan_markets():
     markets = [
@@ -1304,15 +1335,11 @@ def scan_markets():
 
             scan_results.append(result)
 
-            should_alert = (
-                (signal_data["confidence"] >= 80 and signal_data["signal"] != "Neutral")
-                or signal_data["breakout"] is not None
-                or signal_data["trendline"] is not None
-                or signal_data["liquidity_event"] is not None
-            )
+                        rules = load_alert_rules()
+            matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
 
-            if should_alert:
-                print(f"Strong signal detected: {market}")
+            for rule in matching_rules:
+                print(f"Alert rule matched for {market}: {rule.get('name')}")
 
                 try:
                     send_signal_email(
@@ -1832,6 +1859,98 @@ def build_journal_review():
         "coaching_advice": coaching_advice,
         "next_focus": next_focus
     }
+
+@app.route("/alert-rules", methods=["GET"])
+def get_alert_rules():
+    try:
+        rules = load_alert_rules()
+        return jsonify({
+            "count": len(rules),
+            "items": rules
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load alert rules",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/alert-rules", methods=["POST"])
+def create_alert_rule():
+    try:
+        body = get_request_body()
+
+        rule = {
+            "id": str(uuid.uuid4()),
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "name": body.get("name", "New Alert Rule"),
+            "is_enabled": body.get("is_enabled", True),
+            "market": body.get("market"),
+            "signal": body.get("signal"),
+            "setup_type": body.get("setup_type"),
+            "minimum_confidence": body.get("minimum_confidence"),
+            "timeframe": body.get("timeframe"),
+            "require_breakout": body.get("require_breakout", False),
+            "require_liquidity_event": body.get("require_liquidity_event", False),
+            "require_trendline": body.get("require_trendline", False),
+            "delivery_type": body.get("delivery_type", "email")
+        }
+
+        append_history(ALERT_RULES_FILE, rule, max_items=500)
+        return jsonify(rule)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to create alert rule",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/alert-rules/<rule_id>", methods=["PUT"])
+def update_alert_rule(rule_id):
+    try:
+        body = get_request_body()
+        rules = load_alert_rules()
+
+        updated_rule = None
+        for rule in rules:
+            if rule["id"] == rule_id:
+                rule.update(body)
+                rule["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                updated_rule = rule
+                break
+
+        if not updated_rule:
+            return jsonify({"error": "Alert rule not found"}), 404
+
+        save_alert_rules(rules)
+        return jsonify(updated_rule)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update alert rule",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/alert-rules/<rule_id>", methods=["DELETE"])
+def delete_alert_rule(rule_id):
+    try:
+        rules = load_alert_rules()
+        filtered = [rule for rule in rules if rule["id"] != rule_id]
+
+        if len(filtered) == len(rules):
+            return jsonify({"error": "Alert rule not found"}), 404
+
+        save_alert_rules(filtered)
+        return jsonify({
+            "success": True,
+            "deleted_id": rule_id
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete alert rule",
+            "details": str(e)
+        }), 500
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
