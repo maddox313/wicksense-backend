@@ -1339,7 +1339,7 @@ def scan_markets():
             rules = load_alert_rules()
             matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
 
-                       for rule in matching_rules:
+            for rule in matching_rules:
                 if not should_send_alert(rule, result):
                     print(f"Cooldown active for rule {rule.get('name')} on {market}")
                     continue
@@ -1900,7 +1900,7 @@ def create_alert_rule():
             "require_breakout": body.get("require_breakout", False),
             "require_liquidity_event": body.get("require_liquidity_event", False),
             "require_trendline": body.get("require_trendline", False),
-            "delivery_type": body.get("delivery_type", "email")
+            "delivery_type": body.get("delivery_type", "email"),
             "cooldown_minutes": body.get("cooldown_minutes", 60),
         }
 
