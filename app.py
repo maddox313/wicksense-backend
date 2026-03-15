@@ -23,6 +23,7 @@ SIGNAL_HISTORY_FILE = "signal_history.json"
 TRADEPLAN_HISTORY_FILE = "tradeplan_history.json"
 SCAN_HISTORY_FILE = "scan_history.json"
 TRADE_JOURNAL_FILE = "trade_journal.json"
+ALERT_RULES_FILE = "alert_rules.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -520,6 +521,22 @@ def delete_journal_entry_by_id(entry_id):
 
     save_history(TRADE_JOURNAL_FILE, filtered)
     return True
+
+def load_alert_rules():
+    ensure_history_file(ALERT_RULES_FILE)
+    return load_history(ALERT_RULES_FILE)
+
+
+def save_alert_rules(rules):
+    save_history(ALERT_RULES_FILE, rules)
+
+
+def find_alert_rule(rule_id):
+    rules = load_alert_rules()
+    for rule in rules:
+        if rule["id"] == rule_id:
+            return rule
+    return None
 
 
 def add_indicators(df: pd.DataFrame):
