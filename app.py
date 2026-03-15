@@ -24,6 +24,7 @@ TRADEPLAN_HISTORY_FILE = "tradeplan_history.json"
 SCAN_HISTORY_FILE = "scan_history.json"
 TRADE_JOURNAL_FILE = "trade_journal.json"
 ALERT_RULES_FILE = "alert_rules.json"
+ALERT_LOG_FILE = "alert_log.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -1338,7 +1339,11 @@ def scan_markets():
             rules = load_alert_rules()
             matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
 
-            for rule in matching_rules:
+                       for rule in matching_rules:
+                if not should_send_alert(rule, result):
+                    print(f"Cooldown active for rule {rule.get('name')} on {market}")
+                    continue
+
                 print(f"Alert rule matched for {market}: {rule.get('name')}")
 
                 try:
@@ -1354,6 +1359,7 @@ def scan_markets():
                         trade_thesis=ai_text["trade_thesis"],
                         risk_note=ai_text["risk_note"]
                     )
+                    record_alert_sent(rule, result)
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
 
@@ -1895,6 +1901,7 @@ def create_alert_rule():
             "require_liquidity_event": body.get("require_liquidity_event", False),
             "require_trendline": body.get("require_trendline", False),
             "delivery_type": body.get("delivery_type", "email")
+            "cooldown_minutes": body.get("cooldown_minutes", 60),
         }
 
         append_history(ALERT_RULES_FILE, rule, max_items=500)
@@ -1951,6 +1958,68 @@ def delete_alert_rule(rule_id):
             "error": "Failed to delete alert rule",
             "details": str(e)
         }), 500
+
+def load_alert_log():
+    ensure_history_file(ALERT_LOG_FILE)
+    return load_history(ALERT_LOG_FILE)
+
+
+def save_alert_log(log_items):
+    save_history(ALERT_LOG_FILE, log_items)
+
+
+def build_alert_signature(rule, result):
+    return "|".join([
+        str(rule.get("id", "")),
+        str(result.get("market", "")),
+        str(result.get("signal", "")),
+        str(result.get("setup_type", ""))
+    ])
+
+
+def should_send_alert(rule, result):
+    cooldown_minutes = rule.get("cooldown_minutes", 60)
+
+    try:
+        cooldown_minutes = int(cooldown_minutes)
+    except Exception:
+        cooldown_minutes = 60
+
+    signature = build_alert_signature(rule, result)
+    alert_log = load_alert_log()
+
+    for log_item in alert_log:
+        if log_item.get("signature") == signature:
+            last_sent = log_item.get("sent_at")
+            if not last_sent:
+                continue
+
+            try:
+                last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", ""))
+                now_dt = datetime.utcnow()
+                minutes_since = (now_dt - last_sent_dt).total_seconds() / 60.0
+
+                if minutes_since < cooldown_minutes:
+                    return False
+            except Exception:
+                continue
+
+    return True
+
+
+def record_alert_sent(rule, result):
+    log_item = {
+        "id": str(uuid.uuid4()),
+        "rule_id": rule.get("id"),
+        "rule_name": rule.get("name"),
+        "signature": build_alert_signature(rule, result),
+        "market": result.get("market"),
+        "signal": result.get("signal"),
+        "setup_type": result.get("setup_type"),
+        "sent_at": datetime.utcnow().isoformat() + "Z"
+    }
+
+    append_history(ALERT_LOG_FILE, log_item, max_items=2000)
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
