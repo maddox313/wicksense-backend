@@ -1335,7 +1335,7 @@ def scan_markets():
 
             scan_results.append(result)
 
-                        rules = load_alert_rules()
+            rules = load_alert_rules()
             matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
 
             for rule in matching_rules:
