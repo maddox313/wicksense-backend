@@ -224,6 +224,16 @@ def openapi():
         }
     }
 },
+            "/journal-review": {
+    "get": {
+        "summary": "Get AI coaching review based on trade journal analytics",
+        "responses": {
+            "200": {
+                "description": "AI-style journal review including strengths, weaknesses, emotional patterns, and coaching advice"
+            }
+        }
+    }
+},
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -1669,6 +1679,142 @@ def journal_analytics():
             "error": "Failed to calculate journal analytics",
             "details": str(e)
         }), 500
+
+@app.route("/journal-review", methods=["GET"])
+def journal_review():
+    try:
+        review = build_journal_review()
+        return jsonify(review)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build journal review",
+            "details": str(e)
+        }), 500
+
+def build_journal_review():
+    analytics = calculate_journal_analytics()
+
+    total_trades = analytics.get("total_trades", 0)
+    win_rate = analytics.get("win_rate", 0.0)
+    average_pnl = analytics.get("average_pnl", 0.0)
+    best_setup_type = analytics.get("best_setup_type")
+    best_market = analytics.get("best_market")
+    best_timeframe = analytics.get("best_timeframe")
+    most_common_mistake_tag = analytics.get("most_common_mistake_tag")
+    most_common_emotion = analytics.get("most_common_emotion")
+
+    strengths = []
+    weaknesses = []
+
+    if total_trades == 0:
+        performance_summary = (
+            "No journal data is available yet. Start logging trades to unlock coaching insights."
+        )
+        emotional_pattern = "No emotional pattern detected yet because there are no journal entries."
+        mistake_pattern = "No mistake pattern detected yet because there are no journal entries."
+        coaching_advice = (
+            "Your next step is to journal each trade consistently, including outcome, notes, emotion, and mistakes."
+        )
+        next_focus = "Log at least 5 to 10 real trades so WickSense can identify useful patterns."
+
+        return {
+            "performance_summary": performance_summary,
+            "strengths": strengths,
+            "weaknesses": weaknesses,
+            "emotional_pattern": emotional_pattern,
+            "mistake_pattern": mistake_pattern,
+            "coaching_advice": coaching_advice,
+            "next_focus": next_focus
+        }
+
+    if win_rate >= 60:
+        strengths.append("Your win rate shows strong decision quality and improving trade selection.")
+    elif win_rate >= 45:
+        strengths.append("Your win rate is reasonably competitive and shows a workable trading foundation.")
+    else:
+        weaknesses.append("Your win rate suggests trade selection or execution discipline still needs tightening.")
+
+    if average_pnl > 0:
+        strengths.append("Your average pnl is positive, which suggests your winners are offsetting your weaker trades.")
+    elif average_pnl < 0:
+        weaknesses.append("Your average pnl is negative, which suggests losses or weak exits are dragging performance.")
+    else:
+        weaknesses.append("Your average pnl is flat, which suggests you may need better trade filtering or stronger execution.")
+
+    if best_setup_type:
+        strengths.append(f"Your strongest setup appears to be {best_setup_type}.")
+    else:
+        weaknesses.append("No setup type strength is visible yet because journal labeling is still limited.")
+
+    if best_market:
+        strengths.append(f"Your performance is strongest in {best_market}.")
+    if best_timeframe:
+        strengths.append(f"Your best timeframe currently appears to be {best_timeframe}.")
+
+    if most_common_mistake_tag:
+        weaknesses.append(f"Your most common mistake pattern is tagged as {most_common_mistake_tag}.")
+        mistake_pattern = (
+            f"The most repeated mistake in your journal is {most_common_mistake_tag}, suggesting a recurring execution or discipline issue."
+        )
+    else:
+        mistake_pattern = (
+            "No dominant mistake pattern is visible yet because mistake tagging is still sparse."
+        )
+
+    if most_common_emotion:
+        emotional_pattern = (
+            f"The most common emotional state logged in your journal is {most_common_emotion}, which may be influencing execution quality."
+        )
+        if most_common_emotion.lower() in ["fear", "hesitation", "revenge", "frustration", "anxiety"]:
+            weaknesses.append(f"Emotionally, {most_common_emotion} appears frequently and may be affecting trade quality.")
+    else:
+        emotional_pattern = (
+            "No dominant emotional pattern is visible yet because emotion tracking is still limited."
+        )
+
+    if win_rate >= 60 and average_pnl > 0:
+        performance_summary = (
+            f"You have logged {total_trades} trades with a win rate of {win_rate}%. "
+            f"Performance is currently constructive, with your edge appearing strongest in {best_setup_type or 'your best setup category'}."
+        )
+        coaching_advice = (
+            "Focus on repeating the conditions behind your best trades. Reduce experimentation and prioritize the setup, market, and timeframe combinations already producing your strongest results."
+        )
+        next_focus = (
+            f"Double down on {best_setup_type or 'your best setup'}, especially in {best_market or 'your strongest market'} on {best_timeframe or 'your strongest timeframe'}."
+        )
+    elif win_rate >= 45:
+        performance_summary = (
+            f"You have logged {total_trades} trades with a win rate of {win_rate}%. "
+            "Your results show potential, but consistency still depends on sharpening execution and reducing avoidable mistakes."
+        )
+        coaching_advice = (
+            "Keep journaling carefully, reduce lower-quality trades, and focus on the setups already showing evidence of edge."
+        )
+        next_focus = (
+            f"Prioritize cleaner entries in {best_setup_type or 'your better-performing setups'} and actively reduce mistakes linked to {most_common_mistake_tag or 'your most repeated journal issue'}."
+        )
+    else:
+        performance_summary = (
+            f"You have logged {total_trades} trades with a win rate of {win_rate}%. "
+            "Current results suggest that selectivity, discipline, and emotional control need improvement before scaling further."
+        )
+        coaching_advice = (
+            "Trade less, filter harder, and focus only on your clearest setups. Review losing trades for repeated errors in timing, discipline, or emotional execution."
+        )
+        next_focus = (
+            f"Reduce frequency and concentrate on {best_setup_type or 'your cleanest setup types'} while eliminating recurring issues tied to {most_common_mistake_tag or 'your main mistake pattern'}."
+        )
+
+    return {
+        "performance_summary": performance_summary,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "emotional_pattern": emotional_pattern,
+        "mistake_pattern": mistake_pattern,
+        "coaching_advice": coaching_advice,
+        "next_focus": next_focus
+    }
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
