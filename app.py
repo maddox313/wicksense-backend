@@ -214,6 +214,16 @@ def openapi():
         }
     }
 },
+            "/journal-analytics": {
+    "get": {
+        "summary": "Get performance analytics from the trade journal",
+        "responses": {
+            "200": {
+                "description": "Trade journal analytics including win rate, pnl, and grouped performance breakdowns"
+            }
+        }
+    }
+},
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -1515,6 +1525,148 @@ def delete_trade_journal_entry(entry_id):
     except Exception as e:
         return jsonify({
             "error": "Failed to delete trade journal entry",
+            "details": str(e)
+        }), 500
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def summarize_group(entries, key_name):
+    grouped = {}
+
+    for entry in entries:
+        key = entry.get(key_name) or "Unknown"
+        if key not in grouped:
+            grouped[key] = {
+                "label": key,
+                "total_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "breakevens": 0,
+                "open_trades": 0,
+                "total_pnl": 0.0,
+                "average_pnl": 0.0,
+                "win_rate": 0.0
+            }
+
+        grouped[key]["total_trades"] += 1
+
+        outcome = (entry.get("outcome") or "").lower()
+        pnl = safe_float(entry.get("pnl"), 0.0)
+
+        if outcome == "win":
+            grouped[key]["wins"] += 1
+        elif outcome == "loss":
+            grouped[key]["losses"] += 1
+        elif outcome == "breakeven":
+            grouped[key]["breakevens"] += 1
+        else:
+            grouped[key]["open_trades"] += 1
+
+        grouped[key]["total_pnl"] += pnl
+
+    results = []
+    for item in grouped.values():
+        closed_count = item["wins"] + item["losses"] + item["breakevens"]
+        if item["total_trades"] > 0:
+            item["average_pnl"] = round(item["total_pnl"] / item["total_trades"], 2)
+        if closed_count > 0:
+            item["win_rate"] = round((item["wins"] / closed_count) * 100, 2)
+        item["total_pnl"] = round(item["total_pnl"], 2)
+        results.append(item)
+
+    results.sort(key=lambda x: (x["win_rate"], x["total_pnl"]), reverse=True)
+    return results
+
+
+def get_most_common_value(entries, key_name):
+    counts = {}
+    for entry in entries:
+        value = entry.get(key_name)
+        if value is None or value == "":
+            continue
+        counts[value] = counts.get(value, 0) + 1
+
+    if not counts:
+        return None
+
+    return max(counts.items(), key=lambda x: x[1])[0]
+
+
+def calculate_journal_analytics():
+    journal = load_history(TRADE_JOURNAL_FILE)
+
+    total_trades = len(journal)
+    wins = 0
+    losses = 0
+    breakevens = 0
+    open_trades = 0
+    total_pnl = 0.0
+
+    for entry in journal:
+        outcome = (entry.get("outcome") or "").lower()
+        pnl = safe_float(entry.get("pnl"), 0.0)
+
+        if outcome == "win":
+            wins += 1
+        elif outcome == "loss":
+            losses += 1
+        elif outcome == "breakeven":
+            breakevens += 1
+        else:
+            open_trades += 1
+
+        total_pnl += pnl
+
+    closed_trades = wins + losses + breakevens
+    win_rate = round((wins / closed_trades) * 100, 2) if closed_trades > 0 else 0.0
+    average_pnl = round((total_pnl / total_trades), 2) if total_trades > 0 else 0.0
+
+    setup_breakdown = summarize_group(journal, "setup_type")
+    market_breakdown = summarize_group(journal, "market")
+    timeframe_breakdown = summarize_group(journal, "timeframe")
+
+    best_setup_type = setup_breakdown[0]["label"] if setup_breakdown else None
+    best_market = market_breakdown[0]["label"] if market_breakdown else None
+    best_timeframe = timeframe_breakdown[0]["label"] if timeframe_breakdown else None
+
+    most_common_mistake_tag = get_most_common_value(journal, "mistake_tag")
+    most_common_emotion = get_most_common_value(journal, "emotion")
+
+    return {
+        "total_trades": total_trades,
+        "closed_trades": closed_trades,
+        "wins": wins,
+        "losses": losses,
+        "breakevens": breakevens,
+        "open_trades": open_trades,
+        "win_rate": win_rate,
+        "total_pnl": round(total_pnl, 2),
+        "average_pnl": average_pnl,
+        "best_setup_type": best_setup_type,
+        "best_market": best_market,
+        "best_timeframe": best_timeframe,
+        "most_common_mistake_tag": most_common_mistake_tag,
+        "most_common_emotion": most_common_emotion,
+        "setup_breakdown": setup_breakdown,
+        "market_breakdown": market_breakdown,
+        "timeframe_breakdown": timeframe_breakdown
+    }
+
+@app.route("/journal-analytics", methods=["GET"])
+def journal_analytics():
+    try:
+        analytics = calculate_journal_analytics()
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to calculate journal analytics",
             "details": str(e)
         }), 500
 
