@@ -25,6 +25,7 @@ SCAN_HISTORY_FILE = "scan_history.json"
 TRADE_JOURNAL_FILE = "trade_journal.json"
 ALERT_RULES_FILE = "alert_rules.json"
 ALERT_LOG_FILE = "alert_log.json"
+NOTIFICATION_FILE = "notifications.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -339,7 +340,39 @@ def openapi():
                 }
             }
         }
+    },
+    "/notifications": {
+    "get": {
+        "summary": "Get user notifications",
+        "responses": {
+            "200": {
+                "description": "List of notifications"
+            }
+        }
     }
+},
+
+"/notifications/{id}/read": {
+    "put": {
+        "summary": "Mark notification as read",
+        "responses": {
+            "200": {
+                "description": "Notification updated"
+            }
+        }
+    }
+},
+
+"/notifications/{id}": {
+    "delete": {
+        "summary": "Delete notification",
+        "responses": {
+            "200": {
+                "description": "Notification deleted"
+            }
+        }
+    }
+},
 
 
 # -----------------------------
@@ -486,6 +519,22 @@ def append_history(filepath, item, max_items=100):
     history.insert(0, item)
     history = history[:max_items]
     save_history(filepath, history)
+
+def load_notifications():
+    ensure_history_file(NOTIFICATION_FILE)
+    return load_history(NOTIFICATION_FILE)
+
+
+def save_notifications(items):
+    save_history(NOTIFICATION_FILE, items)
+
+
+def create_notification(notification):
+    notification["id"] = str(uuid.uuid4())
+    notification["created_at"] = datetime.utcnow().isoformat() + "Z"
+    notification["is_read"] = False
+
+    append_history(NOTIFICATION_FILE, notification, max_items=1000)
 
 def find_journal_entry(entry_id):
     journal = load_history(TRADE_JOURNAL_FILE)
@@ -1360,6 +1409,14 @@ def scan_markets():
                         risk_note=ai_text["risk_note"]
                     )
                     record_alert_sent(rule, result)
+                    create_notification({
+    "type": "alert_triggered",
+    "market": result.get("market"),
+    "signal": result.get("signal"),
+    "setup_type": result.get("setup_type"),
+    "confidence": result.get("confidence"),
+    "rule_name": rule.get("name")
+})
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
 
@@ -2020,6 +2077,60 @@ def record_alert_sent(rule, result):
     }
 
     append_history(ALERT_LOG_FILE, log_item, max_items=2000)
+
+def load_notifications():
+    ensure_history_file(NOTIFICATION_FILE)
+    return load_history(NOTIFICATION_FILE)
+
+
+def save_notifications(items):
+    save_history(NOTIFICATION_FILE, items)
+
+
+def create_notification(notification):
+    notification["id"] = str(uuid.uuid4())
+    notification["created_at"] = datetime.utcnow().isoformat() + "Z"
+    notification["is_read"] = False
+
+    append_history(NOTIFICATION_FILE, notification, max_items=1000)
+
+@app.route("/notifications/<notification_id>/read", methods=["PUT"])
+def mark_notification_read(notification_id):
+    try:
+        items = load_notifications()
+
+        for n in items:
+            if n["id"] == notification_id:
+                n["is_read"] = True
+
+        save_notifications(items)
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update notification",
+            "details": str(e)
+        }), 500
+
+@app.route("/notifications/<notification_id>", methods=["DELETE"])
+def delete_notification(notification_id):
+    try:
+        items = load_notifications()
+        filtered = [n for n in items if n["id"] != notification_id]
+
+        save_notifications(filtered)
+
+        return jsonify({
+            "success": True,
+            "deleted_id": notification_id
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete notification",
+            "details": str(e)
+        }), 500
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
