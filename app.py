@@ -160,6 +160,16 @@ def openapi():
         }
     }
 },
+            "/market-script": {
+    "get": {
+        "summary": "Get AI-generated market content script",
+        "responses": {
+            "200": {
+                "description": "AI-generated market scripts for YouTube, shorts, and voiceover"
+            }
+        }
+    }
+},
                "/signal-history": {
                 "get": {
                     "summary": "Get recent signal history",
@@ -1651,6 +1661,48 @@ def build_market_intelligence(scan_results):
         "what_matters_now": what_matters_now
     }
 
+def build_market_script(intelligence):
+    market_bias = intelligence.get("market_bias", "Neutral")
+    risk_environment = intelligence.get("risk_environment", "Unknown")
+    avg_confidence = intelligence.get("average_confidence", 0)
+    top_opportunity = intelligence.get("top_opportunity") or {}
+    ai_market_summary = intelligence.get("ai_market_summary", "")
+    what_matters_now = intelligence.get("what_matters_now", "")
+
+    top_market = top_opportunity.get("market", "the market")
+    top_signal = top_opportunity.get("signal", "Neutral")
+    top_setup = top_opportunity.get("setup_type", "key setup")
+    top_confidence = top_opportunity.get("confidence", 0)
+
+    youtube_script = (
+        f"Today WickSense is showing a {market_bias.lower()} market bias with a {risk_environment.lower()} environment. "
+        f"Average scanner confidence is currently {avg_confidence} percent. "
+        f"The strongest setup right now is {top_market}, showing a {top_signal.lower()} signal on a {top_setup.lower()} at {top_confidence} percent confidence. "
+        f"{ai_market_summary} {what_matters_now}"
+    )
+
+    short_hook = (
+        f"WickSense just found a {top_signal.lower()} {top_setup.lower()} on {top_market} at {top_confidence}% confidence."
+    )
+
+    voiceover_script = (
+        f"Market update. WickSense currently shows a {market_bias.lower()} bias. "
+        f"Top opportunity is {top_market}. "
+        f"Signal: {top_signal}. Setup: {top_setup}. Confidence: {top_confidence} percent. "
+        f"{what_matters_now}"
+    )
+
+    cta_line = (
+        "Follow WickSense for daily AI-driven market intelligence, trade ideas, and real-time setup analysis."
+    )
+
+    return {
+        "youtube_script": youtube_script,
+        "short_hook": short_hook,
+        "voiceover_script": voiceover_script,
+        "cta_line": cta_line
+    }
+
 def refresh_live_scan():
     global LIVE_SCAN_CACHE
 
@@ -1728,6 +1780,26 @@ def market_intelligence():
     except Exception as e:
         return jsonify({
             "error": "Failed to build market intelligence",
+            "details": str(e)
+        }), 500
+
+@app.route("/market-script", methods=["GET"])
+def market_script():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
+        script_data = build_market_script(intelligence)
+
+        return jsonify({
+            "intelligence": intelligence,
+            "script": script_data
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build market script",
             "details": str(e)
         }), 500
 
