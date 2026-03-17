@@ -152,26 +152,26 @@ def openapi():
                 }
             },
             "/market-intelligence": {
-    "get": {
-        "summary": "Get AI market intelligence summary",
-        "responses": {
-            "200": {
-                "description": "Market intelligence summary including bias, conviction, and strongest opportunity"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get AI market intelligence summary",
+                    "responses": {
+                        "200": {
+                            "description": "Market intelligence summary including bias, conviction, and strongest opportunity"
+                        }
+                    }
+                }
+            },
             "/market-script": {
-    "get": {
-        "summary": "Get AI-generated market content script",
-        "responses": {
-            "200": {
-                "description": "AI-generated market scripts for YouTube, shorts, and voiceover"
-            }
-        }
-    }
-},
-               "/signal-history": {
+                "get": {
+                    "summary": "Get AI-generated market content script",
+                    "responses": {
+                        "200": {
+                            "description": "AI-generated market scripts for YouTube, shorts, and voiceover"
+                        }
+                    }
+                }
+            },
+            "/signal-history": {
                 "get": {
                     "summary": "Get recent signal history",
                     "responses": {
@@ -324,23 +324,23 @@ def openapi():
                 }
             },
             "/risk-settings": {
-    "get": {
-        "summary": "Get account-level risk settings",
-        "responses": {
-            "200": {
-                "description": "Current risk settings"
-            }
-        }
-    },
-    "put": {
-        "summary": "Update account-level risk settings",
-        "responses": {
-            "200": {
-                "description": "Updated risk settings"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get account-level risk settings",
+                    "responses": {
+                        "200": {
+                            "description": "Current risk settings"
+                        }
+                    }
+                },
+                "put": {
+                    "summary": "Update account-level risk settings",
+                    "responses": {
+                        "200": {
+                            "description": "Updated risk settings"
+                        }
+                    }
+                }
+            },
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -592,6 +592,7 @@ def append_history(filepath, item, max_items=100):
     history = history[:max_items]
     save_history(filepath, history)
 
+
 def ensure_risk_settings_file():
     if not os.path.exists(RISK_SETTINGS_FILE):
         default_settings = {
@@ -615,6 +616,7 @@ def save_risk_settings(settings):
     settings["updated_at"] = datetime.utcnow().isoformat() + "Z"
     with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
+
 
 def load_notifications():
     ensure_history_file(NOTIFICATION_FILE)
@@ -1547,7 +1549,7 @@ def scan_markets():
 
             scan_results.append(result)
 
-                        risk_settings = load_risk_settings()
+            risk_settings = load_risk_settings()
             rules = load_alert_rules()
 
             minimum_confidence_threshold = float(
@@ -1632,6 +1634,7 @@ def scan_markets():
         "all_results_sorted": all_results_sorted,
         "raw_results": scan_results
     }
+
 
 def build_market_intelligence(scan_results):
     all_results = scan_results.get("all_results_sorted", []) or []
@@ -1722,6 +1725,7 @@ def build_market_intelligence(scan_results):
         "what_matters_now": what_matters_now
     }
 
+
 def build_market_script(intelligence):
     market_bias = intelligence.get("market_bias", "Neutral")
     risk_environment = intelligence.get("risk_environment", "Unknown")
@@ -1810,6 +1814,7 @@ def build_market_script(intelligence):
         "thumbnail_texts": thumbnail_texts
     }
 
+
 def refresh_live_scan():
     global LIVE_SCAN_CACHE
 
@@ -1875,6 +1880,7 @@ def scanner_status():
         "has_results": LIVE_SCAN_CACHE["results"] is not None
     })
 
+
 @app.route("/market-intelligence", methods=["GET"])
 def market_intelligence():
     try:
@@ -1889,6 +1895,7 @@ def market_intelligence():
             "error": "Failed to build market intelligence",
             "details": str(e)
         }), 500
+
 
 @app.route("/market-script", methods=["GET"])
 def market_script():
@@ -1909,6 +1916,7 @@ def market_script():
             "error": "Failed to build market script",
             "details": str(e)
         }), 500
+
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
@@ -2473,6 +2481,7 @@ def delete_notification(notification_id):
             "details": str(e)
         }), 500
 
+
 @app.route("/risk-settings", methods=["GET"])
 def get_risk_settings():
     try:
@@ -2512,6 +2521,7 @@ def update_risk_settings():
             "error": "Failed to update risk settings",
             "details": str(e)
         }), 500
+
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
@@ -2765,6 +2775,7 @@ def backtest():
             "details": str(e)
         }), 500
 
+
 # -----------------------------
 # TRADE PLAN
 # -----------------------------
@@ -2773,19 +2784,17 @@ def tradeplan():
     try:
         market = get_market_from_request()
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
+
         settings = load_risk_settings()
         risk_percent = get_float_from_request(
             "risk_percent",
             settings.get("max_risk_percent_per_trade", 1.0)
-            settings = load_risk_settings()
+        )
+        account_size = get_float_from_request("account_size", 10000.0)
+
         max_allowed_risk = float(settings.get("max_risk_percent_per_trade", 2.0))
         if risk_percent > max_allowed_risk:
-           risk_percent = max_allowed_risk
-
-)
-account_size = get_float_from_request("account_size", 10000.0)
-)
-account_size = get_float_from_request("account_size", 10000.0)
+            risk_percent = max_allowed_risk
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
@@ -3202,11 +3211,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
 
 
 
