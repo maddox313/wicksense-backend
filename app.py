@@ -26,6 +26,7 @@ TRADE_JOURNAL_FILE = "trade_journal.json"
 ALERT_RULES_FILE = "alert_rules.json"
 ALERT_LOG_FILE = "alert_log.json"
 NOTIFICATION_FILE = "notifications.json"
+RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
@@ -322,6 +323,24 @@ def openapi():
                     }
                 }
             },
+            "/risk-settings": {
+    "get": {
+        "summary": "Get account-level risk settings",
+        "responses": {
+            "200": {
+                "description": "Current risk settings"
+            }
+        }
+    },
+    "put": {
+        "summary": "Update account-level risk settings",
+        "responses": {
+            "200": {
+                "description": "Updated risk settings"
+            }
+        }
+    }
+},
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -572,6 +591,30 @@ def append_history(filepath, item, max_items=100):
     history.insert(0, item)
     history = history[:max_items]
     save_history(filepath, history)
+
+def ensure_risk_settings_file():
+    if not os.path.exists(RISK_SETTINGS_FILE):
+        default_settings = {
+            "max_daily_loss": 500.0,
+            "min_confidence_threshold": 70.0,
+            "max_risk_percent_per_trade": 2.0,
+            "block_low_quality_setups": False,
+            "updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+        with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_settings, f, indent=2)
+
+
+def load_risk_settings():
+    ensure_risk_settings_file()
+    with open(RISK_SETTINGS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_risk_settings(settings):
+    settings["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2)
 
 
 def load_notifications():
@@ -1505,8 +1548,18 @@ def scan_markets():
 
             scan_results.append(result)
 
+            risk_settings = load_risk_settings()
             rules = load_alert_rules()
+            minimum_confidence_threshold = float(risk_settings.get("min_confidence_threshold", 70.0))
+            block_low_quality_setups = bool(risk_settings.get("block_low_quality_setups", False))
+
+            if float(result.get("confidence", 0)) < minimum_confidence_threshold:
+            matching_rules = []
+            else:
             matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
+
+            if block_low_quality_setups and result.get("setup_type") in ["Bullish Confluence Setup", "Bearish Confluence Setup"]:
+            matching_rules = []
 
             for rule in matching_rules:
                 if not should_send_alert(rule, result):
@@ -2412,6 +2465,38 @@ def delete_notification(notification_id):
             "details": str(e)
         }), 500
 
+@app.route("/risk-settings", methods=["GET"])
+def get_risk_settings():
+    try:
+        settings = load_risk_settings()
+        return jsonify(settings)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load risk settings",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/risk-settings", methods=["PUT"])
+def update_risk_settings():
+    try:
+        body = get_request_body()
+        settings = load_risk_settings()
+
+        settings["max_daily_loss"] = float(body.get("max_daily_loss", settings.get("max_daily_loss", 500.0)))
+        settings["min_confidence_threshold"] = float(body.get("min_confidence_threshold", settings.get("min_confidence_threshold", 70.0)))
+        settings["max_risk_percent_per_trade"] = float(body.get("max_risk_percent_per_trade", settings.get("max_risk_percent_per_trade", 2.0)))
+        settings["block_low_quality_setups"] = bool(body.get("block_low_quality_setups", settings.get("block_low_quality_setups", False)))
+
+        save_risk_settings(settings)
+        return jsonify(settings)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update risk settings",
+            "details": str(e)
+        }), 500
+
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
@@ -2673,8 +2758,19 @@ def tradeplan():
     try:
         market = get_market_from_request()
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
-        risk_percent = get_float_from_request("risk_percent", 1.0)
-        account_size = get_float_from_request("account_size", 10000.0)
+        settings = load_risk_settings()
+        risk_percent = get_float_from_request(
+            "risk_percent",
+            settings.get("max_risk_percent_per_trade", 1.0)
+            settings = load_risk_settings()
+        max_allowed_risk = float(settings.get("max_risk_percent_per_trade", 2.0))
+        if risk_percent > max_allowed_risk:
+           risk_percent = max_allowed_risk
+
+)
+account_size = get_float_from_request("account_size", 10000.0)
+)
+account_size = get_float_from_request("account_size", 10000.0)
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
