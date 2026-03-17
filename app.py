@@ -407,6 +407,7 @@ def openapi():
         }
     }
 
+
 # -----------------------------
 # HELPERS
 # -----------------------------
@@ -684,6 +685,7 @@ def record_alert_sent(rule, result):
     }
 
     append_history(ALERT_LOG_FILE, log_item, max_items=2000)
+
 
 def add_indicators(df: pd.DataFrame):
     df = df.copy()
@@ -1401,6 +1403,7 @@ def send_signal_email(
     except Exception as e:
         print("Email failed:", str(e))
 
+
 def does_result_match_rule(result, rule):
     if not rule.get("is_enabled", True):
         return False
@@ -1432,6 +1435,7 @@ def does_result_match_rule(result, rule):
         return False
 
     return True
+
 
 def scan_markets():
     markets = [
@@ -1659,6 +1663,7 @@ def scan_history():
             "details": str(e)
         }), 500
 
+
 @app.route("/trade-journal", methods=["GET"])
 def get_trade_journal():
     try:
@@ -1742,6 +1747,7 @@ def delete_trade_journal_entry(entry_id):
             "error": "Failed to delete trade journal entry",
             "details": str(e)
         }), 500
+
 
 def safe_float(value, default=0.0):
     try:
@@ -1874,27 +1880,6 @@ def calculate_journal_analytics():
         "timeframe_breakdown": timeframe_breakdown
     }
 
-@app.route("/journal-analytics", methods=["GET"])
-def journal_analytics():
-    try:
-        analytics = calculate_journal_analytics()
-        return jsonify(analytics)
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to calculate journal analytics",
-            "details": str(e)
-        }), 500
-
-@app.route("/journal-review", methods=["GET"])
-def journal_review():
-    try:
-        review = build_journal_review()
-        return jsonify(review)
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to build journal review",
-            "details": str(e)
-        }), 500
 
 def build_journal_review():
     analytics = calculate_journal_analytics()
@@ -2021,6 +2006,31 @@ def build_journal_review():
         "next_focus": next_focus
     }
 
+
+@app.route("/journal-analytics", methods=["GET"])
+def journal_analytics():
+    try:
+        analytics = calculate_journal_analytics()
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to calculate journal analytics",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/journal-review", methods=["GET"])
+def journal_review():
+    try:
+        review = build_journal_review()
+        return jsonify(review)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build journal review",
+            "details": str(e)
+        }), 500
+
+
 @app.route("/alert-rules", methods=["GET"])
 def get_alert_rules():
     try:
@@ -2056,7 +2066,7 @@ def create_alert_rule():
             "require_liquidity_event": body.get("require_liquidity_event", False),
             "require_trendline": body.get("require_trendline", False),
             "delivery_type": body.get("delivery_type", "email"),
-            "cooldown_minutes": body.get("cooldown_minutes", 60),
+            "cooldown_minutes": body.get("cooldown_minutes", 60)
         }
 
         append_history(ALERT_RULES_FILE, rule, max_items=500)
@@ -2115,44 +2125,6 @@ def delete_alert_rule(rule_id):
         }), 500
 
 
-@app.route("/notifications/<notification_id>/read", methods=["PUT"])
-def mark_notification_read(notification_id):
-    try:
-        items = load_notifications()
-
-        for n in items:
-            if n["id"] == notification_id:
-                n["is_read"] = True
-
-        save_notifications(items)
-
-        return jsonify({"success": True})
-
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to update notification",
-            "details": str(e)
-        }), 500
-
-@app.route("/notifications/<notification_id>", methods=["DELETE"])
-def delete_notification(notification_id):
-    try:
-        items = load_notifications()
-        filtered = [n for n in items if n["id"] != notification_id]
-
-        save_notifications(filtered)
-
-        return jsonify({
-            "success": True,
-            "deleted_id": notification_id
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to delete notification",
-            "details": str(e)
-        }), 500
-
 @app.route("/notifications", methods=["GET"])
 def get_notifications():
     try:
@@ -2209,6 +2181,7 @@ def delete_notification(notification_id):
             "error": "Failed to delete notification",
             "details": str(e)
         }), 500
+
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
@@ -2823,10 +2796,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
 
 
 
