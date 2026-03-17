@@ -150,7 +150,17 @@ def openapi():
                     }
                 }
             },
-            "/signal-history": {
+            "/market-intelligence": {
+    "get": {
+        "summary": "Get AI market intelligence summary",
+        "responses": {
+            "200": {
+                "description": "Market intelligence summary including bias, conviction, and strongest opportunity"
+            }
+        }
+    }
+},
+               "/signal-history": {
                 "get": {
                     "summary": "Get recent signal history",
                     "responses": {
@@ -1552,6 +1562,94 @@ def scan_markets():
         "raw_results": scan_results
     }
 
+def build_market_intelligence(scan_results):
+    all_results = scan_results.get("all_results_sorted", []) or []
+
+    if not all_results:
+        return {
+            "market_bias": "Neutral",
+            "risk_environment": "Unknown",
+            "bullish_count": 0,
+            "bearish_count": 0,
+            "neutral_count": 0,
+            "top_opportunity": None,
+            "ai_market_summary": "No scanner results are available yet.",
+            "what_matters_now": "Run a market scan to generate intelligence."
+        }
+
+    bullish_count = len([r for r in all_results if r.get("signal") == "Bullish"])
+    bearish_count = len([r for r in all_results if r.get("signal") == "Bearish"])
+    neutral_count = len([r for r in all_results if r.get("signal") == "Neutral"])
+
+    avg_confidence = 0.0
+    if all_results:
+        avg_confidence = round(
+            sum(float(r.get("confidence", 0)) for r in all_results) / len(all_results),
+            2
+        )
+
+    if bullish_count > bearish_count:
+        market_bias = "Bullish"
+    elif bearish_count > bullish_count:
+        market_bias = "Bearish"
+    else:
+        market_bias = "Neutral"
+
+    if avg_confidence >= 80:
+        risk_environment = "High Conviction"
+    elif avg_confidence >= 65:
+        risk_environment = "Moderate Conviction"
+    else:
+        risk_environment = "Low Conviction"
+
+    top_opportunity = all_results[0] if all_results else None
+
+    summary_parts = []
+
+    if market_bias == "Bullish":
+        summary_parts.append("Scanner conditions currently lean bullish across tracked markets")
+    elif market_bias == "Bearish":
+        summary_parts.append("Scanner conditions currently lean bearish across tracked markets")
+    else:
+        summary_parts.append("Scanner conditions are currently mixed with no dominant directional bias")
+
+    summary_parts.append(
+        f"with an average confidence of {avg_confidence}% across {len(all_results)} scanned opportunities"
+    )
+
+    if top_opportunity:
+        top_market = top_opportunity.get("market", "Unknown")
+        top_signal = top_opportunity.get("signal", "Unknown")
+        top_setup = top_opportunity.get("setup_type", "Unknown setup")
+        top_conf = top_opportunity.get("confidence", 0)
+
+        summary_parts.append(
+            f"The strongest current opportunity is {top_market} with a {top_signal} signal on a {top_setup} at {top_conf}% confidence"
+        )
+
+    ai_market_summary = ". ".join(summary_parts) + "."
+
+    if top_opportunity:
+        what_matters_now = (
+            f"Focus on {top_opportunity.get('market', 'the top market')} because it currently has the strongest "
+            f"{top_opportunity.get('signal', 'directional')} setup, labeled as "
+            f"{top_opportunity.get('setup_type', 'a key setup')}, with "
+            f"{top_opportunity.get('confidence', 0)}% confidence."
+        )
+    else:
+        what_matters_now = "No standout opportunity is available yet."
+
+    return {
+        "market_bias": market_bias,
+        "risk_environment": risk_environment,
+        "bullish_count": bullish_count,
+        "bearish_count": bearish_count,
+        "neutral_count": neutral_count,
+        "average_confidence": avg_confidence,
+        "top_opportunity": top_opportunity,
+        "ai_market_summary": ai_market_summary,
+        "what_matters_now": what_matters_now
+    }
 
 def refresh_live_scan():
     global LIVE_SCAN_CACHE
@@ -1618,6 +1716,20 @@ def scanner_status():
         "has_results": LIVE_SCAN_CACHE["results"] is not None
     })
 
+@app.route("/market-intelligence", methods=["GET"])
+def market_intelligence():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
+        return jsonify(intelligence)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build market intelligence",
+            "details": str(e)
+        }), 500
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
