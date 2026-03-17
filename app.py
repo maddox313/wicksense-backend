@@ -616,7 +616,6 @@ def save_risk_settings(settings):
     with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
 
-
 def load_notifications():
     ensure_history_file(NOTIFICATION_FILE)
     return load_history(NOTIFICATION_FILE)
@@ -1548,18 +1547,29 @@ def scan_markets():
 
             scan_results.append(result)
 
-            risk_settings = load_risk_settings()
+                        risk_settings = load_risk_settings()
             rules = load_alert_rules()
-            minimum_confidence_threshold = float(risk_settings.get("min_confidence_threshold", 70.0))
-            block_low_quality_setups = bool(risk_settings.get("block_low_quality_setups", False))
+
+            minimum_confidence_threshold = float(
+                risk_settings.get("min_confidence_threshold", 70.0)
+            )
+            block_low_quality_setups = bool(
+                risk_settings.get("block_low_quality_setups", False)
+            )
 
             if float(result.get("confidence", 0)) < minimum_confidence_threshold:
-            matching_rules = []
+                matching_rules = []
             else:
-            matching_rules = [rule for rule in rules if does_result_match_rule(result, rule)]
+                matching_rules = [
+                    rule for rule in rules
+                    if does_result_match_rule(result, rule)
+                ]
 
-            if block_low_quality_setups and result.get("setup_type") in ["Bullish Confluence Setup", "Bearish Confluence Setup"]:
-            matching_rules = []
+            if block_low_quality_setups and result.get("setup_type") in [
+                "Bullish Confluence Setup",
+                "Bearish Confluence Setup"
+            ]:
+                matching_rules = []
 
             for rule in matching_rules:
                 if not should_send_alert(rule, result):
@@ -1581,9 +1591,7 @@ def scan_markets():
                         trade_thesis=ai_text["trade_thesis"],
                         risk_note=ai_text["risk_note"]
                     )
-
                     record_alert_sent(rule, result)
-
                     create_notification({
                         "type": "alert_triggered",
                         "market": result.get("market"),
@@ -2483,10 +2491,18 @@ def update_risk_settings():
         body = get_request_body()
         settings = load_risk_settings()
 
-        settings["max_daily_loss"] = float(body.get("max_daily_loss", settings.get("max_daily_loss", 500.0)))
-        settings["min_confidence_threshold"] = float(body.get("min_confidence_threshold", settings.get("min_confidence_threshold", 70.0)))
-        settings["max_risk_percent_per_trade"] = float(body.get("max_risk_percent_per_trade", settings.get("max_risk_percent_per_trade", 2.0)))
-        settings["block_low_quality_setups"] = bool(body.get("block_low_quality_setups", settings.get("block_low_quality_setups", False)))
+        settings["max_daily_loss"] = float(
+            body.get("max_daily_loss", settings.get("max_daily_loss", 500.0))
+        )
+        settings["min_confidence_threshold"] = float(
+            body.get("min_confidence_threshold", settings.get("min_confidence_threshold", 70.0))
+        )
+        settings["max_risk_percent_per_trade"] = float(
+            body.get("max_risk_percent_per_trade", settings.get("max_risk_percent_per_trade", 2.0))
+        )
+        settings["block_low_quality_setups"] = bool(
+            body.get("block_low_quality_setups", settings.get("block_low_quality_setups", False))
+        )
 
         save_risk_settings(settings)
         return jsonify(settings)
@@ -2496,7 +2512,6 @@ def update_risk_settings():
             "error": "Failed to update risk settings",
             "details": str(e)
         }), 500
-
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
