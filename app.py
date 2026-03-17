@@ -2516,8 +2516,15 @@ def backtest():
 
         results = []
         equity_curve = []
+        trade_pnls = []
+
         cash = 0.0
         pos = 0.0
+        last_buy_price = None
+
+        buy_count = 0
+        sell_count = 0
+        hold_count = 0
 
         for i in range(len(df)):
             row = df.iloc[i]
@@ -2571,11 +2578,23 @@ def backtest():
             price = float(row["Close"])
 
             if action == "Buy":
+                buy_count += 1
                 pos += 1
                 cash -= price
-            elif action == "Sell" and pos > 0:
-                pos -= 1
-                cash += price
+                last_buy_price = price
+
+            elif action == "Sell":
+                sell_count += 1
+                if pos > 0:
+                    pos -= 1
+                    cash += price
+
+                    if last_buy_price is not None:
+                        pnl = round(price - last_buy_price, 4)
+                        trade_pnls.append(pnl)
+                        last_buy_price = None
+            else:
+                hold_count += 1
 
             equity = cash + pos * price
             equity_curve.append(round(equity, 4))
@@ -2583,14 +2602,60 @@ def backtest():
             results.append({
                 "index": int(i),
                 "action": action,
-                "price": price
+                "price": price,
+                "equity": round(equity, 4)
             })
+
+        total_trades = len(results)
+        closed_trades = len(trade_pnls)
+        winning_trades = len([p for p in trade_pnls if p > 0])
+        losing_trades = len([p for p in trade_pnls if p < 0])
+        breakeven_trades = len([p for p in trade_pnls if p == 0])
+
+        win_rate = round((winning_trades / closed_trades) * 100, 2) if closed_trades > 0 else 0.0
+        total_pnl = round(sum(trade_pnls), 4)
+        average_trade_pnl = round(total_pnl / closed_trades, 4) if closed_trades > 0 else 0.0
+
+        wins = [p for p in trade_pnls if p > 0]
+        losses = [p for p in trade_pnls if p < 0]
+
+        average_win = round(sum(wins) / len(wins), 4) if wins else 0.0
+        average_loss = round(sum(losses) / len(losses), 4) if losses else 0.0
+
+        max_drawdown = 0.0
+        peak = None
+        for equity in equity_curve:
+            if peak is None or equity > peak:
+                peak = equity
+
+            drawdown = peak - equity
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+
+        ending_equity = round(equity_curve[-1], 4) if equity_curve else 0.0
 
         return jsonify({
             "market": market,
             "timeframe": timeframe,
             "results": results,
-            "equity_curve": equity_curve
+            "equity_curve": equity_curve,
+            "metrics": {
+                "total_trades": total_trades,
+                "buy_count": buy_count,
+                "sell_count": sell_count,
+                "hold_count": hold_count,
+                "closed_trades": closed_trades,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
+                "breakeven_trades": breakeven_trades,
+                "win_rate": win_rate,
+                "total_pnl": total_pnl,
+                "average_trade_pnl": average_trade_pnl,
+                "average_win": average_win,
+                "average_loss": average_loss,
+                "max_drawdown": round(max_drawdown, 4),
+                "ending_equity": ending_equity
+            }
         })
 
     except Exception as e:
