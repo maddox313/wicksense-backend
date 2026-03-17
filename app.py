@@ -1704,12 +1704,49 @@ def build_market_script(intelligence):
         f"A {top_setup.lower()} just appeared on {top_market}, and WickSense is paying attention."
     ]
 
+    youtube_titles = [
+        f"AI Just Flagged {top_market} for a {top_signal} Move",
+        f"This {top_market} Setup Could Be Huge",
+        f"WickSense Found the Best Trade on the Board",
+        f"Top Market Opportunity Right Now: {top_market}",
+        f"AI Market Alert: {top_market} {top_setup}",
+        f"Is {top_market} About to Make a Major Move?",
+        f"The Strongest Setup in the Market Right Now",
+        f"AI Says Watch {top_market} Right Now",
+        f"{top_market} Just Printed a {top_setup}",
+        f"Today’s Best AI Trade Setup Revealed"
+    ]
+
+    short_captions = [
+        f"AI found a {top_signal.lower()} setup on {top_market}.",
+        f"{top_market} is the top setup on WickSense right now.",
+        f"Watching this {top_setup.lower()} very closely.",
+        f"This is why traders are watching {top_market}.",
+        f"Top opportunity today: {top_market}.",
+        f"WickSense just flagged this move.",
+        f"{top_market} just jumped to the top of the scanner.",
+        f"Strong setup. Clean signal. {top_market}.",
+        f"The AI scanner likes this one a lot.",
+        f"This setup could be the one traders watch today."
+    ]
+
+    thumbnail_texts = [
+        f"{top_market} ALERT",
+        f"{top_signal.upper()} SETUP",
+        f"TOP TRADE NOW",
+        f"AI FOUND THIS",
+        f"{int(top_confidence)}% CONFIDENCE"
+    ]
+
     return {
         "youtube_script": youtube_script,
         "short_hook": short_hook,
         "voiceover_script": voiceover_script,
         "cta_line": cta_line,
-        "viral_hooks": viral_hooks
+        "viral_hooks": viral_hooks,
+        "youtube_titles": youtube_titles,
+        "short_captions": short_captions,
+        "thumbnail_texts": thumbnail_texts
     }
 
 def refresh_live_scan():
