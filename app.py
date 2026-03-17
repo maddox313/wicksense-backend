@@ -1696,11 +1696,20 @@ def build_market_script(intelligence):
         "Follow WickSense for daily AI-driven market intelligence, trade ideas, and real-time setup analysis."
     )
 
+    viral_hooks = [
+        f"WickSense just detected a {top_signal.lower()} setup on {top_market} at {top_confidence}% confidence.",
+        f"This may be the most important {top_market} setup on the board right now.",
+        f"AI just flagged {top_market} as the top opportunity in the market right now.",
+        f"Traders should be watching {top_market} closely right now.",
+        f"A {top_setup.lower()} just appeared on {top_market}, and WickSense is paying attention."
+    ]
+
     return {
         "youtube_script": youtube_script,
         "short_hook": short_hook,
         "voiceover_script": voiceover_script,
-        "cta_line": cta_line
+        "cta_line": cta_line,
+        "viral_hooks": viral_hooks
     }
 
 def refresh_live_scan():
