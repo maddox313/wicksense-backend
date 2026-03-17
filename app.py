@@ -181,62 +181,127 @@ def openapi():
                 }
             },
             "/trade-journal": {
-    "get": {
-        "summary": "Get trade journal entries",
-        "responses": {
-            "200": {
-                "description": "List of trade journal entries"
-            }
-        }
-    },
-    "post": {
-        "summary": "Create a trade journal entry",
-        "responses": {
-            "200": {
-                "description": "Trade journal entry created"
-            }
-        }
-    }
-},
-
-"/trade-journal/{entry_id}": {
-    "put": {
-        "summary": "Update a trade journal entry",
-        "responses": {
-            "200": {
-                "description": "Trade journal entry updated"
-            }
-        }
-    },
-    "delete": {
-        "summary": "Delete a trade journal entry",
-        "responses": {
-            "200": {
-                "description": "Trade journal entry deleted"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get trade journal entries",
+                    "responses": {
+                        "200": {
+                            "description": "List of trade journal entries"
+                        }
+                    }
+                },
+                "post": {
+                    "summary": "Create a trade journal entry",
+                    "responses": {
+                        "200": {
+                            "description": "Trade journal entry created"
+                        }
+                    }
+                }
+            },
+            "/trade-journal/{entry_id}": {
+                "put": {
+                    "summary": "Update a trade journal entry",
+                    "responses": {
+                        "200": {
+                            "description": "Trade journal entry updated"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete a trade journal entry",
+                    "responses": {
+                        "200": {
+                            "description": "Trade journal entry deleted"
+                        }
+                    }
+                }
+            },
             "/journal-analytics": {
-    "get": {
-        "summary": "Get performance analytics from the trade journal",
-        "responses": {
-            "200": {
-                "description": "Trade journal analytics including win rate, pnl, and grouped performance breakdowns"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get performance analytics from the trade journal",
+                    "responses": {
+                        "200": {
+                            "description": "Trade journal analytics including win rate, pnl, and grouped performance breakdowns"
+                        }
+                    }
+                }
+            },
             "/journal-review": {
-    "get": {
-        "summary": "Get AI coaching review based on trade journal analytics",
-        "responses": {
-            "200": {
-                "description": "AI-style journal review including strengths, weaknesses, emotional patterns, and coaching advice"
-            }
-        }
-    }
-},
+                "get": {
+                    "summary": "Get AI coaching review based on trade journal analytics",
+                    "responses": {
+                        "200": {
+                            "description": "AI-style journal review including strengths, weaknesses, emotional patterns, and coaching advice"
+                        }
+                    }
+                }
+            },
+            "/alert-rules": {
+                "get": {
+                    "summary": "Get alert rules",
+                    "responses": {
+                        "200": {
+                            "description": "List of alert rules"
+                        }
+                    }
+                },
+                "post": {
+                    "summary": "Create an alert rule",
+                    "responses": {
+                        "200": {
+                            "description": "Alert rule created"
+                        }
+                    }
+                }
+            },
+            "/alert-rules/{rule_id}": {
+                "put": {
+                    "summary": "Update an alert rule",
+                    "responses": {
+                        "200": {
+                            "description": "Alert rule updated"
+                        }
+                    }
+                },
+                "delete": {
+                    "summary": "Delete an alert rule",
+                    "responses": {
+                        "200": {
+                            "description": "Alert rule deleted"
+                        }
+                    }
+                }
+            },
+            "/notifications": {
+                "get": {
+                    "summary": "Get user notifications",
+                    "responses": {
+                        "200": {
+                            "description": "List of notifications"
+                        }
+                    }
+                }
+            },
+            "/notifications/{notification_id}/read": {
+                "put": {
+                    "summary": "Mark notification as read",
+                    "responses": {
+                        "200": {
+                            "description": "Notification updated"
+                        }
+                    }
+                }
+            },
+            "/notifications/{notification_id}": {
+                "delete": {
+                    "summary": "Delete notification",
+                    "responses": {
+                        "200": {
+                            "description": "Notification deleted"
+                        }
+                    }
+                }
+            },
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -340,40 +405,7 @@ def openapi():
                 }
             }
         }
-    },
-    "/notifications": {
-    "get": {
-        "summary": "Get user notifications",
-        "responses": {
-            "200": {
-                "description": "List of notifications"
-            }
-        }
     }
-},
-
-"/notifications/{id}/read": {
-    "put": {
-        "summary": "Mark notification as read",
-        "responses": {
-            "200": {
-                "description": "Notification updated"
-            }
-        }
-    }
-},
-
-"/notifications/{id}": {
-    "delete": {
-        "summary": "Delete notification",
-        "responses": {
-            "200": {
-                "description": "Notification deleted"
-            }
-        }
-    }
-},
-
 
 # -----------------------------
 # HELPERS
@@ -520,6 +552,7 @@ def append_history(filepath, item, max_items=100):
     history = history[:max_items]
     save_history(filepath, history)
 
+
 def load_notifications():
     ensure_history_file(NOTIFICATION_FILE)
     return load_history(NOTIFICATION_FILE)
@@ -533,8 +566,8 @@ def create_notification(notification):
     notification["id"] = str(uuid.uuid4())
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
-
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
+
 
 def find_journal_entry(entry_id):
     journal = load_history(TRADE_JOURNAL_FILE)
@@ -572,6 +605,7 @@ def delete_journal_entry_by_id(entry_id):
     save_history(TRADE_JOURNAL_FILE, filtered)
     return True
 
+
 def load_alert_rules():
     ensure_history_file(ALERT_RULES_FILE)
     return load_history(ALERT_RULES_FILE)
@@ -588,6 +622,68 @@ def find_alert_rule(rule_id):
             return rule
     return None
 
+
+def load_alert_log():
+    ensure_history_file(ALERT_LOG_FILE)
+    return load_history(ALERT_LOG_FILE)
+
+
+def save_alert_log(log_items):
+    save_history(ALERT_LOG_FILE, log_items)
+
+
+def build_alert_signature(rule, result):
+    return "|".join([
+        str(rule.get("id", "")),
+        str(result.get("market", "")),
+        str(result.get("signal", "")),
+        str(result.get("setup_type", ""))
+    ])
+
+
+def should_send_alert(rule, result):
+    cooldown_minutes = rule.get("cooldown_minutes", 60)
+
+    try:
+        cooldown_minutes = int(cooldown_minutes)
+    except Exception:
+        cooldown_minutes = 60
+
+    signature = build_alert_signature(rule, result)
+    alert_log = load_alert_log()
+
+    for log_item in alert_log:
+        if log_item.get("signature") == signature:
+            last_sent = log_item.get("sent_at")
+            if not last_sent:
+                continue
+
+            try:
+                last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", ""))
+                now_dt = datetime.utcnow()
+                minutes_since = (now_dt - last_sent_dt).total_seconds() / 60.0
+
+                if minutes_since < cooldown_minutes:
+                    return False
+            except Exception:
+                continue
+
+    return True
+
+
+def record_alert_sent(rule, result):
+    log_item = {
+        "id": str(uuid.uuid4()),
+        "rule_id": rule.get("id"),
+        "rule_name": rule.get("name"),
+        "signature": build_alert_signature(rule, result),
+        "market": result.get("market"),
+        "signal": result.get("signal"),
+        "setup_type": result.get("setup_type"),
+        "sent_at": datetime.utcnow().isoformat() + "Z"
+    }
+
+    append_history(ALERT_LOG_FILE, log_item, max_items=2000)
 
 def add_indicators(df: pd.DataFrame):
     df = df.copy()
@@ -1408,15 +1504,17 @@ def scan_markets():
                         trade_thesis=ai_text["trade_thesis"],
                         risk_note=ai_text["risk_note"]
                     )
+
                     record_alert_sent(rule, result)
+
                     create_notification({
-    "type": "alert_triggered",
-    "market": result.get("market"),
-    "signal": result.get("signal"),
-    "setup_type": result.get("setup_type"),
-    "confidence": result.get("confidence"),
-    "rule_name": rule.get("name")
-})
+                        "type": "alert_triggered",
+                        "market": result.get("market"),
+                        "signal": result.get("signal"),
+                        "setup_type": result.get("setup_type"),
+                        "confidence": result.get("confidence"),
+                        "rule_name": rule.get("name")
+                    })
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
 
@@ -2016,83 +2114,6 @@ def delete_alert_rule(rule_id):
             "details": str(e)
         }), 500
 
-def load_alert_log():
-    ensure_history_file(ALERT_LOG_FILE)
-    return load_history(ALERT_LOG_FILE)
-
-
-def save_alert_log(log_items):
-    save_history(ALERT_LOG_FILE, log_items)
-
-
-def build_alert_signature(rule, result):
-    return "|".join([
-        str(rule.get("id", "")),
-        str(result.get("market", "")),
-        str(result.get("signal", "")),
-        str(result.get("setup_type", ""))
-    ])
-
-
-def should_send_alert(rule, result):
-    cooldown_minutes = rule.get("cooldown_minutes", 60)
-
-    try:
-        cooldown_minutes = int(cooldown_minutes)
-    except Exception:
-        cooldown_minutes = 60
-
-    signature = build_alert_signature(rule, result)
-    alert_log = load_alert_log()
-
-    for log_item in alert_log:
-        if log_item.get("signature") == signature:
-            last_sent = log_item.get("sent_at")
-            if not last_sent:
-                continue
-
-            try:
-                last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", ""))
-                now_dt = datetime.utcnow()
-                minutes_since = (now_dt - last_sent_dt).total_seconds() / 60.0
-
-                if minutes_since < cooldown_minutes:
-                    return False
-            except Exception:
-                continue
-
-    return True
-
-
-def record_alert_sent(rule, result):
-    log_item = {
-        "id": str(uuid.uuid4()),
-        "rule_id": rule.get("id"),
-        "rule_name": rule.get("name"),
-        "signature": build_alert_signature(rule, result),
-        "market": result.get("market"),
-        "signal": result.get("signal"),
-        "setup_type": result.get("setup_type"),
-        "sent_at": datetime.utcnow().isoformat() + "Z"
-    }
-
-    append_history(ALERT_LOG_FILE, log_item, max_items=2000)
-
-def load_notifications():
-    ensure_history_file(NOTIFICATION_FILE)
-    return load_history(NOTIFICATION_FILE)
-
-
-def save_notifications(items):
-    save_history(NOTIFICATION_FILE, items)
-
-
-def create_notification(notification):
-    notification["id"] = str(uuid.uuid4())
-    notification["created_at"] = datetime.utcnow().isoformat() + "Z"
-    notification["is_read"] = False
-
-    append_history(NOTIFICATION_FILE, notification, max_items=1000)
 
 @app.route("/notifications/<notification_id>/read", methods=["PUT"])
 def mark_notification_read(notification_id):
@@ -2112,6 +2133,63 @@ def mark_notification_read(notification_id):
             "error": "Failed to update notification",
             "details": str(e)
         }), 500
+
+@app.route("/notifications/<notification_id>", methods=["DELETE"])
+def delete_notification(notification_id):
+    try:
+        items = load_notifications()
+        filtered = [n for n in items if n["id"] != notification_id]
+
+        save_notifications(filtered)
+
+        return jsonify({
+            "success": True,
+            "deleted_id": notification_id
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete notification",
+            "details": str(e)
+        }), 500
+
+@app.route("/notifications", methods=["GET"])
+def get_notifications():
+    try:
+        items = load_notifications()
+        unread_count = sum(1 for n in items if not n.get("is_read", False))
+
+        return jsonify({
+            "count": len(items),
+            "unread_count": unread_count,
+            "items": items
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load notifications",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/notifications/<notification_id>/read", methods=["PUT"])
+def mark_notification_read(notification_id):
+    try:
+        items = load_notifications()
+
+        for n in items:
+            if n["id"] == notification_id:
+                n["is_read"] = True
+
+        save_notifications(items)
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update notification",
+            "details": str(e)
+        }), 500
+
 
 @app.route("/notifications/<notification_id>", methods=["DELETE"])
 def delete_notification(notification_id):
