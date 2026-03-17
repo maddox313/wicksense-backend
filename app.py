@@ -2593,6 +2593,7 @@ def backtest():
                         pnl = round(price - last_buy_price, 4)
                         trade_pnls.append(pnl)
                         last_buy_price = None
+
             else:
                 hold_count += 1
 
@@ -2663,7 +2664,6 @@ def backtest():
             "error": "Backtest failed",
             "details": str(e)
         }), 500
-
 
 # -----------------------------
 # TRADE PLAN
