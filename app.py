@@ -323,7 +323,7 @@ def openapi():
                     }
                 }
             },
-                        "/risk-settings": {
+            "/risk-settings": {
                 "get": {
                     "summary": "Get account-level risk settings",
                     "responses": {
@@ -491,6 +491,7 @@ def normalize_interval(interval: str) -> str:
     }
     return interval_map.get(interval, interval)
 
+
 def get_current_utc_hour():
     return datetime.utcnow().hour
 
@@ -498,9 +499,9 @@ def get_current_utc_hour():
 def get_market_session():
     hour = get_current_utc_hour()
 
-    tokyo = hour >= 0 and hour < 9
-    london = hour >= 7 and hour < 16
-    nyse = hour >= 13 and hour < 22
+    tokyo = 0 <= hour < 9
+    london = 7 <= hour < 16
+    nyse = 13 <= hour < 22
     sydney = hour >= 21 or hour < 6
 
     active_sessions = []
@@ -809,6 +810,67 @@ def record_alert_sent(rule, result):
     }
 
     append_history(ALERT_LOG_FILE, log_item, max_items=2000)
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def get_today_utc_date_string():
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def calculate_today_realized_pnl():
+    journal = load_history(TRADE_JOURNAL_FILE)
+    today_str = get_today_utc_date_string()
+    total_pnl = 0.0
+    matched_entries = 0
+
+    for entry in journal:
+        created_at = entry.get("created_at", "")
+        outcome = (entry.get("outcome") or "").lower()
+
+        if not created_at.startswith(today_str):
+            continue
+
+        if outcome not in ["win", "loss", "breakeven"]:
+            continue
+
+        total_pnl += safe_float(entry.get("pnl"), 0.0)
+        matched_entries += 1
+
+    return {
+        "date": today_str,
+        "realized_pnl": round(total_pnl, 2),
+        "closed_trade_count": matched_entries
+    }
+
+
+def get_daily_loss_status():
+    settings = load_risk_settings()
+    today_stats = calculate_today_realized_pnl()
+
+    max_daily_loss = float(settings.get("max_daily_loss", 500.0))
+    realized_pnl = float(today_stats.get("realized_pnl", 0.0))
+
+    loss_used = abs(realized_pnl) if realized_pnl < 0 else 0.0
+    remaining_loss_capacity = max(max_daily_loss - loss_used, 0.0)
+    blocked = loss_used >= max_daily_loss
+
+    return {
+        "date": today_stats["date"],
+        "max_daily_loss": round(max_daily_loss, 2),
+        "realized_pnl": round(realized_pnl, 2),
+        "closed_trade_count": today_stats["closed_trade_count"],
+        "loss_used": round(loss_used, 2),
+        "remaining_loss_capacity": round(remaining_loss_capacity, 2),
+        "blocked": blocked
+    }
 
 
 def add_indicators(df: pd.DataFrame):
@@ -1569,7 +1631,6 @@ def scan_markets():
     ]
 
     scan_results = []
-
     session_data = get_market_session()
 
     for market in markets:
@@ -1607,9 +1668,9 @@ def scan_markets():
                 "ai_summary": ai_text["ai_summary"],
                 "trade_thesis": ai_text["trade_thesis"],
                 "risk_note": ai_text["risk_note"],
-                    "session_label": session_data["session_label"],
-    "active_sessions": session_data["active_sessions"],
-    "liquidity_profile": session_data["liquidity_profile"],
+                "session_label": session_data["session_label"],
+                "active_sessions": session_data["active_sessions"],
+                "liquidity_profile": session_data["liquidity_profile"]
             }
 
             scan_results.append(result)
@@ -1703,6 +1764,7 @@ def scan_markets():
 
 def build_market_intelligence(scan_results):
     all_results = scan_results.get("all_results_sorted", []) or []
+    session_data = get_market_session()
 
     if not all_results:
         return {
@@ -1713,19 +1775,21 @@ def build_market_intelligence(scan_results):
             "neutral_count": 0,
             "top_opportunity": None,
             "ai_market_summary": "No scanner results are available yet.",
-            "what_matters_now": "Run a market scan to generate intelligence."
+            "what_matters_now": "Run a market scan to generate intelligence.",
+            "session_label": session_data["session_label"],
+            "active_sessions": session_data["active_sessions"],
+            "liquidity_profile": session_data["liquidity_profile"],
+            "utc_hour": session_data["utc_hour"]
         }
 
     bullish_count = len([r for r in all_results if r.get("signal") == "Bullish"])
     bearish_count = len([r for r in all_results if r.get("signal") == "Bearish"])
     neutral_count = len([r for r in all_results if r.get("signal") == "Neutral"])
 
-    avg_confidence = 0.0
-    if all_results:
-        avg_confidence = round(
-            sum(float(r.get("confidence", 0)) for r in all_results) / len(all_results),
-            2
-        )
+    avg_confidence = round(
+        sum(float(r.get("confidence", 0)) for r in all_results) / len(all_results),
+        2
+    ) if all_results else 0.0
 
     if bullish_count > bearish_count:
         market_bias = "Bullish"
@@ -1787,7 +1851,11 @@ def build_market_intelligence(scan_results):
         "average_confidence": avg_confidence,
         "top_opportunity": top_opportunity,
         "ai_market_summary": ai_market_summary,
-        "what_matters_now": what_matters_now
+        "what_matters_now": what_matters_now,
+        "session_label": session_data["session_label"],
+        "active_sessions": session_data["active_sessions"],
+        "liquidity_profile": session_data["liquidity_profile"],
+        "utc_hour": session_data["utc_hour"]
     }
 
 
@@ -1879,288 +1947,6 @@ def build_market_script(intelligence):
         "thumbnail_texts": thumbnail_texts
     }
 
-
-def refresh_live_scan():
-    global LIVE_SCAN_CACHE
-
-    try:
-        LIVE_SCAN_CACHE["status"] = "updating"
-        results = scan_markets()
-        timestamp = datetime.utcnow().isoformat() + "Z"
-
-        LIVE_SCAN_CACHE["results"] = results
-        LIVE_SCAN_CACHE["last_updated"] = timestamp
-        LIVE_SCAN_CACHE["status"] = "ready"
-
-        history_item = {
-            "timestamp": timestamp,
-            "status": "ready",
-            "results": results
-        }
-        append_history(SCAN_HISTORY_FILE, history_item, max_items=100)
-
-    except Exception as e:
-        LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
-
-
-@app.route("/live-scan", methods=["GET"])
-def live_scan():
-    try:
-        if LIVE_SCAN_CACHE["results"] is None:
-            refresh_live_scan()
-
-        return jsonify({
-            "status": LIVE_SCAN_CACHE["status"],
-            "last_updated": LIVE_SCAN_CACHE["last_updated"],
-            "results": LIVE_SCAN_CACHE["results"]
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Live scan failed",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/refresh-live-scan", methods=["POST"])
-def refresh_live_scan_route():
-    try:
-        refresh_live_scan()
-        return jsonify({
-            "status": "live scan refreshed",
-            "last_updated": LIVE_SCAN_CACHE["last_updated"],
-            "results": LIVE_SCAN_CACHE["results"]
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Live scan refresh failed",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/scanner-status", methods=["GET"])
-def scanner_status():
-    return jsonify({
-        "status": LIVE_SCAN_CACHE["status"],
-        "last_updated": LIVE_SCAN_CACHE["last_updated"],
-        "has_results": LIVE_SCAN_CACHE["results"] is not None
-    })
-
-
-@app.route("/market-intelligence", methods=["GET"])
-def market_intelligence():
-    try:
-        if LIVE_SCAN_CACHE["results"] is None:
-            refresh_live_scan()
-
-        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
-        return jsonify(intelligence)
-
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to build market intelligence",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/market-script", methods=["GET"])
-def market_script():
-    try:
-        if LIVE_SCAN_CACHE["results"] is None:
-            refresh_live_scan()
-
-        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
-        script_data = build_market_script(intelligence)
-
-        return jsonify({
-            "intelligence": intelligence,
-            "script": script_data
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to build market script",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/signal-history", methods=["GET"])
-def signal_history():
-    try:
-        history = load_history(SIGNAL_HISTORY_FILE)
-        return jsonify({
-            "count": len(history),
-            "items": history
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to load signal history",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/tradeplan-history", methods=["GET"])
-def tradeplan_history():
-    try:
-        history = load_history(TRADEPLAN_HISTORY_FILE)
-        return jsonify({
-            "count": len(history),
-            "items": history
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to load trade plan history",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/scan-history", methods=["GET"])
-def scan_history():
-    try:
-        history = load_history(SCAN_HISTORY_FILE)
-        return jsonify({
-            "count": len(history),
-            "items": history
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to load scan history",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/trade-journal", methods=["GET"])
-def get_trade_journal():
-    try:
-        journal = load_history(TRADE_JOURNAL_FILE)
-        return jsonify({
-            "count": len(journal),
-            "items": journal
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to load trade journal",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/trade-journal", methods=["POST"])
-def create_trade_journal_entry():
-    try:
-        body = get_request_body()
-
-        entry = {
-            "id": str(uuid.uuid4()),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
-            "market": body.get("market"),
-            "timeframe": body.get("timeframe"),
-            "side": body.get("side"),
-            "setup_type": body.get("setup_type"),
-            "entry_price": body.get("entry_price"),
-            "stop_loss": body.get("stop_loss"),
-            "take_profit": body.get("take_profit"),
-            "outcome": body.get("outcome", "open"),
-            "pnl": body.get("pnl"),
-            "rating": body.get("rating"),
-            "status": body.get("status", "planned"),
-            "notes": body.get("notes", ""),
-            "emotion": body.get("emotion", ""),
-            "mistake_tag": body.get("mistake_tag", "")
-        }
-
-        append_history(TRADE_JOURNAL_FILE, entry, max_items=500)
-        return jsonify(entry)
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to create trade journal entry",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/trade-journal/<entry_id>", methods=["PUT"])
-def update_trade_journal_entry(entry_id):
-    try:
-        body = get_request_body()
-        updated_entry = update_journal_entry(entry_id, body)
-
-        if not updated_entry:
-            return jsonify({"error": "Trade journal entry not found"}), 404
-
-        return jsonify(updated_entry)
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to update trade journal entry",
-            "details": str(e)
-        }), 500
-
-
-@app.route("/trade-journal/<entry_id>", methods=["DELETE"])
-def delete_trade_journal_entry(entry_id):
-    try:
-        deleted = delete_journal_entry_by_id(entry_id)
-
-        if not deleted:
-            return jsonify({"error": "Trade journal entry not found"}), 404
-
-        return jsonify({
-            "success": True,
-            "deleted_id": entry_id
-        })
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to delete trade journal entry",
-            "details": str(e)
-        }), 500
-
-
-def get_today_utc_date_string():
-    return datetime.utcnow().strftime("%Y-%m-%d")
-
-def calculate_today_realized_pnl():
-    journal = load_history(TRADE_JOURNAL_FILE)
-    today_str = get_today_utc_date_string()
-    total_pnl = 0.0
-    matched_entries = 0
-
-    for entry in journal:
-        created_at = entry.get("created_at", "")
-        outcome = (entry.get("outcome") or "").lower()
-
-        if not created_at.startswith(today_str):
-            continue
-
-        if outcome not in ["win", "loss", "breakeven"]:
-            continue
-
-        total_pnl += safe_float(entry.get("pnl"), 0.0)
-        matched_entries += 1
-
-    return {
-        "date": today_str,
-        "realized_pnl": round(total_pnl, 2),
-        "closed_trade_count": matched_entries
-    }
-
-def get_daily_loss_status():
-    settings = load_risk_settings()
-    today_stats = calculate_today_realized_pnl()
-
-    max_daily_loss = float(settings.get("max_daily_loss", 500.0))
-    realized_pnl = float(today_stats.get("realized_pnl", 0.0))
-
-    loss_used = abs(realized_pnl) if realized_pnl < 0 else 0.0
-    remaining_loss_capacity = max(max_daily_loss - loss_used, 0.0)
-    blocked = loss_used >= max_daily_loss
-
-    return {
-        "date": today_stats["date"],
-        "max_daily_loss": round(max_daily_loss, 2),
-        "realized_pnl": round(realized_pnl, 2),
-        "closed_trade_count": today_stats["closed_trade_count"],
-        "loss_used": round(loss_used, 2),
-        "remaining_loss_capacity": round(remaining_loss_capacity, 2),
-        "blocked": blocked
-    }
 
 def summarize_group(entries, key_name):
     grouped = {}
@@ -2411,6 +2197,242 @@ def build_journal_review():
     }
 
 
+def refresh_live_scan():
+    global LIVE_SCAN_CACHE
+
+    try:
+        LIVE_SCAN_CACHE["status"] = "updating"
+        results = scan_markets()
+        timestamp = datetime.utcnow().isoformat() + "Z"
+
+        LIVE_SCAN_CACHE["results"] = results
+        LIVE_SCAN_CACHE["last_updated"] = timestamp
+        LIVE_SCAN_CACHE["status"] = "ready"
+
+        history_item = {
+            "timestamp": timestamp,
+            "status": "ready",
+            "results": results
+        }
+        append_history(SCAN_HISTORY_FILE, history_item, max_items=100)
+
+    except Exception as e:
+        LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
+
+
+# -----------------------------
+# ROUTES
+# -----------------------------
+@app.route("/live-scan", methods=["GET"])
+def live_scan():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        return jsonify({
+            "status": LIVE_SCAN_CACHE["status"],
+            "last_updated": LIVE_SCAN_CACHE["last_updated"],
+            "results": LIVE_SCAN_CACHE["results"]
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Live scan failed",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/refresh-live-scan", methods=["POST"])
+def refresh_live_scan_route():
+    try:
+        refresh_live_scan()
+        return jsonify({
+            "status": "live scan refreshed",
+            "last_updated": LIVE_SCAN_CACHE["last_updated"],
+            "results": LIVE_SCAN_CACHE["results"]
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Live scan refresh failed",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/scanner-status", methods=["GET"])
+def scanner_status():
+    return jsonify({
+        "status": LIVE_SCAN_CACHE["status"],
+        "last_updated": LIVE_SCAN_CACHE["last_updated"],
+        "has_results": LIVE_SCAN_CACHE["results"] is not None
+    })
+
+
+@app.route("/market-intelligence", methods=["GET"])
+def market_intelligence():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
+        return jsonify(intelligence)
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build market intelligence",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/market-script", methods=["GET"])
+def market_script():
+    try:
+        if LIVE_SCAN_CACHE["results"] is None:
+            refresh_live_scan()
+
+        intelligence = build_market_intelligence(LIVE_SCAN_CACHE["results"] or {})
+        script_data = build_market_script(intelligence)
+
+        return jsonify({
+            "intelligence": intelligence,
+            "script": script_data
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build market script",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/signal-history", methods=["GET"])
+def signal_history():
+    try:
+        history = load_history(SIGNAL_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load signal history",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/tradeplan-history", methods=["GET"])
+def tradeplan_history():
+    try:
+        history = load_history(TRADEPLAN_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load trade plan history",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/scan-history", methods=["GET"])
+def scan_history():
+    try:
+        history = load_history(SCAN_HISTORY_FILE)
+        return jsonify({
+            "count": len(history),
+            "items": history
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load scan history",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal", methods=["GET"])
+def get_trade_journal():
+    try:
+        journal = load_history(TRADE_JOURNAL_FILE)
+        return jsonify({
+            "count": len(journal),
+            "items": journal
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load trade journal",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal", methods=["POST"])
+def create_trade_journal_entry():
+    try:
+        body = get_request_body()
+
+        entry = {
+            "id": str(uuid.uuid4()),
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "market": body.get("market"),
+            "timeframe": body.get("timeframe"),
+            "side": body.get("side"),
+            "setup_type": body.get("setup_type"),
+            "entry_price": body.get("entry_price"),
+            "stop_loss": body.get("stop_loss"),
+            "take_profit": body.get("take_profit"),
+            "outcome": body.get("outcome", "open"),
+            "pnl": body.get("pnl"),
+            "rating": body.get("rating"),
+            "status": body.get("status", "planned"),
+            "notes": body.get("notes", ""),
+            "emotion": body.get("emotion", ""),
+            "mistake_tag": body.get("mistake_tag", "")
+        }
+
+        append_history(TRADE_JOURNAL_FILE, entry, max_items=500)
+        return jsonify(entry)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to create trade journal entry",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal/<entry_id>", methods=["PUT"])
+def update_trade_journal_entry(entry_id):
+    try:
+        body = get_request_body()
+        updated_entry = update_journal_entry(entry_id, body)
+
+        if not updated_entry:
+            return jsonify({"error": "Trade journal entry not found"}), 404
+
+        return jsonify(updated_entry)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to update trade journal entry",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/trade-journal/<entry_id>", methods=["DELETE"])
+def delete_trade_journal_entry(entry_id):
+    try:
+        deleted = delete_journal_entry_by_id(entry_id)
+
+        if not deleted:
+            return jsonify({"error": "Trade journal entry not found"}), 404
+
+        return jsonify({
+            "success": True,
+            "deleted_id": entry_id
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to delete trade journal entry",
+            "details": str(e)
+        }), 500
+
+
 @app.route("/journal-analytics", methods=["GET"])
 def journal_analytics():
     try:
@@ -2627,6 +2649,7 @@ def update_risk_settings():
             "details": str(e)
         }), 500
 
+
 @app.route("/daily-loss-status", methods=["GET"])
 def daily_loss_status():
     try:
@@ -2637,6 +2660,7 @@ def daily_loss_status():
             "error": "Failed to calculate daily loss status",
             "details": str(e)
         }), 500
+
 
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
@@ -2712,9 +2736,9 @@ def signal():
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
             "session_label": session_data["session_label"],
-"active_sessions": session_data["active_sessions"],
-"liquidity_profile": session_data["liquidity_profile"],
-"utc_hour": session_data["utc_hour"],
+            "active_sessions": session_data["active_sessions"],
+            "liquidity_profile": session_data["liquidity_profile"],
+            "utc_hour": session_data["utc_hour"]
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -2823,7 +2847,6 @@ def backtest():
                         pnl = round(price - last_buy_price, 4)
                         trade_pnls.append(pnl)
                         last_buy_price = None
-
             else:
                 hold_count += 1
 
@@ -3038,8 +3061,8 @@ def tradeplan():
             "active_sessions": session_data["active_sessions"],
             "liquidity_profile": session_data["liquidity_profile"],
             "utc_hour": session_data["utc_hour"],
-            "daily_loss_status": daily_loss,
-                                }
+            "daily_loss_status": daily_loss
+        }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
         return jsonify(response_data)
@@ -3345,11 +3368,6 @@ def create_checkout_session():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
 
 
 
