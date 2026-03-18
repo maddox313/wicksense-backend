@@ -481,6 +481,56 @@ def normalize_interval(interval: str) -> str:
     }
     return interval_map.get(interval, interval)
 
+def get_current_utc_hour():
+    return datetime.utcnow().hour
+
+
+def get_market_session():
+    hour = get_current_utc_hour()
+
+    tokyo = hour >= 0 and hour < 9
+    london = hour >= 7 and hour < 16
+    nyse = hour >= 13 and hour < 22
+    sydney = hour >= 21 or hour < 6
+
+    active_sessions = []
+
+    if tokyo:
+        active_sessions.append("Tokyo")
+    if london:
+        active_sessions.append("London")
+    if nyse:
+        active_sessions.append("NYSE")
+    if sydney:
+        active_sessions.append("Sydney")
+
+    if london and nyse:
+        session_label = "London/NYSE Overlap"
+    elif tokyo and london:
+        session_label = "Tokyo/London Overlap"
+    elif sydney and tokyo:
+        session_label = "Sydney/Tokyo Overlap"
+    elif active_sessions:
+        session_label = active_sessions[0]
+    else:
+        session_label = "Closed / Low Liquidity"
+
+    if "Overlap" in session_label:
+        liquidity_profile = "High"
+    elif session_label in ["London", "NYSE", "Tokyo"]:
+        liquidity_profile = "Moderate"
+    elif session_label == "Sydney":
+        liquidity_profile = "Low to Moderate"
+    else:
+        liquidity_profile = "Low"
+
+    return {
+        "session_label": session_label,
+        "active_sessions": active_sessions,
+        "liquidity_profile": liquidity_profile,
+        "utc_hour": hour
+    }
+
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
@@ -1510,6 +1560,8 @@ def scan_markets():
 
     scan_results = []
 
+    session_data = get_market_session()
+
     for market in markets:
         try:
             df = fetch_live_market_data(market, "15min", 15)
@@ -1545,6 +1597,9 @@ def scan_markets():
                 "ai_summary": ai_text["ai_summary"],
                 "trade_thesis": ai_text["trade_thesis"],
                 "risk_note": ai_text["risk_note"],
+                    "session_label": session_data["session_label"],
+    "active_sessions": session_data["active_sessions"],
+    "liquidity_profile": session_data["liquidity_profile"],
             }
 
             scan_results.append(result)
@@ -2561,6 +2616,7 @@ def signal():
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+        session_data = get_market_session()
         last_row = df.iloc[-1]
 
         response_data = {
@@ -2595,6 +2651,10 @@ def signal():
             "ai_summary": ai_text["ai_summary"],
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
+            "session_label": session_data["session_label"],
+"active_sessions": session_data["active_sessions"],
+"liquidity_profile": session_data["liquidity_profile"],
+"utc_hour": session_data["utc_hour"],
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -2803,6 +2863,7 @@ def tradeplan():
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+        session_data = get_market_session()
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
@@ -2905,6 +2966,10 @@ def tradeplan():
             "ai_summary": ai_text["ai_summary"],
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
+            "session_label": session_data["session_label"],
+"active_sessions": session_data["active_sessions"],
+"liquidity_profile": session_data["liquidity_profile"],
+"utc_hour": session_data["utc_hour"],
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
