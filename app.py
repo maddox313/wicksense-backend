@@ -323,7 +323,7 @@ def openapi():
                     }
                 }
             },
-            "/risk-settings": {
+                        "/risk-settings": {
                 "get": {
                     "summary": "Get account-level risk settings",
                     "responses": {
@@ -341,7 +341,7 @@ def openapi():
                     }
                 }
             },
-           "/daily-loss-status": {
+            "/daily-loss-status": {
                 "get": {
                     "summary": "Get current daily loss guardrail status",
                     "responses": {
