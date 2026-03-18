@@ -341,16 +341,16 @@ def openapi():
                     }
                 }
             },
-            "/daily-loss-status": {
-    "get": {
-        "summary": "Get current daily loss guardrail status",
-        "responses": {
-            "200": {
-                "description": "Daily realized pnl, remaining loss capacity, and blocked status"
-            }
-        }
-    }
-},
+           "/daily-loss-status": {
+                "get": {
+                    "summary": "Get current daily loss guardrail status",
+                    "responses": {
+                        "200": {
+                            "description": "Daily realized pnl, remaining loss capacity, and blocked status"
+                        }
+                    }
+                }
+            },
             "/scan-markets": {
                 "get": {
                     "summary": "Scan all markets",
@@ -2113,17 +2113,8 @@ def delete_trade_journal_entry(entry_id):
         }), 500
 
 
-def safe_float(value, default=0.0):
-    try:
-        if value is None or value == "":
-            return default
-        return float(value)
-    except Exception:
-        return default
-
 def get_today_utc_date_string():
     return datetime.utcnow().strftime("%Y-%m-%d")
-
 
 def calculate_today_realized_pnl():
     journal = load_history(TRADE_JOURNAL_FILE)
@@ -2150,7 +2141,6 @@ def calculate_today_realized_pnl():
         "closed_trade_count": matched_entries
     }
 
-
 def get_daily_loss_status():
     settings = load_risk_settings()
     today_stats = calculate_today_realized_pnl()
@@ -2171,7 +2161,6 @@ def get_daily_loss_status():
         "remaining_loss_capacity": round(remaining_loss_capacity, 2),
         "blocked": blocked
     }
-
 
 def summarize_group(entries, key_name):
     grouped = {}
@@ -2649,7 +2638,6 @@ def daily_loss_status():
             "details": str(e)
         }), 500
 
-
 @app.route("/scan-markets", methods=["GET"])
 def scan_markets_route():
     try:
@@ -2930,7 +2918,8 @@ def tradeplan():
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
-                    daily_loss = get_daily_loss_status()
+
+        daily_loss = get_daily_loss_status()
         if daily_loss["blocked"]:
             return jsonify({
                 "error": "Daily loss limit reached",
@@ -2942,7 +2931,6 @@ def tradeplan():
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
-        daily_loss = get_daily_loss_status()
         session_data = get_market_session()
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
@@ -3047,11 +3035,11 @@ def tradeplan():
             "trade_thesis": ai_text["trade_thesis"],
             "risk_note": ai_text["risk_note"],
             "session_label": session_data["session_label"],
-"active_sessions": session_data["active_sessions"],
-"liquidity_profile": session_data["liquidity_profile"],
-"utc_hour": session_data["utc_hour"],
-                        "daily_loss_status": daily_loss,
-        }
+            "active_sessions": session_data["active_sessions"],
+            "liquidity_profile": session_data["liquidity_profile"],
+            "utc_hour": session_data["utc_hour"],
+            "daily_loss_status": daily_loss,
+                                }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
         return jsonify(response_data)
