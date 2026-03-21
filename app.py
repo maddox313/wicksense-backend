@@ -693,6 +693,9 @@ def handle_live_signal_change(market, previous_state, new_payload):
     ) >= 10:
         title = f"{market} confidence changed to {confidence}%"
 
+    cooldown_key = f"signal:{market}"
+
+if can_send_live_notification(cooldown_key, 60):
     create_notification({
         "type": "live_signal_change",
         "title": title,
@@ -753,17 +756,35 @@ def check_for_live_top_trade_change():
         changed = True
 
     if changed:
-        create_notification({
-            "type": "live_top_trade_change",
-            "title": f"Top trade changed: {current_top_trade.get('market')}",
-            "market": current_top_trade.get("market"),
-            "signal": current_top_trade.get("signal"),
-            "setup_type": current_top_trade.get("setup_type"),
-            "confidence": current_top_trade.get("confidence")
-        })
+        cooldown_key = "top_trade"
+
+if can_send_live_notification(cooldown_key, 90):
+    create_notification({
+        "type": "live_top_trade_change",
+        "title": f"Top trade changed: {current_top_trade.get('market')}",
+        "market": current_top_trade.get("market"),
+        "signal": current_top_trade.get("signal"),
+        "setup_type": current_top_trade.get("setup_type"),
+        "confidence": current_top_trade.get("confidence")
+    })
 
     LIVE_TOP_TRADE_STATE = current_top_trade
         
+def can_send_live_notification(key, cooldown_seconds=60):
+    global LIVE_NOTIFICATION_COOLDOWNS
+
+    now = datetime.utcnow()
+
+    last_sent = LIVE_NOTIFICATION_COOLDOWNS.get(key)
+
+    if last_sent:
+        elapsed = (now - last_sent).total_seconds()
+        if elapsed < cooldown_seconds:
+            return False
+
+    LIVE_NOTIFICATION_COOLDOWNS[key] = now
+    return True
+    
 def update_live_signal(market):
     global LIVE_MARKET_STATE
 
