@@ -2481,6 +2481,100 @@ def market_script():
             "details": str(e)
         }), 500
 
+@app.route("/stream-status", methods=["GET"])
+def stream_status():
+    try:
+        return jsonify(STREAM_STATUS)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load stream status",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/live-signals", methods=["GET"])
+def live_signals():
+    try:
+        markets = []
+
+        for market_name, data in LIVE_MARKET_STATE.items():
+            market_payload = {
+                "market": market_name,
+                "last_updated": data.get("last_updated"),
+                "open": data.get("open"),
+                "high": data.get("high"),
+                "low": data.get("low"),
+                "close": data.get("close"),
+                "upper_wick": data.get("upper_wick"),
+                "lower_wick": data.get("lower_wick"),
+                "signal": data.get("signal"),
+                "confidence": data.get("confidence"),
+                "pattern": data.get("pattern"),
+                "breakout": data.get("breakout"),
+                "liquidity_event": data.get("liquidity_event"),
+                "trendline": data.get("trendline"),
+                "setup_type": data.get("setup_type"),
+                "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
+                "risk_note": data.get("risk_note")
+            }
+            markets.append(market_payload)
+
+        return jsonify({
+            "status": STREAM_STATUS.get("status"),
+            "provider": STREAM_STATUS.get("provider"),
+            "last_tick": STREAM_STATUS.get("last_tick"),
+            "count": len(markets),
+            "markets": markets
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load live signals",
+            "details": str(e)
+        }), 500
+
+
+@app.route("/live-top-trade", methods=["GET"])
+def live_top_trade():
+    try:
+        best_trade = None
+        best_score = -1
+
+        for market_name, data in LIVE_MARKET_STATE.items():
+            confidence = safe_float(data.get("confidence"), 0.0)
+
+            if confidence > best_score:
+                best_score = confidence
+                best_trade = {
+                    "market": market_name,
+                    "last_updated": data.get("last_updated"),
+                    "open": data.get("open"),
+                    "high": data.get("high"),
+                    "low": data.get("low"),
+                    "close": data.get("close"),
+                    "upper_wick": data.get("upper_wick"),
+                    "lower_wick": data.get("lower_wick"),
+                    "signal": data.get("signal"),
+                    "confidence": data.get("confidence"),
+                    "pattern": data.get("pattern"),
+                    "breakout": data.get("breakout"),
+                    "liquidity_event": data.get("liquidity_event"),
+                    "trendline": data.get("trendline"),
+                    "setup_type": data.get("setup_type"),
+                    "ai_summary": data.get("ai_summary"),
+                    "trade_thesis": data.get("trade_thesis"),
+                    "risk_note": data.get("risk_note")
+                }
+
+        return jsonify(best_trade or {})
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load live top trade",
+            "details": str(e)
+        }), 500
+
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
