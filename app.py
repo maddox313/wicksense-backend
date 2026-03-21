@@ -6,12 +6,31 @@ import requests
 import json
 import uuid
 from datetime import datetime
-import stripe
-from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import threading
 import time
 import random
+
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+
+@@ -677,7 +677,6 @@ def get_simulated_base_price(market):
+    }
+    return base_prices.get(market, 100.0)
+
+
+def run_live_signal_engine():
+    global STREAM_STATUS
+
+@@ -3537,9 +3536,7 @@ def create_checkout_session():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+
+
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
@@ -3535,25 +3554,6 @@ live_signal_thread.start()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
