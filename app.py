@@ -598,6 +598,71 @@ def update_live_candle(market, price):
 
     LIVE_MARKET_STATE[market] = state
 
+def calculate_live_wicks(candle):
+    open_price = safe_float(candle.get("Open"))
+    high_price = safe_float(candle.get("High"))
+    low_price = safe_float(candle.get("Low"))
+    close_price = safe_float(candle.get("Close"))
+
+    upper_wick = high_price - max(open_price, close_price)
+    lower_wick = min(open_price, close_price) - low_price
+
+    return {
+        "upper_wick": round(upper_wick, 4),
+        "lower_wick": round(lower_wick, 4)
+    }
+
+
+def update_live_signal(market):
+    global LIVE_MARKET_STATE
+
+    state = LIVE_MARKET_STATE.get(market, {})
+    current_candle = state.get("current_candle")
+    completed_candles = state.get("completed_candles", [])
+
+    if not current_candle:
+        return
+
+    candles = completed_candles + [current_candle]
+
+    if len(candles) < 20:
+        wick_data = calculate_live_wicks(current_candle)
+        state["upper_wick"] = wick_data["upper_wick"]
+        state["lower_wick"] = wick_data["lower_wick"]
+        LIVE_MARKET_STATE[market] = state
+        return
+
+    df = pd.DataFrame(candles)
+
+    signal_data = evaluate_signal(df)
+    ai_text = build_ai_explanation(signal_data)
+    setup_type = get_setup_type(signal_data)
+    wick_data = calculate_live_wicks(current_candle)
+
+    state.update({
+        "market": market,
+        "open": safe_float(current_candle.get("Open")),
+        "high": safe_float(current_candle.get("High")),
+        "low": safe_float(current_candle.get("Low")),
+        "close": safe_float(current_candle.get("Close")),
+        "upper_wick": wick_data["upper_wick"],
+        "lower_wick": wick_data["lower_wick"],
+        "signal": signal_data.get("signal"),
+        "confidence": signal_data.get("confidence"),
+        "pattern": signal_data.get("pattern"),
+        "breakout": signal_data.get("breakout"),
+        "liquidity_event": signal_data.get("liquidity_event"),
+        "trendline": signal_data.get("trendline"),
+        "strategy_breakdown": signal_data.get("strategy_breakdown"),
+        "confluence_bonus": signal_data.get("confluence_bonus"),
+        "setup_type": setup_type,
+        "ai_summary": ai_text.get("ai_summary"),
+        "trade_thesis": ai_text.get("trade_thesis"),
+        "risk_note": ai_text.get("risk_note")
+    })
+
+    LIVE_MARKET_STATE[market] = state
+
 
 def get_string_from_request(key, default_value):
     body = get_request_body()
