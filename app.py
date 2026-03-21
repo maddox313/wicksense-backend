@@ -551,6 +551,21 @@ def get_float_from_request(key, default_value):
     except Exception:
         return float(default_value)
 
+def get_float_from_request(key, default=None):
+    try:
+        return float(request.args.get(key, default))
+    except:
+        return default
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except Exception:
+        return default
+
 
 def get_string_from_request(key, default_value):
     body = get_request_body()
