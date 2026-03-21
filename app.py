@@ -61,6 +61,13 @@ STREAM_STATUS = {
     "last_tick": None
 }
 
+LIVE_TOP_TRADE_STATE = {
+    "market": None,
+    "signal": None,
+    "setup_type": None,
+    "confidence": 0
+}
+
 # -----------------------------
 # BASIC ROUTES
 # -----------------------------
@@ -698,7 +705,65 @@ def handle_live_signal_change(market, previous_state, new_payload):
         "trendline": new_payload.get("trendline")
     })
 
+def get_current_live_top_trade():
+    best_trade = None
+    best_score = -1
 
+    for market_name, data in LIVE_MARKET_STATE.items():
+        confidence = safe_float(data.get("confidence"), 0.0)
+
+        if confidence > best_score and data.get("signal") not in [None, "Neutral"]:
+            best_score = confidence
+            best_trade = {
+                "market": market_name,
+                "signal": data.get("signal"),
+                "setup_type": data.get("setup_type"),
+                "confidence": confidence
+            }
+
+    return best_trade
+
+
+def check_for_live_top_trade_change():
+    global LIVE_TOP_TRADE_STATE
+
+    current_top_trade = get_current_live_top_trade()
+
+    if not current_top_trade:
+        return
+
+    previous_top_trade = LIVE_TOP_TRADE_STATE.copy()
+
+    if previous_top_trade.get("market") is None:
+        LIVE_TOP_TRADE_STATE = current_top_trade
+        return
+
+    changed = False
+
+    if previous_top_trade.get("market") != current_top_trade.get("market"):
+        changed = True
+    elif previous_top_trade.get("signal") != current_top_trade.get("signal"):
+        changed = True
+    elif previous_top_trade.get("setup_type") != current_top_trade.get("setup_type"):
+        changed = True
+    elif abs(
+        safe_float(previous_top_trade.get("confidence"), 0.0) -
+        safe_float(current_top_trade.get("confidence"), 0.0)
+    ) >= 10:
+        changed = True
+
+    if changed:
+        create_notification({
+            "type": "live_top_trade_change",
+            "title": f"Top trade changed: {current_top_trade.get('market')}",
+            "market": current_top_trade.get("market"),
+            "signal": current_top_trade.get("signal"),
+            "setup_type": current_top_trade.get("setup_type"),
+            "confidence": current_top_trade.get("confidence")
+        })
+
+    LIVE_TOP_TRADE_STATE = current_top_trade
+        
 def update_live_signal(market):
     global LIVE_MARKET_STATE
 
@@ -840,6 +905,7 @@ def run_live_signal_engine():
 
                 update_live_candle(market, new_price)
                 update_live_signal(market)
+                check_for_live_top_trade_change()
 
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
             time.sleep(2)
