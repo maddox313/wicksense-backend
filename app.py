@@ -11,7 +11,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import threading
 import time
-import randomimport 
+import random
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
@@ -676,7 +676,6 @@ def get_simulated_base_price(market):
         "Futures": 520.0
     }
     return base_prices.get(market, 100.0)
-
 
 def run_live_signal_engine():
     global STREAM_STATUS
@@ -3537,9 +3536,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+
 
 
 
