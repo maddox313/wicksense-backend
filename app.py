@@ -695,18 +695,18 @@ def handle_live_signal_change(market, previous_state, new_payload):
 
     cooldown_key = f"signal:{market}"
 
-if can_send_live_notification(cooldown_key, 60):
-    create_notification({
-        "type": "live_signal_change",
-        "title": title,
-        "market": market,
-        "signal": signal,
-        "setup_type": setup_type,
-        "confidence": confidence,
-        "breakout": new_payload.get("breakout"),
-        "liquidity_event": new_payload.get("liquidity_event"),
-        "trendline": new_payload.get("trendline")
-    })
+    if can_send_live_notification(cooldown_key, 60):
+        create_notification({
+            "type": "live_signal_change",
+            "title": title,
+            "market": market,
+            "signal": signal,
+            "setup_type": setup_type,
+            "confidence": confidence,
+            "breakout": new_payload.get("breakout"),
+            "liquidity_event": new_payload.get("liquidity_event"),
+            "trendline": new_payload.get("trendline")
+        })
 
 def get_current_live_top_trade():
     best_trade = None
@@ -758,15 +758,15 @@ def check_for_live_top_trade_change():
     if changed:
         cooldown_key = "top_trade"
 
-if can_send_live_notification(cooldown_key, 90):
-    create_notification({
-        "type": "live_top_trade_change",
-        "title": f"Top trade changed: {current_top_trade.get('market')}",
-        "market": current_top_trade.get("market"),
-        "signal": current_top_trade.get("signal"),
-        "setup_type": current_top_trade.get("setup_type"),
-        "confidence": current_top_trade.get("confidence")
-    })
+        if can_send_live_notification(cooldown_key, 90):
+            create_notification({
+                "type": "live_top_trade_change",
+                "title": f"Top trade changed: {current_top_trade.get('market')}",
+                "market": current_top_trade.get("market"),
+                "signal": current_top_trade.get("signal"),
+                "setup_type": current_top_trade.get("setup_type"),
+                "confidence": current_top_trade.get("confidence")
+            })
 
     LIVE_TOP_TRADE_STATE = current_top_trade
         
