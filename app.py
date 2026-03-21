@@ -566,6 +566,38 @@ def safe_float(value, default=0.0):
     except Exception:
         return default
 
+def update_live_candle(market, price):
+    global LIVE_MARKET_STATE
+
+    state = LIVE_MARKET_STATE.get(market, {})
+    now = datetime.utcnow()
+    minute_key = now.strftime("%Y-%m-%d %H:%M")
+
+    current_candle = state.get("current_candle")
+
+    if not current_candle or current_candle.get("minute") != minute_key:
+        if current_candle:
+            completed = state.get("completed_candles", [])
+            completed.append(current_candle)
+            state["completed_candles"] = completed[-50:]
+
+        current_candle = {
+            "minute": minute_key,
+            "Open": float(price),
+            "High": float(price),
+            "Low": float(price),
+            "Close": float(price)
+        }
+    else:
+        current_candle["High"] = max(float(current_candle["High"]), float(price))
+        current_candle["Low"] = min(float(current_candle["Low"]), float(price))
+        current_candle["Close"] = float(price)
+
+    state["current_candle"] = current_candle
+    state["last_updated"] = now.isoformat() + "Z"
+
+    LIVE_MARKET_STATE[market] = state
+
 
 def get_string_from_request(key, default_value):
     body = get_request_body()
