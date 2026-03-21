@@ -727,32 +727,32 @@ def update_live_signal(market):
     wick_data = calculate_live_wicks(current_candle)
 
     new_payload = {
-    "market": market,
-    "open": safe_float(current_candle.get("Open")),
-    "high": safe_float(current_candle.get("High")),
-    "low": safe_float(current_candle.get("Low")),
-    "close": safe_float(current_candle.get("Close")),
-    "upper_wick": wick_data["upper_wick"],
-    "lower_wick": wick_data["lower_wick"],
-    "signal": signal_data.get("signal"),
-    "confidence": signal_data.get("confidence"),
-    "pattern": signal_data.get("pattern"),
-    "breakout": signal_data.get("breakout"),
-    "liquidity_event": signal_data.get("liquidity_event"),
-    "trendline": signal_data.get("trendline"),
-    "strategy_breakdown": signal_data.get("strategy_breakdown"),
-    "confluence_bonus": signal_data.get("confluence_bonus"),
-    "setup_type": setup_type,
-    "ai_summary": ai_text.get("ai_summary"),
-    "trade_thesis": ai_text.get("trade_thesis"),
-    "risk_note": ai_text.get("risk_note")
-}
+        "market": market,
+        "open": safe_float(current_candle.get("Open")),
+        "high": safe_float(current_candle.get("High")),
+        "low": safe_float(current_candle.get("Low")),
+        "close": safe_float(current_candle.get("Close")),
+        "upper_wick": wick_data["upper_wick"],
+        "lower_wick": wick_data["lower_wick"],
+        "signal": signal_data.get("signal"),
+        "confidence": signal_data.get("confidence"),
+        "pattern": signal_data.get("pattern"),
+        "breakout": signal_data.get("breakout"),
+        "liquidity_event": signal_data.get("liquidity_event"),
+        "trendline": signal_data.get("trendline"),
+        "strategy_breakdown": signal_data.get("strategy_breakdown"),
+        "confluence_bonus": signal_data.get("confluence_bonus"),
+        "setup_type": setup_type,
+        "ai_summary": ai_text.get("ai_summary"),
+        "trade_thesis": ai_text.get("trade_thesis"),
+        "risk_note": ai_text.get("risk_note")
+    }
 
-state.update(new_payload)
-LIVE_MARKET_STATE[market] = state
+    state.update(new_payload)
+    LIVE_MARKET_STATE[market] = state
 
-if has_live_signal_changed(previous_state, new_payload):
-    handle_live_signal_change(market, previous_state, new_payload)
+    if has_live_signal_changed(previous_state, new_payload):
+        handle_live_signal_change(market, previous_state, new_payload)
 
 def get_simulated_base_price(market):
     base_prices = {
