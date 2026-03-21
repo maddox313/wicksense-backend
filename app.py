@@ -9,6 +9,9 @@ from datetime import datetime
 import stripe
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+import threading
+import time
+import randomimport 
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 
@@ -662,6 +665,57 @@ def update_live_signal(market):
     })
 
     LIVE_MARKET_STATE[market] = state
+
+def get_simulated_base_price(market):
+    base_prices = {
+        "NASDAQ": 450.0,
+        "DowJones": 390.0,
+        "Gold": 2300.0,
+        "NaturalGas": 2.5,
+        "Forex": 1.08,
+        "Futures": 520.0
+    }
+    return base_prices.get(market, 100.0)
+
+
+def run_live_signal_engine():
+    global STREAM_STATUS
+
+    STREAM_STATUS["status"] = "connected"
+    STREAM_STATUS["provider"] = "simulated"
+
+    while True:
+        try:
+            for market in LIVE_MARKET_STATE.keys():
+                state = LIVE_MARKET_STATE.get(market, {})
+                current_candle = state.get("current_candle")
+
+                if current_candle:
+                    base_price = safe_float(current_candle.get("Close"), get_simulated_base_price(market))
+                else:
+                    base_price = get_simulated_base_price(market)
+
+                movement = random.uniform(-0.5, 0.5)
+
+                if market == "Forex":
+                    movement = random.uniform(-0.002, 0.002)
+                elif market == "NaturalGas":
+                    movement = random.uniform(-0.05, 0.05)
+                elif market == "Gold":
+                    movement = random.uniform(-3.0, 3.0)
+
+                new_price = max(base_price + movement, 0.0001)
+
+                update_live_candle(market, new_price)
+                update_live_signal(market)
+
+            STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
+            time.sleep(2)
+
+        except Exception as e:
+            STREAM_STATUS["status"] = "error"
+            STREAM_STATUS["last_error"] = str(e)
+            time.sleep(5)
 
 
 def get_string_from_request(key, default_value):
@@ -3476,6 +3530,12 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
+live_signal_thread = threading.Thread(target=run_live_signal_engine, daemon=True)
+live_signal_thread.start()
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
