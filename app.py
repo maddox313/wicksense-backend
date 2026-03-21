@@ -629,11 +629,81 @@ def calculate_live_wicks(candle):
         "lower_wick": round(lower_wick, 4)
     }
 
+def has_live_signal_changed(previous_state, new_payload):
+    if not previous_state:
+        return False
+
+    previous_signal = previous_state.get("signal")
+    new_signal = new_payload.get("signal")
+
+    previous_setup = previous_state.get("setup_type")
+    new_setup = new_payload.get("setup_type")
+
+    previous_breakout = previous_state.get("breakout")
+    new_breakout = new_payload.get("breakout")
+
+    previous_liquidity = previous_state.get("liquidity_event")
+    new_liquidity = new_payload.get("liquidity_event")
+
+    previous_confidence = safe_float(previous_state.get("confidence"), 0.0)
+    new_confidence = safe_float(new_payload.get("confidence"), 0.0)
+
+    if previous_signal != new_signal:
+        return True
+
+    if previous_setup != new_setup:
+        return True
+
+    if previous_breakout != new_breakout and new_breakout is not None:
+        return True
+
+    if previous_liquidity != new_liquidity and new_liquidity is not None:
+        return True
+
+    if abs(new_confidence - previous_confidence) >= 10:
+        return True
+
+    return False
+
+
+def handle_live_signal_change(market, previous_state, new_payload):
+    title = f"Live signal update: {market}"
+    signal = new_payload.get("signal", "Unknown")
+    setup_type = new_payload.get("setup_type", "Unknown setup")
+    confidence = new_payload.get("confidence", 0)
+
+    if previous_state.get("signal") != new_payload.get("signal"):
+        title = f"{market} signal changed to {signal}"
+    elif previous_state.get("setup_type") != new_payload.get("setup_type"):
+        title = f"{market} setup changed to {setup_type}"
+    elif previous_state.get("breakout") != new_payload.get("breakout") and new_payload.get("breakout"):
+        title = f"{market} breakout detected"
+    elif previous_state.get("liquidity_event") != new_payload.get("liquidity_event") and new_payload.get("liquidity_event"):
+        title = f"{market} liquidity event detected"
+    elif abs(
+        safe_float(new_payload.get("confidence"), 0.0) -
+        safe_float(previous_state.get("confidence"), 0.0)
+    ) >= 10:
+        title = f"{market} confidence changed to {confidence}%"
+
+    create_notification({
+        "type": "live_signal_change",
+        "title": title,
+        "market": market,
+        "signal": signal,
+        "setup_type": setup_type,
+        "confidence": confidence,
+        "breakout": new_payload.get("breakout"),
+        "liquidity_event": new_payload.get("liquidity_event"),
+        "trendline": new_payload.get("trendline")
+    })
+
 
 def update_live_signal(market):
     global LIVE_MARKET_STATE
 
     state = LIVE_MARKET_STATE.get(market, {})
+    previous_state = state.copy()
     current_candle = state.get("current_candle")
     completed_candles = state.get("completed_candles", [])
 
@@ -656,29 +726,33 @@ def update_live_signal(market):
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
 
-    state.update({
-        "market": market,
-        "open": safe_float(current_candle.get("Open")),
-        "high": safe_float(current_candle.get("High")),
-        "low": safe_float(current_candle.get("Low")),
-        "close": safe_float(current_candle.get("Close")),
-        "upper_wick": wick_data["upper_wick"],
-        "lower_wick": wick_data["lower_wick"],
-        "signal": signal_data.get("signal"),
-        "confidence": signal_data.get("confidence"),
-        "pattern": signal_data.get("pattern"),
-        "breakout": signal_data.get("breakout"),
-        "liquidity_event": signal_data.get("liquidity_event"),
-        "trendline": signal_data.get("trendline"),
-        "strategy_breakdown": signal_data.get("strategy_breakdown"),
-        "confluence_bonus": signal_data.get("confluence_bonus"),
-        "setup_type": setup_type,
-        "ai_summary": ai_text.get("ai_summary"),
-        "trade_thesis": ai_text.get("trade_thesis"),
-        "risk_note": ai_text.get("risk_note")
-    })
+    new_payload = {
+    "market": market,
+    "open": safe_float(current_candle.get("Open")),
+    "high": safe_float(current_candle.get("High")),
+    "low": safe_float(current_candle.get("Low")),
+    "close": safe_float(current_candle.get("Close")),
+    "upper_wick": wick_data["upper_wick"],
+    "lower_wick": wick_data["lower_wick"],
+    "signal": signal_data.get("signal"),
+    "confidence": signal_data.get("confidence"),
+    "pattern": signal_data.get("pattern"),
+    "breakout": signal_data.get("breakout"),
+    "liquidity_event": signal_data.get("liquidity_event"),
+    "trendline": signal_data.get("trendline"),
+    "strategy_breakdown": signal_data.get("strategy_breakdown"),
+    "confluence_bonus": signal_data.get("confluence_bonus"),
+    "setup_type": setup_type,
+    "ai_summary": ai_text.get("ai_summary"),
+    "trade_thesis": ai_text.get("trade_thesis"),
+    "risk_note": ai_text.get("risk_note")
+}
 
-    LIVE_MARKET_STATE[market] = state
+state.update(new_payload)
+LIVE_MARKET_STATE[market] = state
+
+if has_live_signal_changed(previous_state, new_payload):
+    handle_live_signal_change(market, previous_state, new_payload)
 
 def get_simulated_base_price(market):
     base_prices = {
