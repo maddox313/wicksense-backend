@@ -12,8 +12,12 @@ from sendgrid.helpers.mail import Mail
 import threading
 import time
 import random
+import websocket
+import json
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+
+TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -935,6 +939,84 @@ def run_live_signal_engine():
             STREAM_STATUS["status"] = "error"
             STREAM_STATUS["last_error"] = str(e)
             time.sleep(5)
+
+def get_twelvedata_symbol(market):
+    mapping = {
+        "NASDAQ": "QQQ",
+        "DowJones": "DIA",
+        "Gold": "XAU/USD",
+        "NaturalGas": "NG",
+        "Forex": "EUR/USD",
+        "Futures": "ES"
+    }
+    return mapping.get(market)
+
+def start_twelvedata_stream():
+    global STREAM_STATUS
+
+    def on_message(ws, message):
+        try:
+            data = json.loads(message)
+
+            if "event" in data and data["event"] == "price":
+                symbol = data.get("symbol")
+                price = safe_float(data.get("price"))
+
+                market_map = {
+                    "QQQ": "NASDAQ",
+                    "DIA": "DowJones",
+                    "XAU/USD": "Gold",
+                    "NG": "NaturalGas",
+                    "EUR/USD": "Forex",
+                    "ES": "Futures"
+                }
+
+                market = market_map.get(symbol)
+
+                if market and price:
+                    update_live_candle(market, price)
+                    update_live_signal(market)
+                    check_for_live_top_trade_change()
+
+                    STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
+
+        except Exception as e:
+            print(f"WebSocket message error: {e}")
+
+    def on_open(ws):
+        STREAM_STATUS["status"] = "connected"
+        STREAM_STATUS["provider"] = "twelvedata"
+
+        symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "ES"]
+
+        subscribe_message = {
+            "action": "subscribe",
+            "params": {
+                "symbols": ",".join(symbols)
+            }
+        }
+
+        ws.send(json.dumps(subscribe_message))
+
+    def on_error(ws, error):
+        STREAM_STATUS["status"] = "error"
+        print(f"WebSocket error: {error}")
+
+    def on_close(ws, close_status_code, close_msg):
+        STREAM_STATUS["status"] = "disconnected"
+        print("WebSocket closed")
+
+    ws_url = f"wss://ws.twelvedata.com/v1/quotes/price?apikey={TWELVE_DATA_API_KEY}"
+
+    ws = websocket.WebSocketApp(
+        ws_url,
+        on_message=on_message,
+        on_open=on_open,
+        on_error=on_error,
+        on_close=on_close
+    )
+
+    ws.run_forever()
 
 
 def get_string_from_request(key, default_value):
@@ -3843,7 +3925,7 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
-live_signal_thread = threading.Thread(target=run_live_signal_engine, daemon=True)
+live_signal_thread = threading.Thread(target=start_twelvedata_stream, daemon=True)
 live_signal_thread.start()
 
 if __name__ == "__main__":
