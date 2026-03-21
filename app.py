@@ -691,6 +691,51 @@ def get_simulated_base_price(market):
     }
     return base_prices.get(market, 100.0)
 
+def seed_live_market_state():
+    global LIVE_MARKET_STATE
+
+    for market in LIVE_MARKET_STATE.keys():
+        base_price = get_simulated_base_price(market)
+        completed_candles = []
+
+        for i in range(25):
+            if market == "Forex":
+                drift = random.uniform(-0.003, 0.003)
+                spread = random.uniform(0.0005, 0.002)
+            elif market == "NaturalGas":
+                drift = random.uniform(-0.08, 0.08)
+                spread = random.uniform(0.02, 0.08)
+            elif market == "Gold":
+                drift = random.uniform(-8.0, 8.0)
+                spread = random.uniform(1.5, 5.0)
+            else:
+                drift = random.uniform(-2.0, 2.0)
+                spread = random.uniform(0.5, 2.5)
+
+            open_price = max(base_price + drift, 0.0001)
+            close_price = max(open_price + random.uniform(-spread, spread), 0.0001)
+            high_price = max(open_price, close_price) + abs(random.uniform(0, spread))
+            low_price = min(open_price, close_price) - abs(random.uniform(0, spread))
+            low_price = max(low_price, 0.0001)
+
+            completed_candles.append({
+                "minute": f"seed-{i}",
+                "Open": round(open_price, 6),
+                "High": round(high_price, 6),
+                "Low": round(low_price, 6),
+                "Close": round(close_price, 6)
+            })
+
+            base_price = close_price
+
+        LIVE_MARKET_STATE[market] = {
+            "completed_candles": completed_candles,
+            "current_candle": completed_candles[-1].copy(),
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        }
+
+        update_live_signal(market)
+
 def run_live_signal_engine():
     global STREAM_STATUS
 
