@@ -2896,31 +2896,39 @@ def live_top_trade():
         best_trade = None
         best_score = -1
 
-        for market_name, data in LIVE_MARKET_STATE.items():
-            confidence = safe_float(data.get("confidence"), 0.0)
+           for market_name, data in LIVE_MARKET_STATE.items():
+        confidence = safe_float(data.get("confidence"), 0.0)
+        high = safe_float(data.get("high"), 0.0)
+        low = safe_float(data.get("low"), 0.0)
 
-            if confidence > best_score:
-                best_score = confidence
-                best_trade = {
-                    "market": market_name,
-                    "last_updated": data.get("last_updated"),
-                    "open": data.get("open"),
-                    "high": data.get("high"),
-                    "low": data.get("low"),
-                    "close": data.get("close"),
-                    "upper_wick": data.get("upper_wick"),
-                    "lower_wick": data.get("lower_wick"),
-                    "signal": data.get("signal"),
-                    "confidence": data.get("confidence"),
-                    "pattern": data.get("pattern"),
-                    "breakout": data.get("breakout"),
-                    "liquidity_event": data.get("liquidity_event"),
-                    "trendline": data.get("trendline"),
-                    "setup_type": data.get("setup_type"),
-                    "ai_summary": data.get("ai_summary"),
-                    "trade_thesis": data.get("trade_thesis"),
-                    "risk_note": data.get("risk_note")
-                }
+        volatility = abs(high - low)
+        score = confidence + (volatility * 10)
+
+        if data.get("signal") == "HOLD":
+            score -= 20
+
+        if score > best_score:
+            best_score = score
+            best_trade = {
+                "market": market_name,
+                "last_updated": data.get("last_updated"),
+                "open": data.get("open"),
+                "high": data.get("high"),
+                "low": data.get("low"),
+                "close": data.get("close"),
+                "upper_wick": data.get("upper_wick"),
+                "lower_wick": data.get("lower_wick"),
+                "signal": data.get("signal"),
+                "confidence": data.get("confidence"),
+                "pattern": data.get("pattern"),
+                "breakout": data.get("breakout"),
+                "liquidity_event": data.get("liquidity_event"),
+                "trendline": data.get("trendline"),
+                "setup_type": data.get("setup_type"),
+                "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
+                "risk_note": data.get("risk_note")
+            }
 
         return jsonify(best_trade or {})
 
