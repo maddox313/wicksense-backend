@@ -578,6 +578,21 @@ def get_market_session():
         "utc_hour": hour
     }
 
+def get_session_score():
+    session_data = get_market_session()
+    session_label = session_data.get("session_label", "")
+
+    if session_label == "London/NYSE Overlap":
+        return 15
+    elif session_label in ["NYSE", "London"]:
+        return 10
+    elif session_label in ["Tokyo", "Sydney/Tokyo Overlap", "Tokyo/London Overlap"]:
+        return 6
+    elif session_label == "Sydney":
+        return 3
+    else:
+        return -5
+
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
@@ -848,7 +863,10 @@ def update_live_signal(market):
     if open_price > 0 and range_size > (open_price * 0.002):
         confidence += 10
 
-    confidence = min(confidence, 95)
+        session_score = get_session_score()
+    confidence += session_score
+
+    confidence = max(0, min(confidence, 95))
 
     signal_data = {
         "signal": signal,
@@ -865,6 +883,7 @@ def update_live_signal(market):
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
 
+    session_data = get_market_session()
     new_payload = {
         "market": market,
         "open": safe_float(current_candle.get("Open")),
@@ -885,6 +904,10 @@ def update_live_signal(market):
         "ai_summary": ai_text.get("ai_summary"),
         "trade_thesis": ai_text.get("trade_thesis"),
         "risk_note": ai_text.get("risk_note")
+        "session_label": session_data.get("session_label"),
+        "active_sessions": session_data.get("active_sessions"),
+        "liquidity_profile": session_data.get("liquidity_profile"),
+        "utc_hour": session_data.get("utc_hour"),
     }
 
     state.update(new_payload)
