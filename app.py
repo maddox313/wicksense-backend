@@ -577,18 +577,12 @@ def get_market_session():
 
 
 def get_float_from_request(key, default_value):
-body = get_request_body()
-value = body.get(key, default_value)
-try:
-return float(value)
-except Exception:
-return float(default_value)
-
-def get_float_from_request(key, default=None):
+    body = get_request_body()
+    value = body.get(key, default_value)
     try:
-        return float(request.args.get(key, default))
-    except:
-        return default
+        return float(value)
+    except Exception:
+        return float(default_value)
 
 
 def safe_float(value, default=0.0):
@@ -3954,7 +3948,6 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
 
 
 
