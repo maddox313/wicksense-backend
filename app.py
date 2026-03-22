@@ -680,10 +680,11 @@ def has_live_signal_changed(previous_state, new_payload):
 
 
 def handle_live_signal_change(market, previous_state, new_payload):
-    title = f"Live signal update: {market}"
     signal = new_payload.get("signal", "Unknown")
     setup_type = new_payload.get("setup_type", "Unknown setup")
-    confidence = new_payload.get("confidence", 0)
+    confidence = safe_float(new_payload.get("confidence"), 0.0)
+
+    title = f"Live signal update: {market}"
 
     if previous_state.get("signal") != new_payload.get("signal"):
         title = f"{market} signal changed to {signal}"
@@ -693,11 +694,12 @@ def handle_live_signal_change(market, previous_state, new_payload):
         title = f"{market} breakout detected"
     elif previous_state.get("liquidity_event") != new_payload.get("liquidity_event") and new_payload.get("liquidity_event"):
         title = f"{market} liquidity event detected"
+    elif confidence >= 85:
+        title = f"High confidence trade: {market} {signal}"
     elif abs(
-        safe_float(new_payload.get("confidence"), 0.0) -
-        safe_float(previous_state.get("confidence"), 0.0)
+        confidence - safe_float(previous_state.get("confidence"), 0.0)
     ) >= 10:
-        title = f"{market} confidence changed to {confidence}%"
+        title = f"{market} confidence changed to {round(confidence, 2)}%"
 
     cooldown_key = f"signal:{market}"
 
@@ -708,7 +710,7 @@ def handle_live_signal_change(market, previous_state, new_payload):
             "market": market,
             "signal": signal,
             "setup_type": setup_type,
-            "confidence": confidence,
+            "confidence": round(confidence, 2),
             "breakout": new_payload.get("breakout"),
             "liquidity_event": new_payload.get("liquidity_event"),
             "trendline": new_payload.get("trendline")
