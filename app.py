@@ -12,7 +12,10 @@ from sendgrid.helpers.mail import Mail
 import threading
 import time
 import random
-import websocket
+try:
+    import websocket
+except ImportError:
+    websocket = None
 
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
@@ -1029,7 +1032,7 @@ def ensure_live_engine_started():
 
         seed_live_market_state()
 
-        if TWELVE_DATA_API_KEY:
+        if TWELVE_DATA_API_KEY and websocket is not None:
             live_signal_thread = threading.Thread(
                 target=start_twelvedata_stream,
                 daemon=True
