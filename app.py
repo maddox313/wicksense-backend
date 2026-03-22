@@ -2895,8 +2895,8 @@ def live_top_trade():
 
         best_trade = None
         best_score = -1
-
-           for market_name, data in LIVE_MARKET_STATE.items():
+        
+    for market_name, data in LIVE_MARKET_STATE.items():
         confidence = safe_float(data.get("confidence"), 0.0)
         high = safe_float(data.get("high"), 0.0)
         low = safe_float(data.get("low"), 0.0)
@@ -2929,7 +2929,6 @@ def live_top_trade():
                 "trade_thesis": data.get("trade_thesis"),
                 "risk_note": data.get("risk_note")
             }
-
         return jsonify(best_trade or {})
 
     except Exception as e:
