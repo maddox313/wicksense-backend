@@ -72,13 +72,18 @@ LIVE_TOP_TRADE_STATE = {
     "confidence": 0
 }
 
+LIVE_NOTIFICATION_COOLDOWNS = {}
+LIVE_ENGINE_STARTED = False
+LIVE_ENGINE_LOCK = threading.Lock()
+
+
 # -----------------------------
 # BASIC ROUTES
 # -----------------------------
 @app.route("/")
 def home():
+    ensure_live_engine_started()
     return "WickSense API is running!"
-
 
 @app.route("/markets")
 def markets():
@@ -572,12 +577,12 @@ def get_market_session():
 
 
 def get_float_from_request(key, default_value):
-    body = get_request_body()
-    value = body.get(key, default_value)
-    try:
-        return float(value)
-    except Exception:
-        return float(default_value)
+body = get_request_body()
+value = body.get(key, default_value)
+try:
+return float(value)
+except Exception:
+return float(default_value)
 
 def get_float_from_request(key, default=None):
     try:
@@ -1018,6 +1023,31 @@ def start_twelvedata_stream():
 
     ws.run_forever()
 
+def ensure_live_engine_started():
+    global LIVE_ENGINE_STARTED
+
+    if LIVE_ENGINE_STARTED:
+        return
+
+    with LIVE_ENGINE_LOCK:
+        if LIVE_ENGINE_STARTED:
+            return
+
+        seed_live_market_state()
+
+        if TWELVE_DATA_API_KEY:
+            live_signal_thread = threading.Thread(
+                target=start_twelvedata_stream,
+                daemon=True
+            )
+        else:
+            live_signal_thread = threading.Thread(
+                target=run_live_signal_engine,
+                daemon=True
+            )
+
+        live_signal_thread.start()
+        LIVE_ENGINE_STARTED = True
 
 def get_string_from_request(key, default_value):
     body = get_request_body()
@@ -1277,16 +1307,6 @@ def record_alert_sent(rule, result):
     }
 
     append_history(ALERT_LOG_FILE, log_item, max_items=2000)
-
-
-def safe_float(value, default=0.0):
-    try:
-        if value is None or value == "":
-            return default
-        return float(value)
-    except Exception:
-        return default
-
 
 def get_today_utc_date_string():
     return datetime.utcnow().strftime("%Y-%m-%d")
@@ -2772,6 +2792,7 @@ def market_script():
 @app.route("/stream-status", methods=["GET"])
 def stream_status():
     try:
+        ensure_live_engine_started()
         return jsonify(STREAM_STATUS)
     except Exception as e:
         return jsonify({
@@ -2783,6 +2804,8 @@ def stream_status():
 @app.route("/live-signals", methods=["GET"])
 def live_signals():
     try:
+        ensure_live_engine_started()
+
         markets = []
 
         for market_name, data in LIVE_MARKET_STATE.items():
@@ -2826,6 +2849,8 @@ def live_signals():
 @app.route("/live-top-trade", methods=["GET"])
 def live_top_trade():
     try:
+        ensure_live_engine_started()
+
         best_trade = None
         best_score = -1
 
@@ -2862,7 +2887,6 @@ def live_top_trade():
             "error": "Failed to load live top trade",
             "details": str(e)
         }), 500
-
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
@@ -3926,14 +3950,10 @@ def create_checkout_session():
         }), 500
 
 if __name__ == "__main__":
-    seed_live_market_state()
-
-    live_signal_thread = threading.Thread(target=start_twelvedata_stream, daemon=True)
-    live_signal_thread.start()
+    ensure_live_engine_started()
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
 
 
 
