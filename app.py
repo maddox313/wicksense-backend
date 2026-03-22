@@ -813,7 +813,47 @@ def update_live_signal(market):
 
     df = pd.DataFrame(candles)
 
-    signal_data = evaluate_signal(df)
+    candle = state.get("current_candle", {})
+
+open_price = safe_float(candle.get("Open"))
+high = safe_float(candle.get("High"))
+low = safe_float(candle.get("Low"))
+close = safe_float(candle.get("Close"))
+
+body = abs(close - open_price)
+upper_wick = high - max(open_price, close)
+lower_wick = min(open_price, close) - low
+
+# --- Wick strength ---
+upper_wick_strength = upper_wick / (body + 0.0001)
+lower_wick_strength = lower_wick / (body + 0.0001)
+
+# --- Signal logic ---
+signal = "HOLD"
+confidence = 50
+
+# Bullish rejection (buyers stepping in)
+if lower_wick_strength > 1.5 and close > open_price:
+    signal = "BUY"
+    confidence += 25
+
+# Bearish rejection (sellers stepping in)
+elif upper_wick_strength > 1.5 and close < open_price:
+    signal = "SELL"
+    confidence += 25
+
+# --- Trend bias (simple) ---
+if close > open_price:
+    confidence += 10
+else:
+    confidence += 5
+
+# --- Volatility boost ---
+range_size = high - low
+if range_size > (open_price * 0.002):
+    confidence += 10
+
+confidence = min(confidence, 95)
     ai_text = build_ai_explanation(signal_data)
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
