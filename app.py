@@ -854,7 +854,7 @@ def update_live_signal(market):
         signal = "SELL"
         confidence += 25
 
-        if close > open_price:
+    if close > open_price:
         confidence += 10
     else:
         confidence += 5
@@ -910,6 +910,7 @@ def update_live_signal(market):
         "liquidity_profile": session_data.get("liquidity_profile"),
         "utc_hour": session_data.get("utc_hour"),
     }
+    
     state.update(new_payload)
     LIVE_MARKET_STATE[market] = state
 
