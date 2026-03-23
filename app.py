@@ -854,7 +854,7 @@ def update_live_signal(market):
         signal = "SELL"
         confidence += 25
 
-    if close > open_price:
+        if close > open_price:
         confidence += 10
     else:
         confidence += 5
@@ -863,7 +863,7 @@ def update_live_signal(market):
     if open_price > 0 and range_size > (open_price * 0.002):
         confidence += 10
 
-        session_score = get_session_score()
+    session_score = get_session_score()
     confidence += session_score
 
     confidence = max(0, min(confidence, 95))
@@ -884,6 +884,7 @@ def update_live_signal(market):
     wick_data = calculate_live_wicks(current_candle)
 
     session_data = get_market_session()
+
     new_payload = {
         "market": market,
         "open": safe_float(current_candle.get("Open")),
@@ -903,13 +904,12 @@ def update_live_signal(market):
         "setup_type": setup_type,
         "ai_summary": ai_text.get("ai_summary"),
         "trade_thesis": ai_text.get("trade_thesis"),
-        "risk_note": ai_text.get("risk_note")
+        "risk_note": ai_text.get("risk_note"),
         "session_label": session_data.get("session_label"),
         "active_sessions": session_data.get("active_sessions"),
         "liquidity_profile": session_data.get("liquidity_profile"),
         "utc_hour": session_data.get("utc_hour"),
     }
-
     state.update(new_payload)
     LIVE_MARKET_STATE[market] = state
 
