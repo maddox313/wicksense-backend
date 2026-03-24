@@ -3344,9 +3344,14 @@ def scan_markets_route():
 
 @app.route("/test-sms", methods=["GET"])
 def test_sms():
-    send_sms_alert("Test message from WickSense 🚀")
-    return jsonify({"success": True})
-
+    try:
+        send_sms_alert("Test message from WickSense test route")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 # -----------------------------
 # SIGNAL
