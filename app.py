@@ -1259,6 +1259,32 @@ def create_notification(notification):
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
 
+def send_sms_alert(message_text):
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_number = os.environ.get("TWILIO_FROM_NUMBER")
+    to_number = os.environ.get("TWILIO_TO_NUMBER")
+
+    if not account_sid or not auth_token or not from_number or not to_number:
+        raise ValueError("Missing Twilio environment variables")
+
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+
+        message = client.messages.create(
+            body=message_text,
+            from_=from_number,
+            to=to_number
+        )
+
+        print(f"SMS sent: {message.sid}")
+        return message.sid
+
+    except Exception as e:
+        print(f"SMS failed: {e}")
+        raise
+
 
 def find_journal_entry(entry_id):
     journal = load_history(TRADE_JOURNAL_FILE)
