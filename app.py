@@ -882,6 +882,7 @@ def update_live_signal(market):
     ai_text = build_ai_explanation(signal_data)
     strategy_data = build_strategy_engine_output(df, signal_data)
     strategy_visual_data = build_strategy_visual_output(df, signal_data)
+    strategy_timing_data = build_strategy_timing_output(df, signal_data)
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
 
@@ -920,6 +921,10 @@ def update_live_signal(market):
         "breakout_zone": strategy_visual_data.get("breakout_zone"),
         "entry_zone": strategy_visual_data.get("entry_zone"),
         "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
+        "entry_timing": strategy_timing_data["entry_timing"],
+        "confirmation_state": strategy_timing_data["confirmation_state"],
+        "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
+        "execution_guidance": strategy_timing_data["execution_guidance"],
     }
     
     state.update(new_payload)
@@ -2280,6 +2285,75 @@ def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
         "strategy_visual_bias": strategy_visual_bias
     }
 
+def build_strategy_timing_output(df: pd.DataFrame, signal_data: dict):
+    df = add_indicators(df.copy())
+    recent = df.tail(5)
+
+    signal = signal_data.get("signal", "Neutral")
+    confidence = safe_float(signal_data.get("confidence"), 0.0)
+    breakout = signal_data.get("breakout")
+    liquidity_event = signal_data.get("liquidity_event")
+
+    last = recent.iloc[-1]
+    prev = recent.iloc[-2] if len(recent) > 1 else last
+
+    close = safe_float(last.get("Close"))
+    prev_close = safe_float(prev.get("Close"))
+
+    entry_timing = "Wait"
+    confirmation_state = "Weak"
+    execution_guidance = "Wait for a clearer setup."
+    trade_readiness_score = 50
+
+    if confidence >= 80:
+        confirmation_state = "Confirmed"
+        trade_readiness_score += 25
+    elif confidence >= 65:
+        confirmation_state = "Partial"
+        trade_readiness_score += 10
+
+    if signal == "BUY" and close > prev_close:
+        trade_readiness_score += 10
+    elif signal == "SELL" and close < prev_close:
+        trade_readiness_score += 10
+
+    if breakout == "Bullish Breakout":
+        entry_timing = "Wait for Retest"
+        execution_guidance = "Wait for price to retest breakout level before entering long."
+        trade_readiness_score += 10
+
+    elif breakout == "Bearish Breakdown":
+        entry_timing = "Wait for Retest"
+        execution_guidance = "Wait for price to retest breakdown level before entering short."
+        trade_readiness_score += 10
+
+    elif liquidity_event == "Bullish Liquidity Sweep":
+        entry_timing = "Wait for Confirmation"
+        execution_guidance = "Wait for bullish confirmation after liquidity sweep before entering."
+
+    elif liquidity_event == "Bearish Liquidity Sweep":
+        entry_timing = "Wait for Confirmation"
+        execution_guidance = "Wait for bearish confirmation after liquidity sweep before entering."
+
+    elif confidence >= 85 and signal in ["BUY", "SELL"]:
+        entry_timing = "Enter Now"
+        execution_guidance = "Conditions are strong. Consider entering with proper risk management."
+        trade_readiness_score += 15
+
+    if confidence < 55:
+        entry_timing = "Avoid Trade"
+        execution_guidance = "Low confidence setup. Avoid trading."
+        trade_readiness_score -= 20
+
+    trade_readiness_score = max(0, min(100, trade_readiness_score))
+
+    return {
+        "entry_timing": entry_timing,
+        "confirmation_state": confirmation_state,
+        "trade_readiness_score": trade_readiness_score,
+        "execution_guidance": execution_guidance
+    }
+
 
 def send_signal_email(
     market,
@@ -3566,6 +3640,7 @@ def signal():
         signal_data = evaluate_signal(df)
         strategy_data = build_strategy_engine_output(df, signal_data)
         strategy_visual_data = build_strategy_visual_output(df, signal_data)
+        strategy_timing_data = build_strategy_timing_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
@@ -3617,6 +3692,11 @@ def signal():
             "breakout_zone": strategy_visual_data["breakout_zone"],
             "entry_zone": strategy_visual_data["entry_zone"],
             "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
+            "entry_timing": strategy_timing_data["entry_timing"],
+            "confirmation_state": strategy_timing_data["confirmation_state"],
+            "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
+            "execution_guidance": strategy_timing_data["execution_guidance"],
+            
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -3832,6 +3912,7 @@ def tradeplan():
         signal_data = evaluate_signal(df)
         strategy_data = build_strategy_engine_output(df, signal_data)
         strategy_visual_data = build_strategy_visual_output(df, signal_data)
+        strategy_timing_data = build_strategy_timing_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
@@ -3951,6 +4032,10 @@ def tradeplan():
             "breakout_zone": strategy_visual_data["breakout_zone"],
             "entry_zone": strategy_visual_data["entry_zone"],
             "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
+            "entry_timing": strategy_timing_data["entry_timing"],
+            "confirmation_state": strategy_timing_data["confirmation_state"],
+            "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
+            "execution_guidance": strategy_timing_data["execution_guidance"],
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
