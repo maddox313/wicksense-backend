@@ -3257,7 +3257,7 @@ def live_signals():
             "error": "Failed to load live signals",
             "details": str(e)
         }), 500
-
+        
 @app.route("/live-top-trade", methods=["GET"])
 def live_top_trade():
     try:
