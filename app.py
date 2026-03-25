@@ -3181,7 +3181,6 @@ def stream_status():
             "details": str(e)
         }), 500
 
-
 @app.route("/live-signals", methods=["GET"])
 def live_signals():
     try:
