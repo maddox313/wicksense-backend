@@ -3211,14 +3211,38 @@ def live_signals():
                 "setup_type": data.get("setup_type"),
                 "ai_summary": data.get("ai_summary"),
                 "trade_thesis": data.get("trade_thesis"),
-                "risk_note": data.get("risk_note")
+                "risk_note": data.get("risk_note"),
+
+                "strategy_recommendation": data.get("strategy_recommendation"),
+                "strategy_reason": data.get("strategy_reason"),
+                "suggested_action": data.get("suggested_action"),
+                "support_levels": data.get("support_levels"),
+                "resistance_levels": data.get("resistance_levels"),
+
+                "trendline_points": data.get("trendline_points"),
+                "breakout_zone": data.get("breakout_zone"),
+                "entry_zone": data.get("entry_zone"),
+                "strategy_visual_bias": data.get("strategy_visual_bias"),
+
+                "entry_timing": data.get("entry_timing"),
+                "confirmation_state": data.get("confirmation_state"),
+                "trade_readiness_score": data.get("trade_readiness_score"),
+                "execution_guidance": data.get("execution_guidance"),
+
+                "session_label": data.get("session_label"),
+                "active_sessions": data.get("active_sessions"),
+                "liquidity_profile": data.get("liquidity_profile"),
+                "utc_hour": data.get("utc_hour")
             }
             markets.append(market_payload)
 
         if not is_pro:
             for m in markets:
-                m["execution_guidance"] = "Upgrade to Pro for real-time insights"
                 m["confidence"] = None
+                m["execution_guidance"] = "Upgrade to Pro for real-time insights"
+                m["trade_readiness_score"] = None
+                m["entry_timing"] = "Upgrade Required"
+                m["confirmation_state"] = "Upgrade Required"
             markets = markets[:2]
 
         return jsonify({
@@ -3234,6 +3258,7 @@ def live_signals():
             "error": "Failed to load live signals",
             "details": str(e)
         }), 500
+
 @app.route("/live-top-trade", methods=["GET"])
 def live_top_trade():
     try:
