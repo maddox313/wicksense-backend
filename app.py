@@ -4337,46 +4337,8 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
-@app.route("/stripe-webhook", methods=["POST"])
-def stripe_webhook():
-    payload = request.data
-    sig_header = request.headers.get("Stripe-Signature")
-    endpoint_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
-
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
-    except Exception as e:
-        print("Webhook signature verification failed:", str(e))
-        return "", 400
-
-    # Handle successful payment
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-
-        customer_email = session.get("customer_email")
-
-        if customer_email:
-            print(f"Upgrading user to PRO: {customer_email}")
-
-            upgrade_user_to_pro(customer_email)
-
-    return "", 200
-
 if __name__ == "__main__":
     ensure_live_engine_started()
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-if __name__ == "__main__":
-    ensure_live_engine_started()
-
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
-
-
-
