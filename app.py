@@ -880,6 +880,7 @@ def update_live_signal(market):
     }
 
     ai_text = build_ai_explanation(signal_data)
+    strategy_data = build_strategy_engine_output(df, signal_data)
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
 
@@ -909,6 +910,11 @@ def update_live_signal(market):
         "active_sessions": session_data.get("active_sessions"),
         "liquidity_profile": session_data.get("liquidity_profile"),
         "utc_hour": session_data.get("utc_hour"),
+        "support_levels": strategy_data.get("support_levels"),
+        "resistance_levels": strategy_data.get("resistance_levels"),
+        "strategy_recommendation": strategy_data.get("strategy_recommendation"),
+        "strategy_reason": strategy_data.get("strategy_reason"),
+        "suggested_action": strategy_data.get("suggested_action"),
     }
     
     state.update(new_payload)
@@ -2108,6 +2114,75 @@ def get_setup_type(signal_data):
             return "Bearish Confluence Setup"
 
     return "Neutral / No Clear Setup"
+
+def build_strategy_engine_output(df: pd.DataFrame, signal_data: dict):
+    df = add_indicators(df.copy())
+    recent = df.tail(20)
+
+    support_candidates = recent["Low"].nsmallest(3).tolist()
+    resistance_candidates = recent["High"].nlargest(3).tolist()
+
+    support_levels = sorted(list({round(float(x), 4) for x in support_candidates}))
+    resistance_levels = sorted(list({round(float(x), 4) for x in resistance_candidates}), reverse=True)
+
+    signal = signal_data.get("signal", "Neutral")
+    breakout = signal_data.get("breakout")
+    liquidity_event = signal_data.get("liquidity_event")
+    trendline = signal_data.get("trendline")
+    pattern = signal_data.get("pattern")
+    confidence = safe_float(signal_data.get("confidence"), 0.0)
+
+    strategy_recommendation = "No Clear Setup"
+    strategy_reason = "Market conditions are mixed."
+    suggested_action = "Wait for stronger confirmation."
+
+    if breakout == "Bullish Breakout":
+        strategy_recommendation = "Breakout"
+        strategy_reason = "Price is breaking above resistance with bullish confirmation."
+        suggested_action = "Wait for a breakout hold or retest above resistance, then look for a long entry."
+
+    elif breakout == "Bearish Breakdown":
+        strategy_recommendation = "Breakout"
+        strategy_reason = "Price is breaking below support with bearish confirmation."
+        suggested_action = "Wait for a breakdown hold or retest below support, then look for a short entry."
+
+    elif trendline == "Rising Trendline Support" and signal == "Bullish":
+        strategy_recommendation = "Trend Continuation"
+        strategy_reason = "Bullish structure is holding near rising trendline support."
+        suggested_action = "Look for continuation entries on trendline support reactions."
+
+    elif trendline == "Falling Trendline Resistance" and signal == "Bearish":
+        strategy_recommendation = "Trend Continuation"
+        strategy_reason = "Bearish structure is holding near falling trendline resistance."
+        suggested_action = "Look for continuation entries on trendline resistance rejection."
+
+    elif liquidity_event == "Bullish Liquidity Sweep":
+        strategy_recommendation = "Reversal"
+        strategy_reason = "Liquidity below support was swept and buyers reclaimed price."
+        suggested_action = "Look for long entries if reclaimed support continues to hold."
+
+    elif liquidity_event == "Bearish Liquidity Sweep":
+        strategy_recommendation = "Reversal"
+        strategy_reason = "Liquidity above resistance was swept and sellers pushed price back down."
+        suggested_action = "Look for short entries if reclaimed resistance continues to reject price."
+
+    elif pattern in ["Hammer", "Shooting Star", "Pin Bar"] and confidence >= 70:
+        strategy_recommendation = "Reversal"
+        strategy_reason = f"{pattern} pattern suggests rejection from an important price area."
+        suggested_action = "Wait for confirmation on the next candle before entering."
+
+    elif signal in ["Bullish", "Bearish"] and confidence >= 65:
+        strategy_recommendation = "Range Trade"
+        strategy_reason = "Market is showing directional bias near a key support/resistance region."
+        suggested_action = "Trade toward the next key level with defined risk."
+
+    return {
+        "support_levels": support_levels,
+        "resistance_levels": resistance_levels,
+        "strategy_recommendation": strategy_recommendation,
+        "strategy_reason": strategy_reason,
+        "suggested_action": suggested_action
+    }
 
 
 def send_signal_email(
@@ -3393,6 +3468,7 @@ def signal():
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
+        strategy_data = build_strategy_engine_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
@@ -3434,7 +3510,12 @@ def signal():
             "session_label": session_data["session_label"],
             "active_sessions": session_data["active_sessions"],
             "liquidity_profile": session_data["liquidity_profile"],
-            "utc_hour": session_data["utc_hour"]
+            "utc_hour": session_data["utc_hour"],
+            "support_levels": strategy_data["support_levels"],
+            "resistance_levels": strategy_data["resistance_levels"],
+            "strategy_recommendation": strategy_data["strategy_recommendation"],
+            "strategy_reason": strategy_data["strategy_reason"],
+            "suggested_action": strategy_data["suggested_action"],
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -3648,6 +3729,7 @@ def tradeplan():
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
+        strategy_data = build_strategy_engine_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
@@ -3757,7 +3839,12 @@ def tradeplan():
             "active_sessions": session_data["active_sessions"],
             "liquidity_profile": session_data["liquidity_profile"],
             "utc_hour": session_data["utc_hour"],
-            "daily_loss_status": daily_loss
+            "daily_loss_status": daily_loss,
+            "support_levels": strategy_data["support_levels"],
+            "resistance_levels": strategy_data["resistance_levels"],
+            "strategy_recommendation": strategy_data["strategy_recommendation"],
+            "strategy_reason": strategy_data["strategy_reason"],
+            "suggested_action": strategy_data["suggested_action"],
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
