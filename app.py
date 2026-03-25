@@ -4286,6 +4286,56 @@ def stripe_webhook():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    try:
+        body = get_request_body()
+
+        price_id = body.get("price_id")
+        user_id = body.get("user_id")
+        plan = body.get("plan", "pro")
+        success_url = body.get("success_url")
+        cancel_url = body.get("cancel_url")
+
+        if not price_id:
+            return jsonify({"error": "price_id is required"}), 400
+
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+
+        if not success_url:
+            return jsonify({"error": "success_url is required"}), 400
+
+        if not cancel_url:
+            return jsonify({"error": "cancel_url is required"}), 400
+
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[
+                {
+                    "price": price_id,
+                    "quantity": 1
+                }
+            ],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "user_id": user_id,
+                "plan": plan
+            }
+        )
+
+        return jsonify({
+            "url": checkout_session.url,
+            "session_id": checkout_session.id
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to create checkout session",
+            "details": str(e)
+        }), 500
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
@@ -4370,3 +4420,12 @@ def stripe_webhook():
             upgrade_user_to_pro(customer_email)
 
     return "", 200
+
+if __name__ == "__main__":
+    ensure_live_engine_started()
+
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
+
+
