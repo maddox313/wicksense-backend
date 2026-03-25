@@ -881,6 +881,7 @@ def update_live_signal(market):
 
     ai_text = build_ai_explanation(signal_data)
     strategy_data = build_strategy_engine_output(df, signal_data)
+    strategy_visual_data = build_strategy_visual_output(df, signal_data)
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
 
@@ -915,6 +916,10 @@ def update_live_signal(market):
         "strategy_recommendation": strategy_data.get("strategy_recommendation"),
         "strategy_reason": strategy_data.get("strategy_reason"),
         "suggested_action": strategy_data.get("suggested_action"),
+        "trendline_points": strategy_visual_data.get("trendline_points"),
+        "breakout_zone": strategy_visual_data.get("breakout_zone"),
+        "entry_zone": strategy_visual_data.get("entry_zone"),
+        "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
     }
     
     state.update(new_payload)
@@ -2182,6 +2187,97 @@ def build_strategy_engine_output(df: pd.DataFrame, signal_data: dict):
         "strategy_recommendation": strategy_recommendation,
         "strategy_reason": strategy_reason,
         "suggested_action": suggested_action
+    }
+
+def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
+    df = add_indicators(df.copy())
+    recent = df.tail(20).reset_index(drop=True)
+
+    trendline_points = []
+    breakout_zone = None
+    entry_zone = None
+    strategy_visual_bias = "neutral"
+
+    swing_lows = []
+    swing_highs = []
+
+    for idx, row in recent.iterrows():
+        if pd.notna(row.get("SwingLow")):
+            swing_lows.append({
+                "x": int(idx),
+                "y": round(float(row["SwingLow"]), 4)
+            })
+        if pd.notna(row.get("SwingHigh")):
+            swing_highs.append({
+                "x": int(idx),
+                "y": round(float(row["SwingHigh"]), 4)
+            })
+
+    trendline = signal_data.get("trendline")
+    breakout = signal_data.get("breakout")
+    signal = signal_data.get("signal", "Neutral")
+
+    if trendline == "Rising Trendline Support" and len(swing_lows) >= 2:
+        trendline_points = [swing_lows[-2], swing_lows[-1]]
+        strategy_visual_bias = "bullish"
+
+    elif trendline == "Falling Trendline Resistance" and len(swing_highs) >= 2:
+        trendline_points = [swing_highs[-2], swing_highs[-1]]
+        strategy_visual_bias = "bearish"
+
+    latest_close = round(float(recent.iloc[-1]["Close"]), 4)
+    latest_support = round(float(recent.iloc[-1]["Support"]), 4) if pd.notna(recent.iloc[-1]["Support"]) else latest_close
+    latest_resistance = round(float(recent.iloc[-1]["Resistance"]), 4) if pd.notna(recent.iloc[-1]["Resistance"]) else latest_close
+
+    if breakout == "Bullish Breakout":
+        breakout_zone = {
+            "type": "bullish_breakout",
+            "price": latest_resistance,
+            "top": round(latest_resistance * 1.002, 4),
+            "bottom": round(latest_resistance * 0.998, 4)
+        }
+        entry_zone = {
+            "type": "bullish_retest_zone",
+            "top": round(latest_resistance * 1.001, 4),
+            "bottom": round(latest_resistance * 0.999, 4)
+        }
+        strategy_visual_bias = "bullish"
+
+    elif breakout == "Bearish Breakdown":
+        breakout_zone = {
+            "type": "bearish_breakdown",
+            "price": latest_support,
+            "top": round(latest_support * 1.002, 4),
+            "bottom": round(latest_support * 0.998, 4)
+        }
+        entry_zone = {
+            "type": "bearish_retest_zone",
+            "top": round(latest_support * 1.001, 4),
+            "bottom": round(latest_support * 0.999, 4)
+        }
+        strategy_visual_bias = "bearish"
+
+    else:
+        if signal == "Bullish":
+            entry_zone = {
+                "type": "bullish_entry_zone",
+                "top": round(latest_support * 1.003, 4),
+                "bottom": round(latest_support * 0.999, 4)
+            }
+            strategy_visual_bias = "bullish"
+        elif signal == "Bearish":
+            entry_zone = {
+                "type": "bearish_entry_zone",
+                "top": round(latest_resistance * 1.001, 4),
+                "bottom": round(latest_resistance * 0.997, 4)
+            }
+            strategy_visual_bias = "bearish"
+
+    return {
+        "trendline_points": trendline_points,
+        "breakout_zone": breakout_zone,
+        "entry_zone": entry_zone,
+        "strategy_visual_bias": strategy_visual_bias
     }
 
 
@@ -3469,6 +3565,7 @@ def signal():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
         strategy_data = build_strategy_engine_output(df, signal_data)
+        strategy_visual_data = build_strategy_visual_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
@@ -3516,6 +3613,10 @@ def signal():
             "strategy_recommendation": strategy_data["strategy_recommendation"],
             "strategy_reason": strategy_data["strategy_reason"],
             "suggested_action": strategy_data["suggested_action"],
+            "trendline_points": strategy_visual_data["trendline_points"],
+            "breakout_zone": strategy_visual_data["breakout_zone"],
+            "entry_zone": strategy_visual_data["entry_zone"],
+            "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -3730,6 +3831,7 @@ def tradeplan():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
         strategy_data = build_strategy_engine_output(df, signal_data)
+        strategy_visual_data = build_strategy_visual_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
@@ -3845,6 +3947,10 @@ def tradeplan():
             "strategy_recommendation": strategy_data["strategy_recommendation"],
             "strategy_reason": strategy_data["strategy_reason"],
             "suggested_action": strategy_data["suggested_action"],
+            "trendline_points": strategy_visual_data["trendline_points"],
+            "breakout_zone": strategy_visual_data["breakout_zone"],
+            "entry_zone": strategy_visual_data["entry_zone"],
+            "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
