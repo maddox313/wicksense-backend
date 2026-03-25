@@ -1237,7 +1237,27 @@ def append_history(filepath, item, max_items=100):
 
 def ensure_risk_settings_file():
     if not os.path.exists(RISK_SETTINGS_FILE):
-        default_settings = {
+        default_settings = {def is_pro_user(user_id):
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/subscriptions",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            },
+            params={
+                "user_id": f"eq.{user_id}",
+                "status": "eq.active"
+            }
+        )
+
+        data = response.json()
+
+        return len(data) > 0
+
+    except Exception as e:
+        print("Error checking pro status:", str(e))
+        return False
             "max_daily_loss": 500.0,
             "min_confidence_threshold": 70.0,
             "max_risk_percent_per_trade": 2.0,
@@ -1274,6 +1294,28 @@ def create_notification(notification):
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
+
+def is_pro_user(user_id):
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/subscriptions",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            },
+            params={
+                "user_id": f"eq.{user_id}",
+                "status": "eq.active"
+            }
+        )
+
+        data = response.json()
+
+        return len(data) > 0
+
+    except Exception as e:
+        print("Error checking pro status:", str(e))
+        return False
 
 def send_sms_alert(message_text):
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -3145,6 +3187,9 @@ def live_signals():
     try:
         ensure_live_engine_started()
 
+        user_id = request.args.get("user_id")
+        is_pro = is_pro_user(user_id) if user_id else False
+
         markets = []
 
         for market_name, data in LIVE_MARKET_STATE.items():
@@ -3170,6 +3215,12 @@ def live_signals():
             }
             markets.append(market_payload)
 
+        if not is_pro:
+            for m in markets:
+                m["execution_guidance"] = "Upgrade to Pro for real-time insights"
+                m["confidence"] = None
+            markets = markets[:2]
+
         return jsonify({
             "status": STREAM_STATUS.get("status"),
             "provider": STREAM_STATUS.get("provider"),
@@ -3183,7 +3234,6 @@ def live_signals():
             "error": "Failed to load live signals",
             "details": str(e)
         }), 500
-
 @app.route("/live-top-trade", methods=["GET"])
 def live_top_trade():
     try:
