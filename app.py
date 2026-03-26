@@ -85,7 +85,6 @@ LIVE_ENGINE_LOCK = threading.Lock()
 # -----------------------------
 @app.route("/")
 def home():
-    ensure_live_engine_started()
     return "WickSense API is running!"
 
 @app.route("/markets")
