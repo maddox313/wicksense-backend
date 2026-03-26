@@ -38,14 +38,16 @@ ALERT_LOG_FILE = "alert_log.json"
 NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
-MARKET_SYMBOLS = {
-    "Forex": "EUR/USD",
-    "Gold": "XAU/USD",
-    "NaturalGas": "UNG",
-    "NASDAQ": "QQQ",
-    "DowJones": "DIA",
-    "Futures": "SPY"
-}
+def get_twelvedata_symbol(market):
+    mapping = {
+        "NASDAQ": "QQQ",
+        "DowJones": "DIA",
+        "Gold": "XAU/USD",
+        "NaturalGas": "NG",
+        "Forex": "EUR/USD",
+        "Futures": "SPY"
+    }
+    return mapping.get(market)
 
 LIVE_SCAN_CACHE = {
     "last_updated": None,
@@ -1052,13 +1054,13 @@ def start_twelvedata_stream():
                 price = safe_float(data.get("price"))
 
                 market_map = {
-                    "QQQ": "NASDAQ",
-                    "DIA": "DowJones",
-                    "XAU/USD": "Gold",
-                    "NG": "NaturalGas",
-                    "EUR/USD": "Forex",
-                    "SPY": "Futures"
-                }
+    "QQQ": "NASDAQ",
+    "DIA": "DowJones",
+    "XAU/USD": "Gold",
+    "NG": "NaturalGas",
+    "EUR/USD": "Forex",
+    "SPY": "Futures"
+}
 
                 market = market_map.get(symbol)
 
@@ -1077,7 +1079,6 @@ def start_twelvedata_stream():
         STREAM_STATUS["provider"] = "twelvedata"
 
         symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "SPY"]
-
         subscribe_message = {
             "action": "subscribe",
             "params": {
