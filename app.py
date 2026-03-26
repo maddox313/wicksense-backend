@@ -1237,27 +1237,7 @@ def append_history(filepath, item, max_items=100):
 
 def ensure_risk_settings_file():
     if not os.path.exists(RISK_SETTINGS_FILE):
-        default_settings = {def is_pro_user(user_id):
-    try:
-        response = requests.get(
-            f"{SUPABASE_URL}/rest/v1/subscriptions",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            },
-            params={
-                "user_id": f"eq.{user_id}",
-                "status": "eq.active"
-            }
-        )
-
-        data = response.json()
-
-        return len(data) > 0
-
-    except Exception as e:
-        print("Error checking pro status:", str(e))
-        return False
+        default_settings = {
             "max_daily_loss": 500.0,
             "min_confidence_threshold": 70.0,
             "max_risk_percent_per_trade": 2.0,
@@ -1273,11 +1253,33 @@ def load_risk_settings():
     with open(RISK_SETTINGS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 def save_risk_settings(settings):
     settings["updated_at"] = datetime.utcnow().isoformat() + "Z"
     with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
+
+
+def is_pro_user(user_id):
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/subscriptions",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            },
+            params={
+                "user_id": f"eq.{user_id}",
+                "status": "eq.active"
+            },
+            timeout=20
+        )
+
+        data = response.json()
+        return len(data) > 0
+
+    except Exception as e:
+        print("Error checking pro status:", str(e))
+        return False
 
 
 def load_notifications():
@@ -1294,28 +1296,6 @@ def create_notification(notification):
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
-
-def is_pro_user(user_id):
-    try:
-        response = requests.get(
-            f"{SUPABASE_URL}/rest/v1/subscriptions",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            },
-            params={
-                "user_id": f"eq.{user_id}",
-                "status": "eq.active"
-            }
-        )
-
-        data = response.json()
-
-        return len(data) > 0
-
-    except Exception as e:
-        print("Error checking pro status:", str(e))
-        return False
 
 def send_sms_alert(message_text):
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
