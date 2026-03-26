@@ -657,7 +657,7 @@ def calculate_live_wicks(candle):
         "lower_wick": round(lower_wick, 4)
     }
 
-def has_live_signal_changed(previous_state, new_payload):
+def has__changed(previous_state, new_payload):
     if not previous_state:
         return False
 
@@ -3252,12 +3252,13 @@ def live_signals():
             "markets": markets
         })
 
-    except Exception as e:
+        except Exception as e:
         return jsonify({
             "error": "Failed to load live signals",
             "details": str(e)
         }), 500
-        
+
+
 @app.route("/live-top-trade", methods=["GET"])
 def live_top_trade():
     try:
