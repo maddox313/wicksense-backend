@@ -657,7 +657,7 @@ def calculate_live_wicks(candle):
         "lower_wick": round(lower_wick, 4)
     }
 
-def has__changed(previous_state, new_payload):
+def has_live_signal_changed(previous_state, new_payload):
     if not previous_state:
         return False
 
