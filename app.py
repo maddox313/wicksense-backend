@@ -44,7 +44,7 @@ MARKET_SYMBOLS = {
     "NaturalGas": "UNG",
     "NASDAQ": "QQQ",
     "DowJones": "DIA",
-    "Futures": "SPY"
+    "Futures": "ES"
 }
 
 LIVE_SCAN_CACHE = {
