@@ -1253,6 +1253,7 @@ def load_risk_settings():
     with open(RISK_SETTINGS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def save_risk_settings(settings):
     settings["updated_at"] = datetime.utcnow().isoformat() + "Z"
     with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
