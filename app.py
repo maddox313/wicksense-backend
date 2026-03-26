@@ -38,16 +38,14 @@ ALERT_LOG_FILE = "alert_log.json"
 NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
-def get_twelvedata_symbol(market):
-    mapping = {
-        "NASDAQ": "QQQ",
-        "DowJones": "DIA",
-        "Gold": "XAU/USD",
-        "NaturalGas": "NG",
-        "Forex": "EUR/USD",
-        "Futures": "SPY"
-    }
-    return mapping.get(market)
+MARKET_SYMBOLS = {
+    "Forex": "EUR/USD",
+    "Gold": "XAU/USD",
+    "NaturalGas": "UNG",
+    "NASDAQ": "QQQ",
+    "DowJones": "DIA",
+    "Futures": "SPY"
+}
 
 LIVE_SCAN_CACHE = {
     "last_updated": None,
@@ -580,21 +578,6 @@ def get_market_session():
         "utc_hour": hour
     }
 
-def get_session_score():
-    session_data = get_market_session()
-    session_label = session_data.get("session_label", "")
-
-    if session_label == "London/NYSE Overlap":
-        return 15
-    elif session_label in ["NYSE", "London"]:
-        return 10
-    elif session_label in ["Tokyo", "Sydney/Tokyo Overlap", "Tokyo/London Overlap"]:
-        return 6
-    elif session_label == "Sydney":
-        return 3
-    else:
-        return -5
-
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
@@ -697,11 +680,10 @@ def has_live_signal_changed(previous_state, new_payload):
 
 
 def handle_live_signal_change(market, previous_state, new_payload):
+    title = f"Live signal update: {market}"
     signal = new_payload.get("signal", "Unknown")
     setup_type = new_payload.get("setup_type", "Unknown setup")
-    confidence = safe_float(new_payload.get("confidence"), 0.0)
-
-    title = f"Live signal update: {market}"
+    confidence = new_payload.get("confidence", 0)
 
     if previous_state.get("signal") != new_payload.get("signal"):
         title = f"{market} signal changed to {signal}"
@@ -711,12 +693,11 @@ def handle_live_signal_change(market, previous_state, new_payload):
         title = f"{market} breakout detected"
     elif previous_state.get("liquidity_event") != new_payload.get("liquidity_event") and new_payload.get("liquidity_event"):
         title = f"{market} liquidity event detected"
-    elif confidence >= 85:
-        title = f"High confidence trade: {market} {signal}"
     elif abs(
-        confidence - safe_float(previous_state.get("confidence"), 0.0)
+        safe_float(new_payload.get("confidence"), 0.0) -
+        safe_float(previous_state.get("confidence"), 0.0)
     ) >= 10:
-        title = f"{market} confidence changed to {round(confidence, 2)}%"
+        title = f"{market} confidence changed to {confidence}%"
 
     cooldown_key = f"signal:{market}"
 
@@ -727,7 +708,7 @@ def handle_live_signal_change(market, previous_state, new_payload):
             "market": market,
             "signal": signal,
             "setup_type": setup_type,
-            "confidence": round(confidence, 2),
+            "confidence": confidence,
             "breakout": new_payload.get("breakout"),
             "liquidity_event": new_payload.get("liquidity_event"),
             "trendline": new_payload.get("trendline")
@@ -810,6 +791,7 @@ def can_send_live_notification(key, cooldown_seconds=60):
     LIVE_NOTIFICATION_COOLDOWNS[key] = now
     return True
     
+
 def update_live_signal(market):
     global LIVE_MARKET_STATE
 
@@ -846,14 +828,14 @@ def update_live_signal(market):
     upper_wick_strength = upper_wick / (body + 0.0001)
     lower_wick_strength = lower_wick / (body + 0.0001)
 
-    signal = "HOLD"
+    live_signal = "HOLD"
     confidence = 50
 
     if lower_wick_strength > 1.5 and close > open_price:
-        signal = "BUY"
+        live_signal = "BUY"
         confidence += 25
     elif upper_wick_strength > 1.5 and close < open_price:
-        signal = "SELL"
+        live_signal = "SELL"
         confidence += 25
 
     if close > open_price:
@@ -871,14 +853,16 @@ def update_live_signal(market):
     confidence = max(0, min(confidence, 95))
 
     signal_data = {
-        "signal": signal,
+        "signal": live_signal,
         "confidence": confidence,
         "pattern": None,
         "breakout": None,
         "liquidity_event": None,
         "trendline": None,
         "strategy_breakdown": {},
-        "confluence_bonus": 0
+        "confluence_bonus": 0,
+        "support": low,
+        "resistance": high
     }
 
     ai_text = build_ai_explanation(signal_data)
@@ -887,7 +871,6 @@ def update_live_signal(market):
     strategy_timing_data = build_strategy_timing_output(df, signal_data)
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
-
     session_data = get_market_session()
 
     new_payload = {
@@ -923,17 +906,18 @@ def update_live_signal(market):
         "breakout_zone": strategy_visual_data.get("breakout_zone"),
         "entry_zone": strategy_visual_data.get("entry_zone"),
         "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
-        "entry_timing": strategy_timing_data["entry_timing"],
-        "confirmation_state": strategy_timing_data["confirmation_state"],
-        "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
-        "execution_guidance": strategy_timing_data["execution_guidance"],
+        "entry_timing": strategy_timing_data.get("entry_timing"),
+        "confirmation_state": strategy_timing_data.get("confirmation_state"),
+        "trade_readiness_score": strategy_timing_data.get("trade_readiness_score"),
+        "execution_guidance": strategy_timing_data.get("execution_guidance"),
     }
-    
+
     state.update(new_payload)
     LIVE_MARKET_STATE[market] = state
 
     if has_live_signal_changed(previous_state, new_payload):
         handle_live_signal_change(market, previous_state, new_payload)
+
 
 def get_simulated_base_price(market):
     base_prices = {
@@ -1031,6 +1015,7 @@ def run_live_signal_engine():
             STREAM_STATUS["last_error"] = str(e)
             time.sleep(5)
 
+
 def get_twelvedata_symbol(market):
     mapping = {
         "NASDAQ": "QQQ",
@@ -1041,6 +1026,8 @@ def get_twelvedata_symbol(market):
         "Futures": "SPY"
     }
     return mapping.get(market)
+
+
 
 def start_twelvedata_stream():
     global STREAM_STATUS
@@ -1054,13 +1041,13 @@ def start_twelvedata_stream():
                 price = safe_float(data.get("price"))
 
                 market_map = {
-    "QQQ": "NASDAQ",
-    "DIA": "DowJones",
-    "XAU/USD": "Gold",
-    "NG": "NaturalGas",
-    "EUR/USD": "Forex",
-    "SPY": "Futures"
-}
+                    "QQQ": "NASDAQ",
+                    "DIA": "DowJones",
+                    "XAU/USD": "Gold",
+                    "NG": "NaturalGas",
+                    "EUR/USD": "Forex",
+                    "SPY": "Futures"
+                }
 
                 market = market_map.get(symbol)
 
@@ -1068,7 +1055,6 @@ def start_twelvedata_stream():
                     update_live_candle(market, price)
                     update_live_signal(market)
                     check_for_live_top_trade_change()
-
                     STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
 
         except Exception as e:
@@ -1079,6 +1065,7 @@ def start_twelvedata_stream():
         STREAM_STATUS["provider"] = "twelvedata"
 
         symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "SPY"]
+
         subscribe_message = {
             "action": "subscribe",
             "params": {
@@ -1108,6 +1095,8 @@ def start_twelvedata_stream():
 
     ws.run_forever()
 
+
+
 def ensure_live_engine_started():
     global LIVE_ENGINE_STARTED
 
@@ -1133,6 +1122,7 @@ def ensure_live_engine_started():
 
         live_signal_thread.start()
         LIVE_ENGINE_STARTED = True
+
 
 def get_string_from_request(key, default_value):
     body = get_request_body()
@@ -1261,7 +1251,11 @@ def save_risk_settings(settings):
         json.dump(settings, f, indent=2)
 
 
+
 def is_pro_user(user_id):
+    if not user_id:
+        return False
+
     try:
         response = requests.get(
             f"{SUPABASE_URL}/rest/v1/subscriptions",
@@ -1275,14 +1269,35 @@ def is_pro_user(user_id):
             },
             timeout=20
         )
-
+        response.raise_for_status()
         data = response.json()
-        return len(data) > 0
-
+        return isinstance(data, list) and len(data) > 0
     except Exception as e:
         print("Error checking pro status:", str(e))
         return False
 
+
+def send_sms_alert(message_text):
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_number = os.environ.get("TWILIO_FROM_NUMBER")
+    to_number = os.environ.get("TWILIO_TO_NUMBER")
+
+    if not account_sid or not auth_token or not from_number or not to_number:
+        print("SMS skipped: missing Twilio environment variables")
+        return
+
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+        message = client.messages.create(
+            body=message_text,
+            from_=from_number,
+            to=to_number
+        )
+        print(f"SMS sent: {message.sid}")
+    except Exception as e:
+        print(f"SMS failed: {e}")
 
 def load_notifications():
     ensure_history_file(NOTIFICATION_FILE)
@@ -1298,32 +1313,6 @@ def create_notification(notification):
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
-
-def send_sms_alert(message_text):
-    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-    from_number = os.environ.get("TWILIO_FROM_NUMBER")
-    to_number = os.environ.get("TWILIO_TO_NUMBER")
-
-    if not account_sid or not auth_token or not from_number or not to_number:
-        raise ValueError("Missing Twilio environment variables")
-
-    try:
-        from twilio.rest import Client
-        client = Client(account_sid, auth_token)
-
-        message = client.messages.create(
-            body=message_text,
-            from_=from_number,
-            to=to_number
-        )
-
-        print(f"SMS sent: {message.sid}")
-        return message.sid
-
-    except Exception as e:
-        print(f"SMS failed: {e}")
-        raise
 
 
 def find_journal_entry(entry_id):
@@ -2149,6 +2138,9 @@ def get_setup_type(signal_data):
 
     return "Neutral / No Clear Setup"
 
+
+
+
 def build_strategy_engine_output(df: pd.DataFrame, signal_data: dict):
     df = add_indicators(df.copy())
     recent = df.tail(20)
@@ -2174,38 +2166,31 @@ def build_strategy_engine_output(df: pd.DataFrame, signal_data: dict):
         strategy_recommendation = "Breakout"
         strategy_reason = "Price is breaking above resistance with bullish confirmation."
         suggested_action = "Wait for a breakout hold or retest above resistance, then look for a long entry."
-
     elif breakout == "Bearish Breakdown":
         strategy_recommendation = "Breakout"
         strategy_reason = "Price is breaking below support with bearish confirmation."
         suggested_action = "Wait for a breakdown hold or retest below support, then look for a short entry."
-
     elif trendline == "Rising Trendline Support" and signal == "Bullish":
         strategy_recommendation = "Trend Continuation"
         strategy_reason = "Bullish structure is holding near rising trendline support."
         suggested_action = "Look for continuation entries on trendline support reactions."
-
     elif trendline == "Falling Trendline Resistance" and signal == "Bearish":
         strategy_recommendation = "Trend Continuation"
         strategy_reason = "Bearish structure is holding near falling trendline resistance."
         suggested_action = "Look for continuation entries on trendline resistance rejection."
-
     elif liquidity_event == "Bullish Liquidity Sweep":
         strategy_recommendation = "Reversal"
         strategy_reason = "Liquidity below support was swept and buyers reclaimed price."
         suggested_action = "Look for long entries if reclaimed support continues to hold."
-
     elif liquidity_event == "Bearish Liquidity Sweep":
         strategy_recommendation = "Reversal"
         strategy_reason = "Liquidity above resistance was swept and sellers pushed price back down."
         suggested_action = "Look for short entries if reclaimed resistance continues to reject price."
-
     elif pattern in ["Hammer", "Shooting Star", "Pin Bar"] and confidence >= 70:
         strategy_recommendation = "Reversal"
         strategy_reason = f"{pattern} pattern suggests rejection from an important price area."
         suggested_action = "Wait for confirmation on the next candle before entering."
-
-    elif signal in ["Bullish", "Bearish"] and confidence >= 65:
+    elif signal in ["Bullish", "Bearish", "BUY", "SELL"] and confidence >= 65:
         strategy_recommendation = "Range Trade"
         strategy_reason = "Market is showing directional bias near a key support/resistance region."
         suggested_action = "Trade toward the next key level with defined risk."
@@ -2217,6 +2202,7 @@ def build_strategy_engine_output(df: pd.DataFrame, signal_data: dict):
         "strategy_reason": strategy_reason,
         "suggested_action": suggested_action
     }
+
 
 def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
     df = add_indicators(df.copy())
@@ -2249,7 +2235,6 @@ def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
     if trendline == "Rising Trendline Support" and len(swing_lows) >= 2:
         trendline_points = [swing_lows[-2], swing_lows[-1]]
         strategy_visual_bias = "bullish"
-
     elif trendline == "Falling Trendline Resistance" and len(swing_highs) >= 2:
         trendline_points = [swing_highs[-2], swing_highs[-1]]
         strategy_visual_bias = "bearish"
@@ -2271,7 +2256,6 @@ def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
             "bottom": round(latest_resistance * 0.999, 4)
         }
         strategy_visual_bias = "bullish"
-
     elif breakout == "Bearish Breakdown":
         breakout_zone = {
             "type": "bearish_breakdown",
@@ -2285,16 +2269,15 @@ def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
             "bottom": round(latest_support * 0.999, 4)
         }
         strategy_visual_bias = "bearish"
-
     else:
-        if signal == "Bullish":
+        if signal in ["Bullish", "BUY"]:
             entry_zone = {
                 "type": "bullish_entry_zone",
                 "top": round(latest_support * 1.003, 4),
                 "bottom": round(latest_support * 0.999, 4)
             }
             strategy_visual_bias = "bullish"
-        elif signal == "Bearish":
+        elif signal in ["Bearish", "SELL"]:
             entry_zone = {
                 "type": "bearish_entry_zone",
                 "top": round(latest_resistance * 1.001, 4),
@@ -2308,6 +2291,7 @@ def build_strategy_visual_output(df: pd.DataFrame, signal_data: dict):
         "entry_zone": entry_zone,
         "strategy_visual_bias": strategy_visual_bias
     }
+
 
 def build_strategy_timing_output(df: pd.DataFrame, signal_data: dict):
     df = add_indicators(df.copy())
@@ -2336,30 +2320,26 @@ def build_strategy_timing_output(df: pd.DataFrame, signal_data: dict):
         confirmation_state = "Partial"
         trade_readiness_score += 10
 
-    if signal == "BUY" and close > prev_close:
+    if signal in ["BUY", "Bullish"] and close > prev_close:
         trade_readiness_score += 10
-    elif signal == "SELL" and close < prev_close:
+    elif signal in ["SELL", "Bearish"] and close < prev_close:
         trade_readiness_score += 10
 
     if breakout == "Bullish Breakout":
         entry_timing = "Wait for Retest"
         execution_guidance = "Wait for price to retest breakout level before entering long."
         trade_readiness_score += 10
-
     elif breakout == "Bearish Breakdown":
         entry_timing = "Wait for Retest"
         execution_guidance = "Wait for price to retest breakdown level before entering short."
         trade_readiness_score += 10
-
     elif liquidity_event == "Bullish Liquidity Sweep":
         entry_timing = "Wait for Confirmation"
         execution_guidance = "Wait for bullish confirmation after liquidity sweep before entering."
-
     elif liquidity_event == "Bearish Liquidity Sweep":
         entry_timing = "Wait for Confirmation"
         execution_guidance = "Wait for bearish confirmation after liquidity sweep before entering."
-
-    elif confidence >= 85 and signal in ["BUY", "SELL"]:
+    elif confidence >= 85 and signal in ["BUY", "SELL", "Bullish", "Bearish"]:
         entry_timing = "Enter Now"
         execution_guidance = "Conditions are strong. Consider entering with proper risk management."
         trade_readiness_score += 15
@@ -2377,7 +2357,6 @@ def build_strategy_timing_output(df: pd.DataFrame, signal_data: dict):
         "trade_readiness_score": trade_readiness_score,
         "execution_guidance": execution_guidance
     }
-
 
 def send_signal_email(
     market,
@@ -3163,7 +3142,9 @@ def stream_status():
             "details": str(e)
         }), 500
 
+
 @app.route("/live-signals", methods=["GET"])
+
 def live_signals():
     try:
         ensure_live_engine_started()
@@ -3193,23 +3174,19 @@ def live_signals():
                 "ai_summary": data.get("ai_summary"),
                 "trade_thesis": data.get("trade_thesis"),
                 "risk_note": data.get("risk_note"),
-
                 "strategy_recommendation": data.get("strategy_recommendation"),
                 "strategy_reason": data.get("strategy_reason"),
                 "suggested_action": data.get("suggested_action"),
                 "support_levels": data.get("support_levels"),
                 "resistance_levels": data.get("resistance_levels"),
-
                 "trendline_points": data.get("trendline_points"),
                 "breakout_zone": data.get("breakout_zone"),
                 "entry_zone": data.get("entry_zone"),
                 "strategy_visual_bias": data.get("strategy_visual_bias"),
-
                 "entry_timing": data.get("entry_timing"),
                 "confirmation_state": data.get("confirmation_state"),
                 "trade_readiness_score": data.get("trade_readiness_score"),
                 "execution_guidance": data.get("execution_guidance"),
-
                 "session_label": data.get("session_label"),
                 "active_sessions": data.get("active_sessions"),
                 "liquidity_profile": data.get("liquidity_profile"),
@@ -3234,7 +3211,7 @@ def live_signals():
             "markets": markets
         })
 
-        except Exception as e:
+    except Exception as e:
         return jsonify({
             "error": "Failed to load live signals",
             "details": str(e)
@@ -3242,6 +3219,7 @@ def live_signals():
 
 
 @app.route("/live-top-trade", methods=["GET"])
+
 def live_top_trade():
     try:
         ensure_live_engine_started()
@@ -3290,6 +3268,7 @@ def live_top_trade():
             "error": "Failed to load live top trade",
             "details": str(e)
         }), 500
+
 
 @app.route("/signal-history", methods=["GET"])
 def signal_history():
@@ -3670,16 +3649,6 @@ def scan_markets_route():
             "details": str(e)
         }), 500
 
-@app.route("/test-sms", methods=["GET"])
-def test_sms():
-    try:
-        send_sms_alert("Test message from WickSense test route")
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
 # -----------------------------
 # SIGNAL
@@ -3695,9 +3664,6 @@ def signal():
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
-        strategy_data = build_strategy_engine_output(df, signal_data)
-        strategy_visual_data = build_strategy_visual_output(df, signal_data)
-        strategy_timing_data = build_strategy_timing_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
@@ -3739,21 +3705,7 @@ def signal():
             "session_label": session_data["session_label"],
             "active_sessions": session_data["active_sessions"],
             "liquidity_profile": session_data["liquidity_profile"],
-            "utc_hour": session_data["utc_hour"],
-            "support_levels": strategy_data["support_levels"],
-            "resistance_levels": strategy_data["resistance_levels"],
-            "strategy_recommendation": strategy_data["strategy_recommendation"],
-            "strategy_reason": strategy_data["strategy_reason"],
-            "suggested_action": strategy_data["suggested_action"],
-            "trendline_points": strategy_visual_data["trendline_points"],
-            "breakout_zone": strategy_visual_data["breakout_zone"],
-            "entry_zone": strategy_visual_data["entry_zone"],
-            "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
-            "entry_timing": strategy_timing_data["entry_timing"],
-            "confirmation_state": strategy_timing_data["confirmation_state"],
-            "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
-            "execution_guidance": strategy_timing_data["execution_guidance"],
-            
+            "utc_hour": session_data["utc_hour"]
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -3967,9 +3919,6 @@ def tradeplan():
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
         signal_data = evaluate_signal(df)
-        strategy_data = build_strategy_engine_output(df, signal_data)
-        strategy_visual_data = build_strategy_visual_output(df, signal_data)
-        strategy_timing_data = build_strategy_timing_output(df, signal_data)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
@@ -4079,20 +4028,7 @@ def tradeplan():
             "active_sessions": session_data["active_sessions"],
             "liquidity_profile": session_data["liquidity_profile"],
             "utc_hour": session_data["utc_hour"],
-            "daily_loss_status": daily_loss,
-            "support_levels": strategy_data["support_levels"],
-            "resistance_levels": strategy_data["resistance_levels"],
-            "strategy_recommendation": strategy_data["strategy_recommendation"],
-            "strategy_reason": strategy_data["strategy_reason"],
-            "suggested_action": strategy_data["suggested_action"],
-            "trendline_points": strategy_visual_data["trendline_points"],
-            "breakout_zone": strategy_visual_data["breakout_zone"],
-            "entry_zone": strategy_visual_data["entry_zone"],
-            "strategy_visual_bias": strategy_visual_data["strategy_visual_bias"],
-            "entry_timing": strategy_timing_data["entry_timing"],
-            "confirmation_state": strategy_timing_data["confirmation_state"],
-            "trade_readiness_score": strategy_timing_data["trade_readiness_score"],
-            "execution_guidance": strategy_timing_data["execution_guidance"],
+            "daily_loss_status": daily_loss
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
@@ -4342,6 +4278,7 @@ def stripe_webhook():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
