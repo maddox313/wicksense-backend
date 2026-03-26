@@ -577,6 +577,21 @@ def get_market_session():
         "utc_hour": hour
     }
 
+def get_session_score():
+    session_data = get_market_session()
+    session_label = session_data.get("session_label", "")
+
+    if session_label == "London/NYSE Overlap":
+        return 15
+    elif session_label in ["NYSE", "London"]:
+        return 10
+    elif session_label in ["Tokyo", "Sydney/Tokyo Overlap", "Tokyo/London Overlap"]:
+        return 6
+    elif session_label == "Sydney":
+        return 3
+    else:
+        return -5
+
 
 def get_float_from_request(key, default_value):
     body = get_request_body()
