@@ -1036,7 +1036,7 @@ def get_twelvedata_symbol(market):
         "Gold": "XAU/USD",
         "NaturalGas": "NG",
         "Forex": "EUR/USD",
-        "Futures": "ES"
+        "Futures": "SPY"
     }
     return mapping.get(market)
 
@@ -1057,7 +1057,7 @@ def start_twelvedata_stream():
                     "XAU/USD": "Gold",
                     "NG": "NaturalGas",
                     "EUR/USD": "Forex",
-                    "ES": "Futures"
+                    "SPY": "Futures"
                 }
 
                 market = market_map.get(symbol)
@@ -1076,7 +1076,7 @@ def start_twelvedata_stream():
         STREAM_STATUS["status"] = "connected"
         STREAM_STATUS["provider"] = "twelvedata"
 
-        symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "ES"]
+        symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "SPY"]
 
         subscribe_message = {
             "action": "subscribe",
