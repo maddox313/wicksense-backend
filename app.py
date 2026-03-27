@@ -931,6 +931,7 @@ def update_live_signal(market):
 
     if has_live_signal_changed(previous_state, new_payload):
         handle_live_signal_change(market, previous_state, new_payload)
+        save_live_signal_history_entry(market, new_payload)
 
 
 def get_simulated_base_price(market):
@@ -1327,6 +1328,43 @@ def create_notification(notification):
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
+
+def save_live_signal_history_entry(market, payload):
+    try:
+        history_item = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "market": market,
+            "signal": payload.get("signal"),
+            "setup_type": payload.get("setup_type"),
+            "confidence": payload.get("confidence"),
+            "pattern": payload.get("pattern"),
+            "entry": payload.get("close"),
+            "open": payload.get("open"),
+            "high": payload.get("high"),
+            "low": payload.get("low"),
+            "close": payload.get("close"),
+            "upper_wick": payload.get("upper_wick"),
+            "lower_wick": payload.get("lower_wick"),
+            "breakout": payload.get("breakout"),
+            "liquidity_event": payload.get("liquidity_event"),
+            "trendline": payload.get("trendline"),
+            "reason": payload.get("ai_summary"),
+            "ai_summary": payload.get("ai_summary"),
+            "trade_thesis": payload.get("trade_thesis"),
+            "risk_note": payload.get("risk_note"),
+            "strategy_recommendation": payload.get("strategy_recommendation"),
+            "strategy_reason": payload.get("strategy_reason"),
+            "suggested_action": payload.get("suggested_action"),
+            "entry_timing": payload.get("entry_timing"),
+            "confirmation_state": payload.get("confirmation_state"),
+            "trade_readiness_score": payload.get("trade_readiness_score"),
+            "execution_guidance": payload.get("execution_guidance")
+        }
+
+        append_history(SIGNAL_HISTORY_FILE, history_item, max_items=500)
+
+    except Exception as e:
+        print(f"Failed to save live signal history for {market}: {e}")
 
 
 def find_journal_entry(entry_id):
