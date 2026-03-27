@@ -3039,6 +3039,106 @@ def build_journal_review():
         "next_focus": next_focus
     }
 
+def build_performance_summary():
+    history = load_history(SIGNAL_HISTORY_FILE)
+
+    total_signals = len(history)
+    bullish_count = 0
+    bearish_count = 0
+    neutral_count = 0
+    confidence_total = 0.0
+    confidence_count = 0
+
+    setup_type_stats = {}
+    market_stats = {}
+
+    recent_signals = []
+
+    for item in history:
+        signal = (item.get("signal") or "").upper()
+        confidence = safe_float(item.get("confidence"), None)
+        setup_type = item.get("setup_type") or "Unknown"
+        market = item.get("market") or "Unknown"
+
+        if signal in ["BULLISH", "BUY"]:
+            bullish_count += 1
+        elif signal in ["BEARISH", "SELL"]:
+            bearish_count += 1
+        else:
+            neutral_count += 1
+
+        if confidence is not None:
+            confidence_total += confidence
+            confidence_count += 1
+
+        if setup_type not in setup_type_stats:
+            setup_type_stats[setup_type] = {
+                "count": 0,
+                "confidence_total": 0.0
+            }
+
+        setup_type_stats[setup_type]["count"] += 1
+        if confidence is not None:
+            setup_type_stats[setup_type]["confidence_total"] += confidence
+
+        if market not in market_stats:
+            market_stats[market] = {
+                "count": 0,
+                "confidence_total": 0.0
+            }
+
+        market_stats[market]["count"] += 1
+        if confidence is not None:
+            market_stats[market]["confidence_total"] += confidence
+
+    average_confidence = round(confidence_total / confidence_count, 2) if confidence_count > 0 else 0.0
+
+    best_setup_type = None
+    best_setup_score = -1
+
+    for setup_type, stats in setup_type_stats.items():
+        avg_conf = stats["confidence_total"] / stats["count"] if stats["count"] > 0 else 0.0
+        score = (stats["count"] * 0.4) + (avg_conf * 0.6)
+        if score > best_setup_score:
+            best_setup_score = score
+            best_setup_type = setup_type
+
+    best_market = None
+    best_market_score = -1
+
+    for market, stats in market_stats.items():
+        avg_conf = stats["confidence_total"] / stats["count"] if stats["count"] > 0 else 0.0
+        score = (stats["count"] * 0.4) + (avg_conf * 0.6)
+        if score > best_market_score:
+            best_market_score = score
+            best_market = market
+
+    for item in history[:10]:
+        recent_signals.append({
+            "timestamp": item.get("timestamp"),
+            "market": item.get("market"),
+            "signal": item.get("signal"),
+            "setup_type": item.get("setup_type"),
+            "confidence": item.get("confidence"),
+            "entry": item.get("entry"),
+            "reason": item.get("reason")
+        })
+
+    total_directional = bullish_count + bearish_count
+    win_rate_proxy = round((max(bullish_count, bearish_count) / total_directional) * 100, 2) if total_directional > 0 else 0.0
+
+    return {
+        "total_signals": total_signals,
+        "win_rate_proxy": win_rate_proxy,
+        "average_confidence": average_confidence,
+        "bullish_count": bullish_count,
+        "bearish_count": bearish_count,
+        "neutral_count": neutral_count,
+        "best_setup_type": best_setup_type,
+        "best_market": best_market,
+        "recent_signals": recent_signals
+    }
+
 
 def refresh_live_scan():
     global LIVE_SCAN_CACHE
@@ -3422,6 +3522,17 @@ def journal_analytics():
     except Exception as e:
         return jsonify({
             "error": "Failed to calculate journal analytics",
+            "details": str(e)
+        }), 500
+
+@app.route("/performance-summary", methods=["GET"])
+def performance_summary():
+    try:
+        summary = build_performance_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to build performance summary",
             "details": str(e)
         }), 500
 
