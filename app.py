@@ -879,7 +879,21 @@ def update_live_signal(market):
         "resistance": high
     }
 
+
     ai_text = build_ai_explanation(signal_data)
+
+    ai_summary = build_ai_summary(signal_data)
+    trade_thesis = build_trade_thesis(signal_data)
+
+    entry_timing = get_entry_timing(
+       signal_data.get("signal"),
+       safe_float(signal_data.get("confidence"), 0),
+       signal_data.get("breakout"),
+       signal_data.get("liquidity_event")
+)
+
+    trade_readiness = get_trade_readiness(signal_data)
+
     strategy_data = build_strategy_engine_output(df, signal_data)
     strategy_visual_data = build_strategy_visual_output(df, signal_data)
     strategy_timing_data = build_strategy_timing_output(df, signal_data)
