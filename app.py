@@ -3501,7 +3501,7 @@ def live_top_trade():
             score = confidence + (volatility * 10)
 
             if data.get("signal") == "HOLD":
-                score -= 20
+                score -= 60
 
             if score > best_score:
                 best_score = score
