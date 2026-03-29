@@ -918,8 +918,8 @@ def update_live_signal(market):
         "strategy_breakdown": signal_data.get("strategy_breakdown"),
         "confluence_bonus": signal_data.get("confluence_bonus"),
         "setup_type": setup_type,
-        "ai_summary": ai_text.get("ai_summary"),
-        "trade_thesis": ai_text.get("trade_thesis"),
+        "ai_summary": ai_summary,
+        "trade_thesis": trade_thesis,
         "risk_note": ai_text.get("risk_note"),
         "session_label": session_data.get("session_label"),
         "active_sessions": session_data.get("active_sessions"),
@@ -934,9 +934,9 @@ def update_live_signal(market):
         "breakout_zone": strategy_visual_data.get("breakout_zone"),
         "entry_zone": strategy_visual_data.get("entry_zone"),
         "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
-        "entry_timing": strategy_timing_data.get("entry_timing"),
+        "entry_timing": entry_timing,
         "confirmation_state": strategy_timing_data.get("confirmation_state"),
-        "trade_readiness_score": strategy_timing_data.get("trade_readiness_score"),
+        "trade_readiness_score": trade_readiness,
         "execution_guidance": strategy_timing_data.get("execution_guidance"),
     }
 
