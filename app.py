@@ -893,6 +893,7 @@ def update_live_signal(market):
 )
 
     trade_readiness = get_trade_readiness(signal_data)
+    execution_guidance = get_execution_guidance(entry_timing, signal_data.get("signal"))
 
     strategy_data = build_strategy_engine_output(df, signal_data)
     strategy_visual_data = build_strategy_visual_output(df, signal_data)
@@ -937,7 +938,7 @@ def update_live_signal(market):
         "entry_timing": entry_timing,
         "confirmation_state": strategy_timing_data.get("confirmation_state"),
         "trade_readiness_score": trade_readiness,
-        "execution_guidance": strategy_timing_data.get("execution_guidance"),
+        "execution_guidance": execution_guidance,
     }
 
     state.update(new_payload)
@@ -2142,6 +2143,18 @@ def get_trade_readiness(signal_data):
 
     return min(score, 100)
 
+def get_execution_guidance(entry_timing, signal):
+    signal_text = str(signal).upper() if signal else "TRADE"
+
+    if entry_timing == "ENTER NOW":
+        return f"{signal_text} conditions are aligned. Consider entering with proper risk management."
+    elif entry_timing == "WAIT":
+        return f"Wait for stronger confirmation before acting on this {signal_text.lower()} setup."
+    elif entry_timing == "AVOID":
+        return f"Avoid this setup for now. Conditions are not aligned."
+    else:
+        return "Wait for clearer confirmation before acting."
+
 
 def build_ai_explanation(signal):
     signal_type = signal.get("signal", "Neutral")
@@ -2249,8 +2262,10 @@ def get_setup_type(signal_data):
     breakout = signal_data.get("breakout")
     trendline = signal_data.get("trendline")
     pattern = signal_data.get("pattern")
+    confidence = safe_float(signal_data.get("confidence"), 0.0)
+    liquidity_event = signal_data.get("liquidity_event")
 
-    if signal_type == "Bullish":
+    if signal_type in ["BUY", "Bullish"]:
         if breakout == "Bullish Breakout":
             return "Bullish Breakout Continuation"
         elif breakout == "Failed Bearish Breakdown":
@@ -2261,12 +2276,14 @@ def get_setup_type(signal_data):
             return "Bullish Hammer Reversal"
         elif pattern == "Pin Bar":
             return "Bullish Pin Bar Setup"
-        elif signal_data.get("liquidity_event") == "Bullish Liquidity Sweep":
+        elif liquidity_event == "Bullish Liquidity Sweep":
             return "Bullish Liquidity Sweep Reversal"
+        elif confidence >= 80:
+            return "Bullish Momentum Setup"
         else:
             return "Bullish Confluence Setup"
 
-    if signal_type == "Bearish":
+    if signal_type in ["SELL", "Bearish"]:
         if breakout == "Bearish Breakdown":
             return "Bearish Breakdown Continuation"
         elif breakout == "Failed Bullish Breakout":
@@ -2277,8 +2294,10 @@ def get_setup_type(signal_data):
             return "Bearish Shooting Star Reversal"
         elif pattern == "Pin Bar":
             return "Bearish Pin Bar Setup"
-        elif signal_data.get("liquidity_event") == "Bearish Liquidity Sweep":
+        elif liquidity_event == "Bearish Liquidity Sweep":
             return "Bearish Liquidity Sweep Reversal"
+        elif confidence >= 80:
+            return "Bearish Momentum Setup"
         else:
             return "Bearish Confluence Setup"
 
