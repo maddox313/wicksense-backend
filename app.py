@@ -3504,7 +3504,11 @@ def live_top_trade():
                     "setup_type": data.get("setup_type"),
                     "ai_summary": data.get("ai_summary"),
                     "trade_thesis": data.get("trade_thesis"),
-                    "risk_note": data.get("risk_note")
+                    "risk_note": data.get("risk_note"),
+                    "entry_timing": data.get("entry_timing"),
+                    "trade_readiness_score": data.get("trade_readiness_score"),
+                    "execution_guidance": data.get("execution_guidance"),
+
                 }
 
         return jsonify(best_trade or {})
