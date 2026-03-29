@@ -2048,6 +2048,86 @@ def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
         "timeframe_alignment": alignment
     }
 
+def build_ai_summary(signal_data):
+    signal = signal_data.get("signal")
+    confidence = safe_float(signal_data.get("confidence"), 0)
+    pattern = signal_data.get("pattern")
+    breakout = signal_data.get("breakout")
+    liquidity = signal_data.get("liquidity_event")
+    trendline = signal_data.get("trendline")
+
+    bias = "bullish" if signal in ["BUY", "Bullish"] else "bearish" if signal in ["SELL", "Bearish"] else "neutral"
+
+    drivers = []
+    if pattern:
+        drivers.append(pattern)
+    if breakout:
+        drivers.append("breakout")
+    if liquidity:
+        drivers.append("liquidity sweep")
+    if trendline:
+        drivers.append("trendline respect")
+
+    if not drivers:
+        drivers.append("price structure")
+
+    if confidence >= 85:
+        strength = "strong"
+    elif confidence >= 70:
+        strength = "moderate"
+    else:
+        strength = "developing"
+
+    if signal in ["BUY", "Bullish"]:
+        expectation = "upside continuation"
+    elif signal in ["SELL", "Bearish"]:
+        expectation = "downside continuation"
+    else:
+        expectation = "range-bound movement"
+
+    summary = f"{strength.capitalize()} {bias} pressure driven by {', '.join(drivers)}. Expect {expectation}."
+    return summary
+
+
+def build_trade_thesis(signal_data):
+    signal = signal_data.get("signal")
+
+    if signal in ["BUY", "Bullish"]:
+        return "Buyers are defending key levels and pushing price higher. Momentum favors continuation."
+    elif signal in ["SELL", "Bearish"]:
+        return "Sellers are controlling price action with repeated rejection. Momentum favors downside."
+    else:
+        return "Market lacks clear directional control. Waiting for confirmation is preferred."
+
+
+def get_entry_timing(signal, confidence, breakout, liquidity):
+    if signal in ["BUY", "SELL", "Bullish", "Bearish"]:
+        if confidence >= 85 and breakout:
+            return "ENTER NOW"
+        elif confidence >= 70:
+            return "WAIT"
+        else:
+            return "AVOID"
+    return "AVOID"
+
+
+def get_trade_readiness(signal_data):
+    score = 0
+
+    if signal_data.get("pattern"):
+        score += 20
+    if signal_data.get("breakout"):
+        score += 20
+    if signal_data.get("liquidity_event"):
+        score += 20
+    if signal_data.get("trendline"):
+        score += 15
+
+    confidence = safe_float(signal_data.get("confidence"), 0)
+    score += int(confidence * 0.25)
+
+    return min(score, 100)
+
 
 def build_ai_explanation(signal):
     signal_type = signal.get("signal", "Neutral")
