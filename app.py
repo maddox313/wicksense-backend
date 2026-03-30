@@ -26,7 +26,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 PRESETS_FILE = "presets.json"
 SIGNAL_HISTORY_FILE = "signal_history.json"
