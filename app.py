@@ -1119,7 +1119,7 @@ def start_twelvedata_stream():
         except Exception as e:
             print(f"WebSocket message error: {e}")
 
-        def on_open(ws):
+    def on_open(ws):
         STREAM_STATUS["status"] = "connected"
         STREAM_STATUS["provider"] = "twelvedata"
 
@@ -1145,7 +1145,7 @@ def start_twelvedata_stream():
         print("WebSocket closed")
 
     ws_url = f"wss://ws.twelvedata.com/v1/quotes/price?apikey={TWELVE_DATA_API_KEY}"
-    
+
     ws = websocket.WebSocketApp(
         ws_url,
         on_message=on_message,
