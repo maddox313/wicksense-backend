@@ -733,27 +733,24 @@ def get_current_live_top_trade():
     best_score = -1
 
     for market_name, data in LIVE_MARKET_STATE.items():
-
         signal = data.get("signal")
         confidence = safe_float(data.get("confidence"), 0.0)
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
         entry_timing = data.get("entry_timing")
 
-        # 🚨 STRICT FILTER FOR TRUE TOP TRADE
+        # Strict filter for real top trades
         if signal in [None, "Neutral", "HOLD"]:
-        continue
+            continue
 
         if confidence < 80:
-        continue
+            continue
 
-        # 🚨 THIS IS THE NEW KEY FIX
         if entry_timing != "ENTER NOW":
-        continue
+            continue
 
         if readiness < 70:
-        continue
+            continue
 
-        # Optional: volatility boost
         high = safe_float(data.get("high"), 0.0)
         low = safe_float(data.get("low"), 0.0)
         volatility = abs(high - low)
