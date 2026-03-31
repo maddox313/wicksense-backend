@@ -1168,16 +1168,27 @@ def ensure_live_engine_started():
 
         seed_live_market_state()
 
-        if TWELVE_DATA_API_KEY and websocket is not None:
-            live_signal_thread = threading.Thread(
-                target=start_twelvedata_stream,
-                daemon=True
-            )
-        else:
-            live_signal_thread = threading.Thread(
-                target=run_live_signal_engine,
-                daemon=True
-            )
+        def start_engine():
+            global STREAM_STATUS
+
+            if TWELVE_DATA_API_KEY and websocket is not None:
+                try:
+                    start_twelvedata_stream()
+                    return
+                except Exception as e:
+                    print(f"Twelve Data stream failed, falling back to simulated engine: {e}")
+                    STREAM_STATUS["status"] = "connected"
+                    STREAM_STATUS["provider"] = "simulated"
+                    run_live_signal_engine()
+            else:
+                STREAM_STATUS["status"] = "connected"
+                STREAM_STATUS["provider"] = "simulated"
+                run_live_signal_engine()
+
+        live_signal_thread = threading.Thread(
+            target=start_engine,
+            daemon=True
+        )
 
         live_signal_thread.start()
         LIVE_ENGINE_STARTED = True
