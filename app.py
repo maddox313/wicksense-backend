@@ -739,18 +739,19 @@ def get_current_live_top_trade():
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
         entry_timing = data.get("entry_timing")
 
-        # 🚨 HARD FILTER (this fixes HOLD issue)
+        # 🚨 STRICT FILTER FOR TRUE TOP TRADE
         if signal in [None, "Neutral", "HOLD"]:
-            continue
+        continue
 
-        if confidence < 70:
-            continue
+        if confidence < 80:
+        continue
 
-        if entry_timing in ["WAIT", "AVOID"]:
-            continue
+        # 🚨 THIS IS THE NEW KEY FIX
+        if entry_timing != "ENTER NOW":
+        continue
 
-        if readiness < 60:
-            continue
+        if readiness < 70:
+        continue
 
         # Optional: volatility boost
         high = safe_float(data.get("high"), 0.0)
