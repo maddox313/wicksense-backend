@@ -733,15 +733,41 @@ def get_current_live_top_trade():
     best_score = -1
 
     for market_name, data in LIVE_MARKET_STATE.items():
-        confidence = safe_float(data.get("confidence"), 0.0)
 
-        if confidence > best_score and data.get("signal") not in [None, "Neutral"]:
-            best_score = confidence
+        signal = data.get("signal")
+        confidence = safe_float(data.get("confidence"), 0.0)
+        readiness = safe_float(data.get("trade_readiness_score"), 0.0)
+        entry_timing = data.get("entry_timing")
+
+        # 🚨 HARD FILTER (this fixes HOLD issue)
+        if signal in [None, "Neutral", "HOLD"]:
+            continue
+
+        if confidence < 70:
+            continue
+
+        if entry_timing in ["WAIT", "AVOID"]:
+            continue
+
+        if readiness < 60:
+            continue
+
+        # Optional: volatility boost
+        high = safe_float(data.get("high"), 0.0)
+        low = safe_float(data.get("low"), 0.0)
+        volatility = abs(high - low)
+
+        score = confidence + (volatility * 10) + readiness
+
+        if score > best_score:
+            best_score = score
             best_trade = {
                 "market": market_name,
-                "signal": data.get("signal"),
+                "signal": signal,
                 "setup_type": data.get("setup_type"),
-                "confidence": confidence
+                "confidence": confidence,
+                "entry_timing": entry_timing,
+                "trade_readiness_score": readiness
             }
 
     return best_trade
