@@ -87,6 +87,11 @@ LIVE_ENGINE_LOCK = threading.Lock()
 def home():
     return "WickSense API is running!"
 
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "alive"}), 200
+
 @app.route("/markets")
 def markets():
     return jsonify([
