@@ -3517,15 +3517,29 @@ def live_top_trade():
         best_score = -1
 
         for market_name, data in LIVE_MARKET_STATE.items():
+            signal = data.get("signal")
             confidence = safe_float(data.get("confidence"), 0.0)
+            readiness = safe_float(data.get("trade_readiness_score"), 0.0)
+            entry_timing = (data.get("entry_timing") or "").upper()
+
+            # strict filter: only real actionable trades
+            if signal in [None, "HOLD", "Neutral"]:
+                continue
+
+            if confidence < 80:
+                continue
+
+            if entry_timing != "ENTER NOW":
+                continue
+
+            if readiness < 70:
+                continue
+
             high = safe_float(data.get("high"), 0.0)
             low = safe_float(data.get("low"), 0.0)
-
             volatility = abs(high - low)
-            score = confidence + (volatility * 10)
 
-            if data.get("signal") == "HOLD":
-                score -= 60
+            score = confidence + (volatility * 10) + readiness
 
             if score > best_score:
                 best_score = score
@@ -3548,12 +3562,26 @@ def live_top_trade():
                     "ai_summary": data.get("ai_summary"),
                     "trade_thesis": data.get("trade_thesis"),
                     "risk_note": data.get("risk_note"),
+                    "strategy_recommendation": data.get("strategy_recommendation"),
+                    "strategy_reason": data.get("strategy_reason"),
+                    "suggested_action": data.get("suggested_action"),
+                    "support_levels": data.get("support_levels"),
+                    "resistance_levels": data.get("resistance_levels"),
+                    "trendline_points": data.get("trendline_points"),
+                    "breakout_zone": data.get("breakout_zone"),
+                    "entry_zone": data.get("entry_zone"),
+                    "strategy_visual_bias": data.get("strategy_visual_bias"),
                     "entry_timing": data.get("entry_timing"),
+                    "confirmation_state": data.get("confirmation_state"),
                     "trade_readiness_score": data.get("trade_readiness_score"),
                     "execution_guidance": data.get("execution_guidance"),
-
+                    "session_label": data.get("session_label"),
+                    "active_sessions": data.get("active_sessions"),
+                    "liquidity_profile": data.get("liquidity_profile"),
+                    "utc_hour": data.get("utc_hour"),
+                    "top_trade_score": round(score, 2)
                 }
-
+                
         return jsonify(best_trade or {})
 
     except Exception as e:
