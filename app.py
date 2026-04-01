@@ -4366,7 +4366,18 @@ def tradeplan():
         if atr <= 0:
             atr = close_price * 0.01
 
-        signal_type = signal_data["signal"]
+        raw_signal_type = signal_data["signal"]
+        signal_type = str(raw_signal_type).strip().upper()
+
+        if signal_type in ["BUY", "BULLISH"]:
+            normalized_signal = "BULLISH"
+            trade_side = "Buy"
+        elif signal_type in ["SELL", "BEARISH"]:
+            normalized_signal = "BEARISH"
+            trade_side = "Sell"
+        else:
+            normalized_signal = "NEUTRAL"
+            trade_side = "Hold"
         breakout = signal_data["breakout"]
         trendline = signal_data["trendline"]
         pattern = signal_data["pattern"]
@@ -4375,13 +4386,13 @@ def tradeplan():
         entry = close_price
 
         # Smarter entry selection
-        if signal_type == "Bullish":
+            if normalized_signal == "BULLISH":
             if breakout == "Bullish Breakout":
                 entry = max(close_price, resistance_price)
             else:
                 entry = close_price
 
-        elif signal_type == "Bearish":
+           elif normalized_signal == "BEARISH":
             if breakout == "Bearish Breakdown":
                 entry = min(close_price, support_price)
             else:
