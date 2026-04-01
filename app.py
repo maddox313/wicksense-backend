@@ -844,6 +844,41 @@ def get_current_setup_forming_trade():
 
     return best_trade
 
+def detect_auto_trigger_candidates():
+    triggered_trades = []
+
+    for market_name, data in LIVE_MARKET_STATE.items():
+        signal = data.get("signal")
+        confidence = safe_float(data.get("confidence"), 0.0)
+        readiness = safe_float(data.get("trade_readiness_score"), 0.0)
+        entry_timing = (data.get("entry_timing") or "").upper()
+
+        if signal in [None, "HOLD", "Neutral"]:
+            continue
+
+        if confidence < 80:
+            continue
+
+        if entry_timing != "ENTER NOW":
+            continue
+
+        if readiness < 70:
+            continue
+
+        triggered_trades.append({
+            "market": market_name,
+            "signal": signal,
+            "confidence": confidence,
+            "entry_timing": entry_timing,
+            "trade_readiness_score": readiness,
+            "setup_type": data.get("setup_type"),
+            "ai_summary": data.get("ai_summary"),
+            "trade_thesis": data.get("trade_thesis"),
+            "last_updated": data.get("last_updated")
+        })
+
+    return triggered_trades
+
 
 
 def check_for_live_top_trade_change():
@@ -903,6 +938,26 @@ def can_send_live_notification(key, cooldown_seconds=60):
 
     LIVE_NOTIFICATION_COOLDOWNS[key] = now
     return True
+
+def process_auto_triggers():
+    candidates = detect_auto_trigger_candidates()
+
+    for trade in candidates:
+        market = trade.get("market")
+        cooldown_key = f"auto_trigger:{market}"
+
+        if can_send_live_notification(cooldown_key, 120):
+            create_notification({
+                "type": "auto_trigger",
+                "title": f"{market} trigger ready",
+                "market": market,
+                "signal": trade.get("signal"),
+                "confidence": trade.get("confidence"),
+                "setup_type": trade.get("setup_type"),
+                "entry_timing": trade.get("entry_timing"),
+                "trade_readiness_score": trade.get("trade_readiness_score"),
+                "ai_summary": trade.get("ai_summary")
+            })
     
 
 def update_live_signal(market):
@@ -1135,6 +1190,7 @@ def run_live_signal_engine():
                 update_live_candle(market, new_price)
                 update_live_signal(market)
                 check_for_live_top_trade_change()
+                process_auto_triggers()
 
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
             time.sleep(2)
@@ -1184,6 +1240,7 @@ def start_twelvedata_stream():
                     update_live_candle(market, price)
                     update_live_signal(market)
                     check_for_live_top_trade_change()
+                    process_auto_triggers()
                     STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
 
         except Exception as e:
