@@ -4366,7 +4366,7 @@ def tradeplan():
         if atr <= 0:
             atr = close_price * 0.01
 
-        raw_signal_type = signal_data["signal"]
+                raw_signal_type = signal_data["signal"]
         signal_type = str(raw_signal_type).strip().upper()
 
         if signal_type in ["BUY", "BULLISH"]:
@@ -4378,34 +4378,15 @@ def tradeplan():
         else:
             normalized_signal = "NEUTRAL"
             trade_side = "Hold"
+
         breakout = signal_data["breakout"]
         trendline = signal_data["trendline"]
         pattern = signal_data["pattern"]
 
-        # Default entry starts at current close
-        entry = close_price
-
-        # Smarter entry selection
-            if normalized_signal == "BULLISH":
-            if breakout == "Bullish Breakout":
-                entry = max(close_price, resistance_price)
-            else:
-                entry = close_price
-
-           elif normalized_signal == "BEARISH":
-            if breakout == "Bearish Breakdown":
-                entry = min(close_price, support_price)
-            else:
-                entry = close_price
-        if atr <= 0:
-            atr = entry * 0.01
-
-        
-        if signal_type == "Bullish":
+        if normalized_signal == "BULLISH":
             stop_loss = min(float(signal_data["support"]), entry - atr * 1.5)
             take_profit_1 = entry + (entry - stop_loss) * 1.5
             take_profit_2 = entry + (entry - stop_loss) * 3.0
-            trade_side = "Buy"
 
             if breakout == "Bullish Breakout":
                 setup_type = "Bullish Breakout Continuation"
@@ -4418,11 +4399,10 @@ def tradeplan():
             else:
                 setup_type = "Bullish Confluence Setup"
 
-        elif signal_type == "Bearish":
+        elif normalized_signal == "BEARISH":
             stop_loss = max(float(signal_data["resistance"]), entry + atr * 1.5)
             take_profit_1 = entry - (stop_loss - entry) * 1.5
             take_profit_2 = entry - (stop_loss - entry) * 3.0
-            trade_side = "Sell"
 
             if breakout == "Bearish Breakdown":
                 setup_type = "Bearish Breakdown Continuation"
