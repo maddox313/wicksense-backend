@@ -4358,7 +4358,7 @@ def tradeplan():
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
-        close_price = float(last_row["Close"])
+                close_price = float(last_row["Close"])
         support_price = float(signal_data["support"])
         resistance_price = float(signal_data["resistance"])
 
@@ -4366,7 +4366,7 @@ def tradeplan():
         if atr <= 0:
             atr = close_price * 0.01
 
-                raw_signal_type = signal_data["signal"]
+        raw_signal_type = signal_data["signal"]
         signal_type = str(raw_signal_type).strip().upper()
 
         if signal_type in ["BUY", "BULLISH"]:
@@ -4382,6 +4382,22 @@ def tradeplan():
         breakout = signal_data["breakout"]
         trendline = signal_data["trendline"]
         pattern = signal_data["pattern"]
+
+        # Default entry starts at current close
+        entry = close_price
+
+        # Smarter entry selection
+        if normalized_signal == "BULLISH":
+            if breakout == "Bullish Breakout":
+                entry = max(close_price, resistance_price)
+            else:
+                entry = close_price
+
+        elif normalized_signal == "BEARISH":
+            if breakout == "Bearish Breakdown":
+                entry = min(close_price, support_price)
+            else:
+                entry = close_price
 
         if normalized_signal == "BULLISH":
             stop_loss = min(float(signal_data["support"]), entry - atr * 1.5)
