@@ -4351,56 +4351,62 @@ def tradeplan():
             }), 403
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+
+        if df is None or df.empty:
+            return jsonify({
+                "error": "No market data available",
+                "details": "Failed to fetch market data"
+            }), 500
+
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
+
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
-                close_price = float(last_row["Close"])
-        support_price = float(signal_data["support"])
-        resistance_price = float(signal_data["resistance"])
+        close_price = float(last_row["Close"])
+        support_price = float(signal_data.get("support", close_price))
+        resistance_price = float(signal_data.get("resistance", close_price))
 
         atr = (recent_rows["High"] - recent_rows["Low"]).mean()
         if atr <= 0:
             atr = close_price * 0.01
 
-        raw_signal_type = signal_data["signal"]
-        signal_type = str(raw_signal_type).strip().upper()
+        # --- SIGNAL NORMALIZATION ---
+        raw_signal = str(signal_data.get("signal", "")).strip().upper()
 
-        if signal_type in ["BUY", "BULLISH"]:
+        if raw_signal in ["BUY", "BULLISH"]:
             normalized_signal = "BULLISH"
             trade_side = "Buy"
-        elif signal_type in ["SELL", "BEARISH"]:
+        elif raw_signal in ["SELL", "BEARISH"]:
             normalized_signal = "BEARISH"
             trade_side = "Sell"
         else:
-            normalized_signal = "NEUTRAL"
-            trade_side = "Hold"
+            return jsonify({
+                "error": "No strong trade setup found",
+                "details": "Signal is neutral"
+            }), 400
 
-        breakout = signal_data["breakout"]
-        trendline = signal_data["trendline"]
-        pattern = signal_data["pattern"]
+        breakout = signal_data.get("breakout")
+        trendline = signal_data.get("trendline")
+        pattern = signal_data.get("pattern")
 
-        # Default entry starts at current close
+        # --- ENTRY LOGIC ---
         entry = close_price
 
-        # Smarter entry selection
         if normalized_signal == "BULLISH":
             if breakout == "Bullish Breakout":
                 entry = max(close_price, resistance_price)
-            else:
-                entry = close_price
 
         elif normalized_signal == "BEARISH":
             if breakout == "Bearish Breakdown":
                 entry = min(close_price, support_price)
-            else:
-                entry = close_price
 
+        # --- STOP LOSS & TARGETS ---
         if normalized_signal == "BULLISH":
-            stop_loss = min(float(signal_data["support"]), entry - atr * 1.5)
+            stop_loss = min(support_price, entry - atr * 1.5)
             take_profit_1 = entry + (entry - stop_loss) * 1.5
             take_profit_2 = entry + (entry - stop_loss) * 3.0
 
@@ -4415,8 +4421,8 @@ def tradeplan():
             else:
                 setup_type = "Bullish Confluence Setup"
 
-        elif normalized_signal == "BEARISH":
-            stop_loss = max(float(signal_data["resistance"]), entry + atr * 1.5)
+        else:  # BEARISH
+            stop_loss = max(resistance_price, entry + atr * 1.5)
             take_profit_1 = entry - (stop_loss - entry) * 1.5
             take_profit_2 = entry - (stop_loss - entry) * 3.0
 
@@ -4431,12 +4437,7 @@ def tradeplan():
             else:
                 setup_type = "Bearish Confluence Setup"
 
-        else:
-            return jsonify({
-                "error": "No strong trade setup found",
-                "details": "Signal is neutral"
-            }), 400
-
+        # --- RISK CALC ---
         risk_amount = account_size * (risk_percent / 100.0)
         stop_distance = abs(entry - stop_loss)
 
@@ -4446,9 +4447,12 @@ def tradeplan():
         position_size = risk_amount / stop_distance
         expected_rr = abs(take_profit_2 - entry) / abs(entry - stop_loss)
 
-        if signal_data["confidence"] >= 85 and signal_data["confluence_bonus"] >= 4:
+        confidence = float(signal_data.get("confidence", 0))
+        confluence = float(signal_data.get("confluence_bonus", 0))
+
+        if confidence >= 85 and confluence >= 4:
             setup_quality = "A"
-        elif signal_data["confidence"] >= 75 and signal_data["confluence_bonus"] >= 2:
+        elif confidence >= 75 and confluence >= 2:
             setup_quality = "B"
         else:
             setup_quality = "C"
@@ -4460,7 +4464,7 @@ def tradeplan():
             "signal": trade_side,
             "setup_type": setup_type,
             "setup_quality": setup_quality,
-            "pattern": signal_data["pattern"],
+            "pattern": pattern,
             "entry_price": round(entry, 4),
             "stop_loss": round(stop_loss, 4),
             "take_profit_1": round(take_profit_1, 4),
@@ -4469,31 +4473,32 @@ def tradeplan():
             "risk_amount": round(risk_amount, 2),
             "position_size": round(position_size, 4),
             "expected_rr": round(expected_rr, 2),
-            "ma20": signal_data["ma20"],
-            "ma50": signal_data["ma50"],
-            "vwap": signal_data["vwap"],
-            "support": signal_data["support"],
-            "resistance": signal_data["resistance"],
-            "breakout": signal_data["breakout"],
-            "liquidity_event": signal_data["liquidity_event"],
-            "trendline": signal_data["trendline"],
-            "strategy_breakdown": signal_data["strategy_breakdown"],
-            "confluence_bonus": signal_data["confluence_bonus"],
-            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-            "timeframe_alignment": mtf_data["timeframe_alignment"],
-            "multi_timeframe": mtf_data["multi_timeframe"],
-            "reason": ", ".join(signal_data["reasons"]),
-            "ai_summary": ai_text["ai_summary"],
-            "trade_thesis": ai_text["trade_thesis"],
-            "risk_note": ai_text["risk_note"],
-            "session_label": session_data["session_label"],
-            "active_sessions": session_data["active_sessions"],
-            "liquidity_profile": session_data["liquidity_profile"],
-            "utc_hour": session_data["utc_hour"],
+            "ma20": signal_data.get("ma20"),
+            "ma50": signal_data.get("ma50"),
+            "vwap": signal_data.get("vwap"),
+            "support": support_price,
+            "resistance": resistance_price,
+            "breakout": breakout,
+            "liquidity_event": signal_data.get("liquidity_event"),
+            "trendline": trendline,
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "confluence_bonus": confluence,
+            "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
+            "timeframe_alignment": mtf_data.get("timeframe_alignment"),
+            "multi_timeframe": mtf_data.get("multi_timeframe"),
+            "reason": ", ".join(signal_data.get("reasons", [])),
+            "ai_summary": ai_text.get("ai_summary"),
+            "trade_thesis": ai_text.get("trade_thesis"),
+            "risk_note": ai_text.get("risk_note"),
+            "session_label": session_data.get("session_label"),
+            "active_sessions": session_data.get("active_sessions"),
+            "liquidity_profile": session_data.get("liquidity_profile"),
+            "utc_hour": session_data.get("utc_hour"),
             "daily_loss_status": daily_loss
         }
 
         append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
+
         return jsonify(response_data)
 
     except Exception as e:
