@@ -1039,12 +1039,16 @@ def update_live_signal(market):
     ai_summary = build_ai_summary(signal_data)
     trade_thesis = build_trade_thesis(signal_data)
 
-    entry_timing = get_entry_timing(
-       signal_data.get("signal"),
-       safe_float(signal_data.get("confidence"), 0),
-       signal_data.get("breakout"),
-       signal_data.get("liquidity_event")
-)
+   timing_signal_data = {
+        **signal_data,
+        "close": safe_float(current_candle.get("Close")),
+        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0] if strategy_data.get("support_levels") else signal_data.get("support"),
+        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0] if strategy_data.get("resistance_levels") else signal_data.get("resistance")
+    }
+
+    entry_timing = get_entry_timing(timing_signal_data)
+
+
 
     trade_readiness = get_trade_readiness(signal_data)
     execution_guidance = get_execution_guidance(entry_timing, signal_data.get("signal"))
@@ -1055,6 +1059,16 @@ def update_live_signal(market):
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
     session_data = get_market_session()
+    # --- ENTRY TIMING FIX (SMART LOGIC) ---
+    timing_signal_data = {
+        **signal_data,
+        "close": safe_float(current_candle.get("Close")),
+        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0] if strategy_data.get("support_levels") else signal_data.get("support"),
+        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0] if strategy_data.get("resistance_levels") else signal_data.get("resistance")
+}
+
+entry_timing = get_entry_timing(timing_signal_data)
+
 
     new_payload = {
         "market": market,
@@ -2284,15 +2298,54 @@ def build_trade_thesis(signal_data):
         return "Market lacks clear directional control. Waiting for confirmation is preferred."
 
 
-def get_entry_timing(signal, confidence, breakout, liquidity):
-    if signal in ["BUY", "SELL", "Bullish", "Bearish"]:
-        if confidence >= 85 and breakout:
-            return "ENTER NOW"
-        elif confidence >= 70:
+def get_entry_timing(signal_data):
+    signal = str(signal_data.get("signal", "")).upper()
+    confidence = safe_float(signal_data.get("confidence"), 0)
+    breakout = signal_data.get("breakout")
+    liquidity = signal_data.get("liquidity_event")
+    trendline = signal_data.get("trendline")
+    pattern = signal_data.get("pattern")
+
+    close_price = safe_float(signal_data.get("close"), 0)
+    support = safe_float(signal_data.get("support"), 0)
+    resistance = safe_float(signal_data.get("resistance"), 0)
+
+    # Distance checks
+    near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
+    near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
+
+    # Strong bullish entry conditions
+    if signal in ["BUY", "BULLISH"]:
+        if confidence >= 85:
+            if breakout == "Bullish Breakout":
+                return "ENTER NOW"
+            if trendline == "Rising Trendline Support" and near_support:
+                return "ENTER NOW"
+            if pattern in ["Hammer", "Pin Bar"] and near_support:
+                return "ENTER NOW"
+            if liquidity == "Bullish Liquidity Sweep":
+                return "ENTER NOW"
+        if confidence >= 70:
             return "WAIT"
-        else:
-            return "AVOID"
+        return "AVOID"
+
+    # Strong bearish entry conditions
+    if signal in ["SELL", "BEARISH"]:
+        if confidence >= 85:
+            if breakout == "Bearish Breakdown":
+                return "ENTER NOW"
+            if trendline == "Falling Trendline Resistance" and near_resistance:
+                return "ENTER NOW"
+            if pattern in ["Shooting Star", "Pin Bar"] and near_resistance:
+                return "ENTER NOW"
+            if liquidity == "Bearish Liquidity Sweep":
+                return "ENTER NOW"
+        if confidence >= 70:
+            return "WAIT"
+        return "AVOID"
+
     return "AVOID"
+
 
 
 def get_trade_readiness(signal_data):
