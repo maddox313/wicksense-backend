@@ -1033,25 +1033,9 @@ def update_live_signal(market):
         "resistance": high
     }
 
-
     ai_text = build_ai_explanation(signal_data)
-
     ai_summary = build_ai_summary(signal_data)
     trade_thesis = build_trade_thesis(signal_data)
-
-   timing_signal_data = {
-        **signal_data,
-        "close": safe_float(current_candle.get("Close")),
-        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0] if strategy_data.get("support_levels") else signal_data.get("support"),
-        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0] if strategy_data.get("resistance_levels") else signal_data.get("resistance")
-    }
-
-    entry_timing = get_entry_timing(timing_signal_data)
-
-
-
-    trade_readiness = get_trade_readiness(signal_data)
-    execution_guidance = get_execution_guidance(entry_timing, signal_data.get("signal"))
 
     strategy_data = build_strategy_engine_output(df, signal_data)
     strategy_visual_data = build_strategy_visual_output(df, signal_data)
@@ -1059,16 +1043,19 @@ def update_live_signal(market):
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
     session_data = get_market_session()
-    # --- ENTRY TIMING FIX (SMART LOGIC) ---
+
     timing_signal_data = {
         **signal_data,
         "close": safe_float(current_candle.get("Close")),
-        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0] if strategy_data.get("support_levels") else signal_data.get("support"),
-        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0] if strategy_data.get("resistance_levels") else signal_data.get("resistance")
-}
+        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0]
+        if strategy_data.get("support_levels") else signal_data.get("support"),
+        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0]
+        if strategy_data.get("resistance_levels") else signal_data.get("resistance")
+    }
 
-entry_timing = get_entry_timing(timing_signal_data)
-
+    entry_timing = get_entry_timing(timing_signal_data)
+    trade_readiness = get_trade_readiness(signal_data)
+    execution_guidance = get_execution_guidance(entry_timing, signal_data.get("signal"))
 
     new_payload = {
         "market": market,
