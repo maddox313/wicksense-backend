@@ -2310,13 +2310,9 @@ def get_entry_timing(signal_data):
     support = safe_float(signal_data.get("support"), 0)
     resistance = safe_float(signal_data.get("resistance"), 0)
 
-    # Distance checks (within ~1%)
-    near_support = (
-        support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
-    )
-    near_resistance = (
-        resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
-    )
+    # Distance checks (~1% proximity)
+    near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
+    near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
 
     # =========================
     # BULLISH LOGIC
@@ -2366,7 +2362,6 @@ def get_entry_timing(signal_data):
     # DEFAULT
     # =========================
     return "AVOID"
-
 
 
 def get_trade_readiness(signal_data):
