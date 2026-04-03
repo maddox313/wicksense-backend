@@ -2310,40 +2310,61 @@ def get_entry_timing(signal_data):
     support = safe_float(signal_data.get("support"), 0)
     resistance = safe_float(signal_data.get("resistance"), 0)
 
-    # Distance checks
-    near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
-    near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
+    # Distance checks (within ~1%)
+    near_support = (
+        support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
+    )
+    near_resistance = (
+        resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
+    )
 
-    # Strong bullish entry conditions
+    # =========================
+    # BULLISH LOGIC
+    # =========================
     if signal in ["BUY", "BULLISH"]:
         if confidence >= 85:
             if breakout == "Bullish Breakout":
                 return "ENTER NOW"
+
             if trendline == "Rising Trendline Support" and near_support:
                 return "ENTER NOW"
+
             if pattern in ["Hammer", "Pin Bar"] and near_support:
                 return "ENTER NOW"
+
             if liquidity == "Bullish Liquidity Sweep":
                 return "ENTER NOW"
+
         if confidence >= 70:
             return "WAIT"
+
         return "AVOID"
 
-    # Strong bearish entry conditions
+    # =========================
+    # BEARISH LOGIC
+    # =========================
     if signal in ["SELL", "BEARISH"]:
         if confidence >= 85:
             if breakout == "Bearish Breakdown":
                 return "ENTER NOW"
+
             if trendline == "Falling Trendline Resistance" and near_resistance:
                 return "ENTER NOW"
+
             if pattern in ["Shooting Star", "Pin Bar"] and near_resistance:
                 return "ENTER NOW"
+
             if liquidity == "Bearish Liquidity Sweep":
                 return "ENTER NOW"
+
         if confidence >= 70:
             return "WAIT"
+
         return "AVOID"
 
+    # =========================
+    # DEFAULT
+    # =========================
     return "AVOID"
 
 
