@@ -4620,6 +4620,35 @@ def tradeplan():
             "details": str(e)
         }), 500
 
+@app.route("/live-candles", methods=["GET"])
+def live_candles():
+    try:
+        ensure_live_engine_started()
+
+        market = request.args.get("market", "Futures")
+
+        state = LIVE_MARKET_STATE.get(market, {})
+
+        completed = state.get("completed_candles", [])
+        current = state.get("current_candle")
+
+        candles = completed.copy()
+
+        if current:
+            candles.append(current)
+
+        return jsonify({
+            "market": market,
+            "count": len(candles),
+            "candles": candles[-100:]
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load live candles",
+            "details": str(e)
+        }), 500
+
 
 # -----------------------------
 # PRESETS
