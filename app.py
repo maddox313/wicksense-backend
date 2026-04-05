@@ -4435,6 +4435,42 @@ def backtest():
 # -----------------------------
 # TRADE PLAN
 # -----------------------------
+@app.route('/execute-paper-trade', methods=['POST'])
+def execute_paper_trade():
+    try:
+        data = request.get_json()
+
+        market = data.get('market')
+        entry = float(data.get('entry'))
+        stop = float(data.get('stop'))
+        target = float(data.get('target'))
+        risk_percent = float(data.get('risk_percent', 1))
+
+        # Simple risk model (you can upgrade later)
+        account_size = 10000  # placeholder
+        risk_amount = account_size * (risk_percent / 100)
+        risk_per_unit = abs(entry - stop)
+
+        if risk_per_unit == 0:
+            return jsonify({"error": "Invalid stop loss"}), 400
+
+        position_size = risk_amount / risk_per_unit
+
+        trade = {
+            "trade_id": str(uuid.uuid4()),
+            "market": market,
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "size": round(position_size, 2),
+            "status": "OPEN"
+        }
+
+        return jsonify(trade)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
     try:
