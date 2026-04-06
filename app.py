@@ -1034,29 +1034,34 @@ def update_live_signal(market):
         "resistance": high
     }
 
+    # Core signal engine
+    signal_data = evaluate_signal(df)
+
+    # Readiness + timing
+    signal_data["trade_readiness_score"] = get_trade_readiness(signal_data)
+    signal_data["entry_timing"] = get_entry_timing(signal_data)
+
+    # AI layers
     ai_text = build_ai_explanation(signal_data)
     ai_summary = build_ai_summary(signal_data)
     trade_thesis = build_trade_thesis(signal_data)
 
+    # Strategy layers
     strategy_data = build_strategy_engine_output(df, signal_data)
     strategy_visual_data = build_strategy_visual_output(df, signal_data)
     strategy_timing_data = build_strategy_timing_output(df, signal_data)
+
     setup_type = get_setup_type(signal_data)
     wick_data = calculate_live_wicks(current_candle)
     session_data = get_market_session()
 
-    timing_signal_data = {
-        **signal_data,
-        "close": safe_float(current_candle.get("Close")),
-        "support": strategy_data.get("support_levels", [signal_data.get("support")])[0]
-        if strategy_data.get("support_levels") else signal_data.get("support"),
-        "resistance": strategy_data.get("resistance_levels", [signal_data.get("resistance")])[0]
-        if strategy_data.get("resistance_levels") else signal_data.get("resistance")
-    }
+    trade_readiness = signal_data.get("trade_readiness_score")
+    entry_timing = signal_data.get("entry_timing")
 
-    entry_timing = get_entry_timing(timing_signal_data)
-    trade_readiness = get_trade_readiness(signal_data)
-    execution_guidance = get_execution_guidance(entry_timing, signal_data.get("signal"))
+    execution_guidance = get_execution_guidance(
+        entry_timing,
+        signal_data.get("signal")
+    )
 
     new_payload = {
         "market": market,
@@ -1103,6 +1108,7 @@ def update_live_signal(market):
     if has_live_signal_changed(previous_state, new_payload):
         handle_live_signal_change(market, previous_state, new_payload)
         save_live_signal_history_entry(market, new_payload)
+
 
 
 def get_simulated_base_price(market):
