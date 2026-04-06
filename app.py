@@ -1812,7 +1812,12 @@ def wick_strategy(row, pattern):
         bearish += 3
         reasons.append("Bearish engulfing pattern detected")
 
-    return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+    return {
+        "bullish": bullish,
+        "bearish": bearish,
+        "reasons": reasons
+    }
+
 
 
 def detect_engulfing_pattern(df):
@@ -2068,8 +2073,8 @@ def evaluate_signal(df: pd.DataFrame):
     wick_pattern = detect_wick_pattern(row)
     engulfing_pattern = detect_engulfing_pattern(df)
 
+    # Give engulfing priority if present
     pattern = engulfing_pattern or wick_pattern
-
 
     strategies = {
         "wick_strategy": wick_strategy(row, pattern),
@@ -2098,6 +2103,9 @@ def evaluate_signal(df: pd.DataFrame):
     liquidity_event = strategies["liquidity_sweep_strategy"]["liquidity_event"]
     trendline = strategies["trendline_strategy"]["trendline"]
 
+    # -----------------------------
+    # Existing confluence logic
+    # -----------------------------
     if trend_dir > 0 and vwap_dir > 0:
         bullish_points += 2
         confluence_bonus += 2
@@ -2153,6 +2161,45 @@ def evaluate_signal(df: pd.DataFrame):
         bearish_points += 1
         reasons.append("Bearish candle close")
 
+    # -----------------------------
+    # NEW: Engulfing + location boost
+    # -----------------------------
+    near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
+    near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
+
+    if pattern == "Bullish Engulfing" and near_support:
+        bullish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bullish engulfing near support")
+
+    if pattern == "Bearish Engulfing" and near_resistance:
+        bearish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bearish engulfing near resistance")
+
+    if pattern == "Bullish Engulfing" and liquidity_event == "Bullish Liquidity Sweep":
+        bullish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bullish engulfing aligned with liquidity sweep")
+
+    if pattern == "Bearish Engulfing" and liquidity_event == "Bearish Liquidity Sweep":
+        bearish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bearish engulfing aligned with liquidity sweep")
+
+    if pattern == "Bullish Engulfing" and trendline == "Rising Trendline Support":
+        bullish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bullish engulfing aligned with trendline support")
+
+    if pattern == "Bearish Engulfing" and trendline == "Falling Trendline Resistance":
+        bearish_points += 1
+        confluence_bonus += 1
+        reasons.append("Bearish engulfing aligned with trendline resistance")
+
+    # -----------------------------
+    # Final signal
+    # -----------------------------
     if bullish_points > bearish_points:
         signal_type = "Bullish"
     elif bearish_points > bullish_points:
