@@ -3783,7 +3783,6 @@ def stream_status():
 
 
 @app.route("/live-signals", methods=["GET"])
-
 def live_signals():
     try:
         ensure_live_engine_started()
@@ -3858,7 +3857,6 @@ def live_signals():
 
 
 @app.route("/live-top-trade", methods=["GET"])
-
 def live_top_trade():
     try:
         ensure_live_engine_started()
@@ -3939,6 +3937,20 @@ def live_top_trade():
             "error": "Failed to load live top trade",
             "details": str(e)
         }), 500
+
+@app.route("/debug-live-state", methods=["GET"])
+def debug_live_state():
+    try:
+        return jsonify({
+            "market_count": len(LIVE_MARKET_STATE),
+            "markets": LIVE_MARKET_STATE
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to inspect live state",
+            "details": str(e)
+        }), 500
+
 
 @app.route("/live-setup-forming", methods=["GET"])
 def live_setup_forming():
