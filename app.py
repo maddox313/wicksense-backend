@@ -2171,10 +2171,47 @@ def evaluate_signal(df: pd.DataFrame):
         reasons.append("Bearish candle close")
 
     # -----------------------------
+    # NEW: Engulfing strength boost
+    # -----------------------------
+    if pattern == "Bullish Engulfing":
+        if engulfing_strength > 2:
+            bullish_points += 2
+            confluence_bonus += 2
+            reasons.append("Strong bullish engulfing momentum")
+        else:
+            bullish_points += 1
+            reasons.append("Valid bullish engulfing momentum")
+
+    if pattern == "Bearish Engulfing":
+        if engulfing_strength > 2:
+            bearish_points += 2
+            confluence_bonus += 2
+            reasons.append("Strong bearish engulfing momentum")
+        else:
+            bearish_points += 1
+            reasons.append("Valid bearish engulfing momentum")
+
+    # -----------------------------
+    # NEW: Engulfing + wick trap detection
+    # -----------------------------
+    if pattern == "Bullish Engulfing":
+        if row["LowerWick"] > row["UpperWick"] * 1.5:
+            bullish_points += 2
+            confluence_bonus += 2
+            reasons.append("Bullish liquidity trap detected (stop hunt reversal)")
+
+    if pattern == "Bearish Engulfing":
+        if row["UpperWick"] > row["LowerWick"] * 1.5:
+            bearish_points += 2
+            confluence_bonus += 2
+            reasons.append("Bearish liquidity trap detected (stop hunt reversal)")
+
+    # -----------------------------
     # NEW: Engulfing + location boost
     # -----------------------------
     near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
     near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
+
 
     if pattern == "Bullish Engulfing" and near_support:
         bullish_points += 1
