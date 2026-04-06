@@ -738,42 +738,68 @@ def get_current_live_top_trade():
     best_score = -1
 
     for market_name, data in LIVE_MARKET_STATE.items():
-        signal = str(data.get("signal", "")).upper()
+        signal = str(data.get("signal", "")).strip().upper()
         confidence = safe_float(data.get("confidence"), 0.0)
-        entry_timing = str(data.get("entry_timing", "")).upper()
+        entry_timing = str(data.get("entry_timing", "")).strip().upper()
+        readiness = safe_float(data.get("trade_readiness_score"), 0.0)
 
-        # Ignore only truly empty / neutral states
-        if signal in ["", "NEUTRAL", "HOLD", "NONE"]:
+        # Normalize direction labels
+        if signal == "BULLISH":
+            normalized_signal = "BUY"
+        elif signal == "BEARISH":
+            normalized_signal = "SELL"
+        elif signal in ["BUY", "SELL"]:
+            normalized_signal = signal
+        else:
+            normalized_signal = None
+
+        # Skip only truly unusable states
+        if normalized_signal is None:
             continue
 
         score = confidence
 
-        # Prefer actionable trades
+        # Strong preference for actionable setups
         if entry_timing == "ENTER NOW":
             score += 25
         elif entry_timing == "WAIT":
             score += 10
 
+        # Reward readiness too
+        score += readiness * 0.2
+
         if score > best_score:
             best_score = score
             best_trade = {
                 "market": market_name,
-                "signal": data.get("signal"),
+                "signal": normalized_signal,
                 "confidence": confidence,
                 "entry_timing": data.get("entry_timing"),
-                "trade_readiness_score": data.get("trade_readiness_score"),
+                "trade_readiness_score": readiness,
                 "setup_type": data.get("setup_type"),
                 "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
                 "pattern": data.get("pattern"),
                 "breakout": data.get("breakout"),
                 "liquidity_event": data.get("liquidity_event"),
                 "trendline": data.get("trendline"),
                 "support_levels": data.get("support_levels"),
                 "resistance_levels": data.get("resistance_levels"),
-                "last_updated": data.get("last_updated")
+                "entry_zone": data.get("entry_zone"),
+                "breakout_zone": data.get("breakout_zone"),
+                "strategy_visual_bias": data.get("strategy_visual_bias"),
+                "execution_guidance": data.get("execution_guidance"),
+                "confirmation_state": data.get("confirmation_state"),
+                "session_label": data.get("session_label"),
+                "active_sessions": data.get("active_sessions"),
+                "liquidity_profile": data.get("liquidity_profile"),
+                "utc_hour": data.get("utc_hour"),
+                "last_updated": data.get("last_updated"),
+                "top_trade_score": round(score, 2)
             }
 
     return best_trade or {}
+
 
 
 def get_current_setup_forming_trade():
