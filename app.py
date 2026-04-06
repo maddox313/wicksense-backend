@@ -2080,7 +2080,7 @@ def evaluate_signal(df: pd.DataFrame):
     resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
 
     wick_pattern = detect_wick_pattern(row)
-    engulfing_pattern = detect_engulfing_pattern(df)
+    engulfing_pattern, engulfing_strength = detect_engulfing_pattern(df)
 
     # Give engulfing priority if present
     pattern = engulfing_pattern or wick_pattern
