@@ -2441,6 +2441,7 @@ def get_entry_timing(signal_data):
     liquidity = signal_data.get("liquidity_event")
     trendline = signal_data.get("trendline")
     pattern = signal_data.get("pattern")
+    readiness = safe_float(signal_data.get("trade_readiness_score"), 0)
 
     close_price = safe_float(signal_data.get("close"), 0)
     support = safe_float(signal_data.get("support"), 0)
@@ -2454,20 +2455,22 @@ def get_entry_timing(signal_data):
     # BULLISH LOGIC
     # =========================
     if signal in ["BUY", "BULLISH"]:
-        if confidence >= 85:
+        # Strong actionable conditions
+        if confidence >= 80 and readiness >= 60:
             if breakout == "Bullish Breakout":
                 return "ENTER NOW"
 
             if trendline == "Rising Trendline Support" and near_support:
                 return "ENTER NOW"
 
-            if pattern in ["Hammer", "Pin Bar"] and near_support:
+            if pattern in ["Hammer", "Pin Bar", "Bullish Engulfing"] and near_support:
                 return "ENTER NOW"
 
             if liquidity == "Bullish Liquidity Sweep":
                 return "ENTER NOW"
 
-        if confidence >= 70:
+        # Medium readiness setup
+        if confidence >= 65 or readiness >= 40:
             return "WAIT"
 
         return "AVOID"
@@ -2476,20 +2479,22 @@ def get_entry_timing(signal_data):
     # BEARISH LOGIC
     # =========================
     if signal in ["SELL", "BEARISH"]:
-        if confidence >= 85:
+        # Strong actionable conditions
+        if confidence >= 80 and readiness >= 60:
             if breakout == "Bearish Breakdown":
                 return "ENTER NOW"
 
             if trendline == "Falling Trendline Resistance" and near_resistance:
                 return "ENTER NOW"
 
-            if pattern in ["Shooting Star", "Pin Bar"] and near_resistance:
+            if pattern in ["Shooting Star", "Pin Bar", "Bearish Engulfing"] and near_resistance:
                 return "ENTER NOW"
 
             if liquidity == "Bearish Liquidity Sweep":
                 return "ENTER NOW"
 
-        if confidence >= 70:
+        # Medium readiness setup
+        if confidence >= 65 or readiness >= 40:
             return "WAIT"
 
         return "AVOID"
@@ -2516,6 +2521,20 @@ def get_trade_readiness(signal_data):
     score += int(confidence * 0.25)
 
     return min(score, 100)
+
+
+    # -----------------------------
+    # Timing logic
+    # -----------------------------
+    if readiness >= 70:
+        return "ENTER NOW"
+
+    elif readiness >= 40:
+        return "WAIT"
+
+    else:
+        return "AVOID"
+
 
 def get_execution_guidance(entry_timing, signal):
     signal_text = str(signal).upper() if signal else "TRADE"
@@ -3686,6 +3705,63 @@ def refresh_live_scan():
 
     except Exception as e:
         LIVE_SCAN_CACHE["status"] = f"error: {str(e)}"
+
+def get_trade_readiness(signal_data):
+    score = 0
+
+    confidence = float(signal_data.get("confidence") or 0)
+    pattern = signal_data.get("pattern")
+    breakout = signal_data.get("breakout")
+    liquidity = signal_data.get("liquidity_event")
+    trendline = signal_data.get("trendline")
+    reasons = signal_data.get("reasons", [])
+
+    # -----------------------------
+    # Confidence base
+    # -----------------------------
+    if confidence >= 80:
+        score += 30
+    elif confidence >= 70:
+        score += 20
+    elif confidence >= 60:
+        score += 10
+
+    # -----------------------------
+    # Pattern strength
+    # -----------------------------
+    if pattern in ["Bullish Engulfing", "Bearish Engulfing"]:
+        score += 15
+
+    if pattern in ["Hammer", "Shooting Star"]:
+        score += 10
+
+    # -----------------------------
+    # Breakout / liquidity
+    # -----------------------------
+    if breakout in ["Bullish Breakout", "Bearish Breakdown"]:
+        score += 20
+
+    if liquidity in ["Bullish Liquidity Sweep", "Bearish Liquidity Sweep"]:
+        score += 15
+
+    # -----------------------------
+    # Trendline reaction
+    # -----------------------------
+    if trendline in ["Rising Trendline Support", "Falling Trendline Resistance"]:
+        score += 10
+
+    # -----------------------------
+    # Location (from reasons)
+    # -----------------------------
+    if any("support" in r.lower() for r in reasons):
+        score += 10
+
+    if any("resistance" in r.lower() for r in reasons):
+        score += 10
+
+    # Cap at 100
+    return min(score, 100)
+
 
 
 # -----------------------------
