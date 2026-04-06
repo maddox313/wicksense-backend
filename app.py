@@ -738,42 +738,43 @@ def get_current_live_top_trade():
     best_score = -1
 
     for market_name, data in LIVE_MARKET_STATE.items():
-        signal = data.get("signal")
+        signal = str(data.get("signal", "")).upper()
         confidence = safe_float(data.get("confidence"), 0.0)
-        readiness = safe_float(data.get("trade_readiness_score"), 0.0)
-        entry_timing = data.get("entry_timing")
+        entry_timing = str(data.get("entry_timing", "")).upper()
 
-        # Strict filter for real top trades
-        if signal in [None, "Neutral", "HOLD"]:
+        # Ignore only truly empty / neutral states
+        if signal in ["", "NEUTRAL", "HOLD", "NONE"]:
             continue
 
-        if confidence < 80:
-            continue
+        score = confidence
 
-        if entry_timing != "ENTER NOW":
-            continue
-
-        if readiness < 70:
-            continue
-
-        high = safe_float(data.get("high"), 0.0)
-        low = safe_float(data.get("low"), 0.0)
-        volatility = abs(high - low)
-
-        score = confidence + (volatility * 10) + readiness
+        # Prefer actionable trades
+        if entry_timing == "ENTER NOW":
+            score += 25
+        elif entry_timing == "WAIT":
+            score += 10
 
         if score > best_score:
             best_score = score
             best_trade = {
                 "market": market_name,
-                "signal": signal,
-                "setup_type": data.get("setup_type"),
+                "signal": data.get("signal"),
                 "confidence": confidence,
-                "entry_timing": entry_timing,
-                "trade_readiness_score": readiness
+                "entry_timing": data.get("entry_timing"),
+                "trade_readiness_score": data.get("trade_readiness_score"),
+                "setup_type": data.get("setup_type"),
+                "ai_summary": data.get("ai_summary"),
+                "pattern": data.get("pattern"),
+                "breakout": data.get("breakout"),
+                "liquidity_event": data.get("liquidity_event"),
+                "trendline": data.get("trendline"),
+                "support_levels": data.get("support_levels"),
+                "resistance_levels": data.get("resistance_levels"),
+                "last_updated": data.get("last_updated")
             }
 
-    return best_trade
+    return best_trade or {}
+
 
 def get_current_setup_forming_trade():
     best_trade = None
