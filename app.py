@@ -1788,11 +1788,14 @@ def wick_strategy(row, pattern):
     if pattern == "Hammer":
         bullish += 2
         reasons.append("Hammer pattern detected")
+
     elif pattern == "Shooting Star":
         bearish += 2
         reasons.append("Shooting Star pattern detected")
+
     elif pattern == "Doji":
         reasons.append("Doji pattern detected")
+
     elif pattern == "Pin Bar":
         if row["LowerWick"] > row["UpperWick"]:
             bullish += 1
@@ -1801,7 +1804,16 @@ def wick_strategy(row, pattern):
             bearish += 1
             reasons.append("Bearish Pin Bar detected")
 
+    elif pattern == "Bullish Engulfing":
+        bullish += 3
+        reasons.append("Bullish engulfing pattern detected")
+
+    elif pattern == "Bearish Engulfing":
+        bearish += 3
+        reasons.append("Bearish engulfing pattern detected")
+
     return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
+
 
 def detect_engulfing_pattern(df):
     if len(df) < 2:
