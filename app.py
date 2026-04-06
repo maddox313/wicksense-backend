@@ -1803,6 +1803,45 @@ def wick_strategy(row, pattern):
 
     return {"bullish": bullish, "bearish": bearish, "reasons": reasons}
 
+def detect_engulfing_pattern(df):
+    if len(df) < 2:
+        return None
+
+    prev = df.iloc[-2]
+    curr = df.iloc[-1]
+
+    prev_open = float(prev["Open"])
+    prev_close = float(prev["Close"])
+    curr_open = float(curr["Open"])
+    curr_close = float(curr["Close"])
+
+    prev_bearish = prev_close < prev_open
+    prev_bullish = prev_close > prev_open
+    curr_bullish = curr_close > curr_open
+    curr_bearish = curr_close < curr_open
+
+    prev_body_low = min(prev_open, prev_close)
+    prev_body_high = max(prev_open, prev_close)
+    curr_body_low = min(curr_open, curr_close)
+    curr_body_high = max(curr_open, curr_close)
+
+    # Bullish engulfing:
+    # previous candle bearish, current candle bullish,
+    # current real body fully engulfs previous real body
+    if prev_bearish and curr_bullish:
+        if curr_body_low <= prev_body_low and curr_body_high >= prev_body_high:
+            return "Bullish Engulfing"
+
+    # Bearish engulfing:
+    # previous candle bullish, current candle bearish,
+    # current real body fully engulfs previous real body
+    if prev_bullish and curr_bearish:
+        if curr_body_low <= prev_body_low and curr_body_high >= prev_body_high:
+            return "Bearish Engulfing"
+
+    return None
+
+
 
 def ma_trend_strategy(row):
     bullish = 0
