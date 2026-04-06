@@ -743,7 +743,6 @@ def get_current_live_top_trade():
         entry_timing = str(data.get("entry_timing", "")).strip().upper()
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
 
-        # Normalize direction labels
         if signal == "BULLISH":
             normalized_signal = "BUY"
         elif signal == "BEARISH":
@@ -753,48 +752,56 @@ def get_current_live_top_trade():
         else:
             normalized_signal = None
 
-        # Skip only truly unusable states
         if normalized_signal is None:
             continue
 
         score = confidence
 
-        # Strong preference for actionable setups
         if entry_timing == "ENTER NOW":
             score += 25
         elif entry_timing == "WAIT":
             score += 10
 
-        # Reward readiness too
         score += readiness * 0.2
 
         if score > best_score:
             best_score = score
             best_trade = {
                 "market": market_name,
+                "last_updated": data.get("last_updated"),
+                "open": data.get("open"),
+                "high": data.get("high"),
+                "low": data.get("low"),
+                "close": data.get("close"),
+                "upper_wick": data.get("upper_wick"),
+                "lower_wick": data.get("lower_wick"),
                 "signal": normalized_signal,
                 "confidence": confidence,
-                "entry_timing": data.get("entry_timing"),
-                "trade_readiness_score": readiness,
-                "setup_type": data.get("setup_type"),
-                "ai_summary": data.get("ai_summary"),
-                "trade_thesis": data.get("trade_thesis"),
                 "pattern": data.get("pattern"),
                 "breakout": data.get("breakout"),
                 "liquidity_event": data.get("liquidity_event"),
                 "trendline": data.get("trendline"),
+                "setup_type": data.get("setup_type"),
+                "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
+                "risk_note": data.get("risk_note"),
+                "strategy_recommendation": data.get("strategy_recommendation"),
+                "strategy_reason": data.get("strategy_reason"),
+                "suggested_action": data.get("suggested_action"),
                 "support_levels": data.get("support_levels"),
                 "resistance_levels": data.get("resistance_levels"),
-                "entry_zone": data.get("entry_zone"),
+                "trendline_points": data.get("trendline_points"),
                 "breakout_zone": data.get("breakout_zone"),
+                "entry_zone": data.get("entry_zone"),
                 "strategy_visual_bias": data.get("strategy_visual_bias"),
-                "execution_guidance": data.get("execution_guidance"),
+                "entry_timing": data.get("entry_timing"),
                 "confirmation_state": data.get("confirmation_state"),
+                "trade_readiness_score": readiness,
+                "execution_guidance": data.get("execution_guidance"),
                 "session_label": data.get("session_label"),
                 "active_sessions": data.get("active_sessions"),
                 "liquidity_profile": data.get("liquidity_profile"),
                 "utc_hour": data.get("utc_hour"),
-                "last_updated": data.get("last_updated"),
                 "top_trade_score": round(score, 2)
             }
 
@@ -3968,83 +3975,13 @@ def live_signals():
 def live_top_trade():
     try:
         ensure_live_engine_started()
-
-        best_trade = None
-        best_score = -1
-
-        for market_name, data in LIVE_MARKET_STATE.items():
-            signal = data.get("signal")
-            confidence = safe_float(data.get("confidence"), 0.0)
-            readiness = safe_float(data.get("trade_readiness_score"), 0.0)
-            entry_timing = (data.get("entry_timing") or "").upper()
-
-            # strict filter: only real actionable trades
-            if signal in [None, "HOLD", "Neutral"]:
-                continue
-
-            if confidence < 80:
-                continue
-
-            if entry_timing != "ENTER NOW":
-                continue
-
-            if readiness < 70:
-                continue
-
-            high = safe_float(data.get("high"), 0.0)
-            low = safe_float(data.get("low"), 0.0)
-            volatility = abs(high - low)
-
-            score = confidence + (volatility * 10) + readiness
-
-            if score > best_score:
-                best_score = score
-                best_trade = {
-                    "market": market_name,
-                    "last_updated": data.get("last_updated"),
-                    "open": data.get("open"),
-                    "high": data.get("high"),
-                    "low": data.get("low"),
-                    "close": data.get("close"),
-                    "upper_wick": data.get("upper_wick"),
-                    "lower_wick": data.get("lower_wick"),
-                    "signal": data.get("signal"),
-                    "confidence": data.get("confidence"),
-                    "pattern": data.get("pattern"),
-                    "breakout": data.get("breakout"),
-                    "liquidity_event": data.get("liquidity_event"),
-                    "trendline": data.get("trendline"),
-                    "setup_type": data.get("setup_type"),
-                    "ai_summary": data.get("ai_summary"),
-                    "trade_thesis": data.get("trade_thesis"),
-                    "risk_note": data.get("risk_note"),
-                    "strategy_recommendation": data.get("strategy_recommendation"),
-                    "strategy_reason": data.get("strategy_reason"),
-                    "suggested_action": data.get("suggested_action"),
-                    "support_levels": data.get("support_levels"),
-                    "resistance_levels": data.get("resistance_levels"),
-                    "trendline_points": data.get("trendline_points"),
-                    "breakout_zone": data.get("breakout_zone"),
-                    "entry_zone": data.get("entry_zone"),
-                    "strategy_visual_bias": data.get("strategy_visual_bias"),
-                    "entry_timing": data.get("entry_timing"),
-                    "confirmation_state": data.get("confirmation_state"),
-                    "trade_readiness_score": data.get("trade_readiness_score"),
-                    "execution_guidance": data.get("execution_guidance"),
-                    "session_label": data.get("session_label"),
-                    "active_sessions": data.get("active_sessions"),
-                    "liquidity_profile": data.get("liquidity_profile"),
-                    "utc_hour": data.get("utc_hour"),
-                    "top_trade_score": round(score, 2)
-                }
-                
-        return jsonify(best_trade or {})
-
+        return jsonify(get_current_live_top_trade() or {})
     except Exception as e:
         return jsonify({
             "error": "Failed to load live top trade",
             "details": str(e)
         }), 500
+
 
 @app.route("/debug-live-state", methods=["GET"])
 def debug_live_state():
