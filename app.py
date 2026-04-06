@@ -1822,7 +1822,7 @@ def wick_strategy(row, pattern):
 
 def detect_engulfing_pattern(df):
     if len(df) < 2:
-        return None
+        return None, 0
 
     prev = df.iloc[-2]
     curr = df.iloc[-1]
@@ -1832,31 +1832,40 @@ def detect_engulfing_pattern(df):
     curr_open = float(curr["Open"])
     curr_close = float(curr["Close"])
 
+    prev_body = abs(prev_close - prev_open)
+    curr_body = abs(curr_close - curr_open)
+
+    # Avoid division issues
+    if prev_body == 0:
+        prev_body = 0.0001
+
+    strength = curr_body / prev_body
+
     prev_bearish = prev_close < prev_open
     prev_bullish = prev_close > prev_open
     curr_bullish = curr_close > curr_open
     curr_bearish = curr_close < curr_open
 
-    prev_body_low = min(prev_open, prev_close)
-    prev_body_high = max(prev_open, prev_close)
-    curr_body_low = min(curr_open, curr_close)
-    curr_body_high = max(curr_open, curr_close)
+    prev_low = min(prev_open, prev_close)
+    prev_high = max(prev_open, prev_close)
+    curr_low = min(curr_open, curr_close)
+    curr_high = max(curr_open, curr_close)
 
-    # Bullish engulfing:
-    # previous candle bearish, current candle bullish,
-    # current real body fully engulfs previous real body
+    # Weak filter (ignore tiny engulfing)
+    if strength < 1.2:
+        return None, 0
+
+    # Bullish engulfing
     if prev_bearish and curr_bullish:
-        if curr_body_low <= prev_body_low and curr_body_high >= prev_body_high:
-            return "Bullish Engulfing"
+        if curr_low <= prev_low and curr_high >= prev_high:
+            return "Bullish Engulfing", strength
 
-    # Bearish engulfing:
-    # previous candle bullish, current candle bearish,
-    # current real body fully engulfs previous real body
+    # Bearish engulfing
     if prev_bullish and curr_bearish:
-        if curr_body_low <= prev_body_low and curr_body_high >= prev_body_high:
-            return "Bearish Engulfing"
+        if curr_low <= prev_low and curr_high >= prev_high:
+            return "Bearish Engulfing", strength
 
-    return None
+    return None, 0
 
 
 
