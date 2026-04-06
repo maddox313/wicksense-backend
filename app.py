@@ -2053,7 +2053,11 @@ def evaluate_signal(df: pd.DataFrame):
     support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
     resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
 
-    pattern = detect_wick_pattern(row)
+    wick_pattern = detect_wick_pattern(row)
+    engulfing_pattern = detect_engulfing_pattern(df)
+
+    pattern = engulfing_pattern or wick_pattern
+
 
     strategies = {
         "wick_strategy": wick_strategy(row, pattern),
