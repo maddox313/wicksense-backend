@@ -4650,38 +4650,62 @@ def backtest():
 @app.route('/execute-paper-trade', methods=['POST'])
 def execute_paper_trade():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
 
-        market = data.get('market')
-        entry = float(data.get('entry'))
-        stop = float(data.get('stop'))
-        target = float(data.get('target'))
-        risk_percent = float(data.get('risk_percent', 1))
+        # --- SAFE INPUT PARSING ---
+        market = data.get('market', "")
 
-        # Simple risk model (you can upgrade later)
-        account_size = 10000  # placeholder
+        entry = safe_float(data.get('entry'), None)
+        stop = safe_float(data.get('stop'), None)
+        target = safe_float(data.get('target'), None)
+        risk_percent = safe_float(data.get('risk_percent'), 1.0)
+
+        # --- VALIDATION (PREVENT 500 ERRORS) ---
+        if not market:
+            return jsonify({"error": "Missing market"}), 400
+
+        if entry is None or stop is None or target is None:
+            return jsonify({
+                "error": "Missing required trade values",
+                "details": {
+                    "entry": data.get("entry"),
+                    "stop": data.get("stop"),
+                    "target": data.get("target"),
+                    "risk_percent": data.get("risk_percent")
+                }
+            }), 400
+
+        # --- RISK MODEL ---
+        account_size = 10000  # placeholder (upgrade later)
         risk_amount = account_size * (risk_percent / 100)
+
         risk_per_unit = abs(entry - stop)
 
         if risk_per_unit == 0:
-            return jsonify({"error": "Invalid stop loss"}), 400
+            return jsonify({"error": "Invalid stop loss (same as entry)"}), 400
 
         position_size = risk_amount / risk_per_unit
 
+        # --- BUILD TRADE ---
         trade = {
             "trade_id": str(uuid.uuid4()),
             "market": market,
-            "entry": entry,
-            "stop": stop,
-            "target": target,
-            "size": round(position_size, 2),
+            "entry": round(entry, 4),
+            "stop": round(stop, 4),
+            "target": round(target, 4),
+            "risk_percent": risk_percent,
+            "risk_amount": round(risk_amount, 2),
+            "position_size": round(position_size, 2),
             "status": "OPEN"
         }
 
         return jsonify(trade)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "Paper trade execution failed",
+            "details": str(e)
+        }), 500
 
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
