@@ -761,6 +761,8 @@ def get_current_live_top_trade():
             score += 25
         elif entry_timing == "WAIT":
             score += 10
+        elif entry_timing == "AVOID":
+            score -= 10
 
         score += readiness * 0.2
 
