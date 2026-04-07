@@ -79,6 +79,13 @@ LIVE_NOTIFICATION_COOLDOWNS = {}
 LIVE_ENGINE_STARTED = False
 LIVE_ENGINE_LOCK = threading.Lock()
 
+POLLING_INTERVAL = 7
+WS_RECONNECT_INTERVAL = 30
+
+POLLING_ACTIVE = False
+WS_ACTIVE = False
+POLLING_THREAD_STARTED = False
+
 
 # -----------------------------
 # BASIC ROUTES
@@ -1110,6 +1117,49 @@ def update_live_signal(market):
         handle_live_signal_change(market, previous_state, new_payload)
         save_live_signal_history_entry(market, new_payload)
 
+def run_polling_fallback():
+    global POLLING_ACTIVE, STREAM_STATUS
+
+    POLLING_ACTIVE = True
+    STREAM_STATUS["status"] = "connected"
+    STREAM_STATUS["provider"] = "polling"
+    STREAM_STATUS["last_error"] = None
+
+    while POLLING_ACTIVE:
+        try:
+            for market in LIVE_MARKET_STATE.keys():
+                df = fetch_live_market_data(market, interval="1min", outputsize=50)
+
+                if df is None or df.empty:
+                    continue
+
+                latest = df.iloc[-1]
+
+                state = LIVE_MARKET_STATE.get(market, {})
+                state["current_candle"] = {
+                    "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                    "Open": float(latest["Open"]),
+                    "High": float(latest["High"]),
+                    "Low": float(latest["Low"]),
+                    "Close": float(latest["Close"])
+                }
+                state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+                LIVE_MARKET_STATE[market] = state
+
+                update_live_signal(market)
+
+            STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
+            STREAM_STATUS["status"] = "connected"
+            STREAM_STATUS["provider"] = "polling"
+
+        except Exception as e:
+            STREAM_STATUS["status"] = "error"
+            STREAM_STATUS["provider"] = "polling"
+            STREAM_STATUS["last_error"] = str(e)
+
+        time.sleep(POLLING_INTERVAL)
+
+
 
 
 def get_simulated_base_price(market):
@@ -1210,21 +1260,8 @@ def run_live_signal_engine():
             time.sleep(5)
 
 
-def get_twelvedata_symbol(market):
-    mapping = {
-        "NASDAQ": "QQQ",
-        "DowJones": "DIA",
-        "Gold": "XAU/USD",
-        "NaturalGas": "NG",
-        "Forex": "EUR/USD",
-        "Futures": "SPY"
-    }
-    return mapping.get(market)
-
-
-
 def start_twelvedata_stream():
-    global STREAM_STATUS
+    global STREAM_STATUS, WS_ACTIVE, POLLING_ACTIVE
 
     def on_message(ws, message):
         try:
@@ -1248,49 +1285,65 @@ def start_twelvedata_stream():
                 if market and price:
                     update_live_candle(market, price)
                     update_live_signal(market)
-                    check_for_live_top_trade_change()
-                    process_auto_triggers()
+
                     STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
+                    STREAM_STATUS["status"] = "connected"
+                    STREAM_STATUS["provider"] = "twelvedata"
 
         except Exception as e:
-            print(f"WebSocket message error: {e}")
+            print(f"WebSocket error: {e}")
 
     def on_open(ws):
+        global WS_ACTIVE, POLLING_ACTIVE
+
+        WS_ACTIVE = True
+        POLLING_ACTIVE = False
+
         STREAM_STATUS["status"] = "connected"
         STREAM_STATUS["provider"] = "twelvedata"
 
-        symbols = ["QQQ", "DIA", "XAU/USD", "NG", "EUR/USD", "SPY"]
-
-        subscribe_message = {
+        ws.send(json.dumps({
             "action": "subscribe",
             "params": {
-                "symbols": ",".join(symbols)
+                "symbols": "QQQ,DIA,XAU/USD,NG,EUR/USD,SPY"
             }
-        }
+        }))
 
-        ws.send(json.dumps(subscribe_message))
-
-    def on_error(ws, error):
-        STREAM_STATUS["status"] = "error"
-        STREAM_STATUS["last_error"] = str(error)
-        print(f"WebSocket error: {error}")
-
-    def on_close(ws, close_status_code, close_msg):
+    def on_close(ws, *args):
+        global WS_ACTIVE
+        WS_ACTIVE = False
         STREAM_STATUS["status"] = "disconnected"
-        STREAM_STATUS["last_error"] = close_msg or "WebSocket closed"
-        print("WebSocket closed")
-
-    ws_url = f"wss://ws.twelvedata.com/v1/quotes/price?apikey={TWELVE_DATA_API_KEY}"
 
     ws = websocket.WebSocketApp(
-        ws_url,
+        f"wss://ws.twelvedata.com/v1/quotes/price?apikey={TWELVE_DATA_API_KEY}",
         on_message=on_message,
         on_open=on_open,
-        on_error=on_error,
         on_close=on_close
     )
 
     ws.run_forever()
+
+def start_twelvedata_stream_with_reconnect():
+    global POLLING_THREAD_STARTED
+
+    while True:
+        try:
+            start_twelvedata_stream()
+        except Exception as e:
+            STREAM_STATUS["status"] = "disconnected"
+            STREAM_STATUS["last_error"] = str(e)
+
+        if not POLLING_ACTIVE and not POLLING_THREAD_STARTED:
+            POLLING_THREAD_STARTED = True
+
+            def polling_runner():
+                global POLLING_THREAD_STARTED
+                run_polling_fallback()
+                POLLING_THREAD_STARTED = False
+
+            threading.Thread(target=polling_runner, daemon=True).start()
+
+        time.sleep(30)
 
 
 
@@ -1307,28 +1360,12 @@ def ensure_live_engine_started():
         seed_live_market_state()
 
         def start_engine():
-            global STREAM_STATUS
-
             if TWELVE_DATA_API_KEY and websocket is not None:
-                try:
-                    start_twelvedata_stream()
-                    return
-                except Exception as e:
-                    print(f"Twelve Data stream failed, falling back to simulated engine: {e}")
-                    STREAM_STATUS["status"] = "connected"
-                    STREAM_STATUS["provider"] = "simulated"
-                    run_live_signal_engine()
+                start_twelvedata_stream_with_reconnect()
             else:
-                STREAM_STATUS["status"] = "connected"
-                STREAM_STATUS["provider"] = "simulated"
-                run_live_signal_engine()
+                run_polling_fallback()
 
-        live_signal_thread = threading.Thread(
-            target=start_engine,
-            daemon=True
-        )
-
-        live_signal_thread.start()
+        threading.Thread(target=start_engine, daemon=True).start()
         LIVE_ENGINE_STARTED = True
 
 
@@ -3855,14 +3892,15 @@ def market_script():
 
 @app.route("/stream-status", methods=["GET"])
 def stream_status():
-    try:
-        ensure_live_engine_started()
-        return jsonify(STREAM_STATUS)
-    except Exception as e:
-        return jsonify({
-            "error": "Failed to load stream status",
-            "details": str(e)
-        }), 500
+    return jsonify({
+        "status": STREAM_STATUS.get("status"),
+        "provider": STREAM_STATUS.get("provider"),
+        "last_tick": STREAM_STATUS.get("last_tick"),
+        "last_error": STREAM_STATUS.get("last_error"),
+        "polling_active": POLLING_ACTIVE,
+        "websocket_active": WS_ACTIVE
+    })
+
 
 
 @app.route("/live-signals", methods=["GET"])
