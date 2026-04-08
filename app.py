@@ -18,7 +18,7 @@ except ImportError:
     websocket = None
 
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+stripe.api_key = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
 
 TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
 
