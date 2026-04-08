@@ -4483,6 +4483,30 @@ def signal():
 def backtest():
     try:
         market = get_market_from_request()
+
+        # --- MARKET ALIASES ---
+        market_aliases = {
+            "EURUSD": "Forex",
+            "EUR/USD": "Forex",
+            "FOREX": "Forex",
+            "QQQ": "NASDAQ",
+            "NASDAQ": "NASDAQ",
+            "DIA": "DowJones",
+            "DOWJONES": "DowJones",
+            "DOWJONES30": "DowJones",
+            "XAUUSD": "Gold",
+            "XAU/USD": "Gold",
+            "GOLD": "Gold",
+            "NG": "NaturalGas",
+            "NATURALGAS": "NaturalGas",
+            "SPY": "Futures",
+            "FUTURES": "Futures"
+        }
+
+        requested_market = str(market).strip().upper() if market else ""
+        if market:
+            market = market_aliases.get(requested_market, market)
+
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         _ = get_string_from_request("start_date", "")
         _ = get_string_from_request("end_date", "")
@@ -4493,7 +4517,14 @@ def backtest():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=50)
 
         if df is None or df.empty:
-            return jsonify({"error": "No market data returned"}), 400
+            return jsonify({
+                "error": "No market data returned",
+                "details": {
+                    "requested_market": requested_market,
+                    "mapped_market": market,
+                    "timeframe": timeframe
+                }
+            }), 400
 
         df = add_indicators(df)
 
@@ -4617,10 +4648,16 @@ def backtest():
 
         ending_equity = round(equity_curve[-1], 4) if equity_curve else 0.0
 
-        # --- ADD THIS: raw candle data for frontend fallback ---
+        # --- RAW CANDLE DATA FOR FRONTEND / ROCKET COMPATIBILITY ---
         candles = []
         for i, row in df.iterrows():
-            time_value = None
+            if (
+                pd.isna(row.get("Open")) or
+                pd.isna(row.get("High")) or
+                pd.isna(row.get("Low")) or
+                pd.isna(row.get("Close"))
+            ):
+                continue
 
             if isinstance(i, pd.Timestamp):
                 time_value = i.isoformat()
@@ -4633,16 +4670,17 @@ def backtest():
                 "high": round(float(row["High"]), 6),
                 "low": round(float(row["Low"]), 6),
                 "close": round(float(row["Close"]), 6),
-                "volume": round(float(row["Volume"]), 6) if "Volume" in row and pd.notna(row["Volume"]) else 0.0
+                "volume": round(float(row["Volume"]), 6) if "Volume" in df.columns and pd.notna(row.get("Volume")) else 0.0
             })
 
         return jsonify({
             "market": market,
+            "requested_market": requested_market,
             "timeframe": timeframe,
             "results": results,
             "equity_curve": equity_curve,
 
-            # --- ADD THESE 3 KEYS FOR ROCKET COMPATIBILITY ---
+            # --- ROCKET COMPATIBILITY ---
             "candles": candles,
             "price_history": candles,
             "ohlcv": candles,
@@ -4672,6 +4710,7 @@ def backtest():
             "details": str(e)
         }), 500
 
+
 @app.route("/price-history", methods=["POST"])
 def price_history():
     try:
@@ -4682,7 +4721,33 @@ def price_history():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        # Keep output size in a safe range
+        # --- MARKET ALIASES ---
+        market_aliases = {
+            "EURUSD": "Forex",
+            "EUR/USD": "Forex",
+            "FOREX": "Forex",
+
+            "QQQ": "NASDAQ",
+            "NASDAQ": "NASDAQ",
+
+            "DIA": "DowJones",
+            "DOWJONES": "DowJones",
+            "DOWJONES30": "DowJones",
+
+            "XAUUSD": "Gold",
+            "XAU/USD": "Gold",
+            "GOLD": "Gold",
+
+            "NG": "NaturalGas",
+            "NATURALGAS": "NaturalGas",
+
+            "SPY": "Futures",
+            "FUTURES": "Futures"
+        }
+
+        market_key = str(market).strip().upper()
+        market = market_aliases.get(market_key, market)
+
         if outputsize < 20:
             outputsize = 20
         if outputsize > 500:
@@ -4691,7 +4756,15 @@ def price_history():
         df = fetch_live_market_data(market, interval=timeframe, outputsize=outputsize)
 
         if df is None or df.empty:
-            return jsonify({"error": "No market data returned"}), 400
+            return jsonify({
+                "error": "No market data returned",
+                "details": {
+                    "market_requested": market_key,
+                    "market_mapped": market,
+                    "timeframe": timeframe,
+                    "outputsize": outputsize
+                }
+            }), 400
 
         candles = []
         for i, row in df.iterrows():
@@ -4719,6 +4792,7 @@ def price_history():
 
         return jsonify({
             "market": market,
+            "requested_market": market_key,
             "timeframe": timeframe,
             "count": len(candles),
             "candles": candles
@@ -4729,6 +4803,7 @@ def price_history():
             "error": "Price history failed",
             "details": str(e)
         }), 500
+
 
 
 
