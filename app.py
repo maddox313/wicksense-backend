@@ -4491,6 +4491,10 @@ def backtest():
             return jsonify({"error": "No market was provided"}), 400
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=50)
+
+        if df is None or df.empty:
+            return jsonify({"error": "No market data returned"}), 400
+
         df = add_indicators(df)
 
         results = []
@@ -4613,11 +4617,36 @@ def backtest():
 
         ending_equity = round(equity_curve[-1], 4) if equity_curve else 0.0
 
+        # --- ADD THIS: raw candle data for frontend fallback ---
+        candles = []
+        for i, row in df.iterrows():
+            time_value = None
+
+            if isinstance(i, pd.Timestamp):
+                time_value = i.isoformat()
+            else:
+                time_value = str(i)
+
+            candles.append({
+                "time": time_value,
+                "open": round(float(row["Open"]), 6),
+                "high": round(float(row["High"]), 6),
+                "low": round(float(row["Low"]), 6),
+                "close": round(float(row["Close"]), 6),
+                "volume": round(float(row["Volume"]), 6) if "Volume" in row and pd.notna(row["Volume"]) else 0.0
+            })
+
         return jsonify({
             "market": market,
             "timeframe": timeframe,
             "results": results,
             "equity_curve": equity_curve,
+
+            # --- ADD THESE 3 KEYS FOR ROCKET COMPATIBILITY ---
+            "candles": candles,
+            "price_history": candles,
+            "ohlcv": candles,
+
             "metrics": {
                 "total_trades": total_trades,
                 "buy_count": buy_count,
