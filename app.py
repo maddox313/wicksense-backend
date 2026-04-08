@@ -148,12 +148,12 @@ def openapi():
                     }
                 }
             },
-            "/backtest": {
+            "/": {
                 "post": {
-                    "summary": "Run a backtest",
+                    "summary": "Run a ",
                     "responses": {
                         "200": {
-                            "description": "Backtest results"
+                            "description": " results"
                         }
                     }
                 }
@@ -4671,6 +4671,65 @@ def backtest():
             "error": "Backtest failed",
             "details": str(e)
         }), 500
+
+@app.route("/price-history", methods=["POST"])
+def price_history():
+    try:
+        market = get_market_from_request()
+        timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
+        outputsize = int(get_string_from_request("outputsize", "50"))
+
+        if not market:
+            return jsonify({"error": "No market was provided"}), 400
+
+        # Keep output size in a safe range
+        if outputsize < 20:
+            outputsize = 20
+        if outputsize > 500:
+            outputsize = 500
+
+        df = fetch_live_market_data(market, interval=timeframe, outputsize=outputsize)
+
+        if df is None or df.empty:
+            return jsonify({"error": "No market data returned"}), 400
+
+        candles = []
+        for i, row in df.iterrows():
+            if (
+                pd.isna(row.get("Open")) or
+                pd.isna(row.get("High")) or
+                pd.isna(row.get("Low")) or
+                pd.isna(row.get("Close"))
+            ):
+                continue
+
+            if isinstance(i, pd.Timestamp):
+                time_value = i.isoformat()
+            else:
+                time_value = str(i)
+
+            candles.append({
+                "time": time_value,
+                "open": round(float(row["Open"]), 6),
+                "high": round(float(row["High"]), 6),
+                "low": round(float(row["Low"]), 6),
+                "close": round(float(row["Close"]), 6),
+                "volume": round(float(row["Volume"]), 6) if "Volume" in df.columns and pd.notna(row.get("Volume")) else 0.0
+            })
+
+        return jsonify({
+            "market": market,
+            "timeframe": timeframe,
+            "count": len(candles),
+            "candles": candles
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Price history failed",
+            "details": str(e)
+        }), 500
+
 
 
 # -----------------------------
