@@ -5354,6 +5354,10 @@ def create_checkout_session():
         if not cancel_url:
             return jsonify({"error": "cancel_url is required"}), 400
 
+        subscription_data={
+        "trial_period_days": 7
+       }
+
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             mode="subscription",
