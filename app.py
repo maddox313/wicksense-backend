@@ -4714,35 +4714,33 @@ def backtest():
 @app.route("/price-history", methods=["POST"])
 def price_history():
     try:
+        print("[price-history] route hit")
+
         market = get_market_from_request()
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         outputsize = int(get_string_from_request("outputsize", "50"))
         start_date = get_string_from_request("start_date", "")
         end_date = get_string_from_request("end_date", "")
 
+        print(f"[price-history] raw market={market}, timeframe={timeframe}, outputsize={outputsize}")
+
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
-        # --- MARKET ALIASES ---
         market_aliases = {
             "EURUSD": "Forex",
             "EUR/USD": "Forex",
             "FOREX": "Forex",
-
             "QQQ": "NASDAQ",
             "NASDAQ": "NASDAQ",
-
             "DIA": "DowJones",
             "DOWJONES": "DowJones",
             "DOWJONES30": "DowJones",
-
             "XAUUSD": "Gold",
             "XAU/USD": "Gold",
             "GOLD": "Gold",
-
             "NG": "NaturalGas",
             "NATURALGAS": "NaturalGas",
-
             "SPY": "Futures",
             "FUTURES": "Futures"
         }
@@ -4750,12 +4748,16 @@ def price_history():
         market_key = str(market).strip().upper()
         market = market_aliases.get(market_key, market)
 
+        print(f"[price-history] mapped market={market}")
+
         if outputsize < 20:
             outputsize = 20
-        if outputsize > 500:
-            outputsize = 500
+        if outputsize > 100:
+            outputsize = 100
 
+        print("[price-history] calling fetch_live_market_data...")
         df = fetch_live_market_data(market, interval=timeframe, outputsize=outputsize)
+        print("[price-history] fetch_live_market_data returned")
 
         if df is None or df.empty:
             return jsonify({
@@ -4780,10 +4782,7 @@ def price_history():
             ):
                 continue
 
-            if isinstance(i, pd.Timestamp):
-                time_value = i.isoformat()
-            else:
-                time_value = str(i)
+            time_value = i.isoformat() if isinstance(i, pd.Timestamp) else str(i)
 
             candles.append({
                 "time": time_value,
@@ -4793,6 +4792,8 @@ def price_history():
                 "close": round(float(row["Close"]), 6),
                 "volume": round(float(row["Volume"]), 6) if "Volume" in df.columns and pd.notna(row.get("Volume")) else 0.0
             })
+
+        print(f"[price-history] returning {len(candles)} candles")
 
         return jsonify({
             "market": market,
@@ -4805,12 +4806,11 @@ def price_history():
         })
 
     except Exception as e:
+        print(f"[price-history] ERROR: {e}")
         return jsonify({
             "error": "Price history failed",
             "details": str(e)
         }), 500
-
-
 
 
 
