@@ -4717,6 +4717,8 @@ def price_history():
         market = get_market_from_request()
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         outputsize = int(get_string_from_request("outputsize", "50"))
+        start_date = get_string_from_request("start_date", "")
+        end_date = get_string_from_request("end_date", "")
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
@@ -4762,7 +4764,9 @@ def price_history():
                     "market_requested": market_key,
                     "market_mapped": market,
                     "timeframe": timeframe,
-                    "outputsize": outputsize
+                    "outputsize": outputsize,
+                    "start_date": start_date,
+                    "end_date": end_date
                 }
             }), 400
 
@@ -4794,6 +4798,8 @@ def price_history():
             "market": market,
             "requested_market": market_key,
             "timeframe": timeframe,
+            "start_date": start_date,
+            "end_date": end_date,
             "count": len(candles),
             "candles": candles
         })
@@ -4803,6 +4809,7 @@ def price_history():
             "error": "Price history failed",
             "details": str(e)
         }), 500
+
 
 
 
