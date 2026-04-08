@@ -5428,7 +5428,10 @@ def stripe_webhook():
                 sub = stripe.Subscription.retrieve(subscription_id)
 
                 trial_end_ts = sub.get("trial_end")
-                trial_end_iso = datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z" if trial_end_ts else None
+                trial_end_iso = (
+                    datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                    if trial_end_ts else None
+                )
 
                 now_ts = int(datetime.utcnow().timestamp())
                 in_trial = trial_end_ts is not None and trial_end_ts > now_ts
@@ -5454,9 +5457,13 @@ def stripe_webhook():
             customer_id = data.get("customer")
             stripe_status = data.get("status")
             trial_end_ts = data.get("trial_end")
-            trial_end_iso = datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z" if trial_end_ts else None
+            trial_end_iso = (
+                datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                if trial_end_ts else None
+            )
 
             user = get_user_by_stripe_customer_id(customer_id)
+
             if user:
                 price_id = None
                 items = data.get("items", {}).get("data", [])
@@ -5514,8 +5521,6 @@ def stripe_webhook():
             "error": "Webhook handling failed",
             "details": str(e)
         }), 500
-
-
 
 
 if __name__ == "__main__":
