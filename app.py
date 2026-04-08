@@ -5334,7 +5334,10 @@ def stripe_webhook():
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
+        print("🔥 HIT /create-checkout-session")
+
         data = request.get_json(silent=True) or {}
+        print("🔥 CHECKOUT PAYLOAD:", data)
 
         price_id = data.get("price_id")
         user_id = data.get("user_id")
@@ -5354,9 +5357,7 @@ def create_checkout_session():
         if not cancel_url:
             return jsonify({"error": "cancel_url is required"}), 400
 
-        subscription_data={
-        "trial_period_days": 7
-       }
+        print("🔥 CREATING STRIPE SESSION WITH 7 DAY TRIAL")
 
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -5379,16 +5380,20 @@ def create_checkout_session():
             }
         )
 
+        print("🔥 STRIPE SESSION CREATED:", checkout_session.id)
+
         return jsonify({
             "checkout_url": checkout_session.url,
             "id": checkout_session.id
         })
 
     except Exception as e:
+        print("🔥 CHECKOUT ERROR:", str(e))
         return jsonify({
             "error": "Failed to create checkout session",
             "details": str(e)
         }), 500
+
 
 
 if __name__ == "__main__":
