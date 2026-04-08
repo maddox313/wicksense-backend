@@ -5334,13 +5334,13 @@ def stripe_webhook():
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        body = get_request_body()
+        data = request.get_json(silent=True) or {}
 
-        price_id = body.get("price_id")
-        user_id = body.get("user_id")
-        plan = body.get("plan", "pro")
-        success_url = body.get("success_url")
-        cancel_url = body.get("cancel_url")
+        price_id = data.get("price_id")
+        user_id = data.get("user_id")
+        plan = data.get("plan", "pro")
+        success_url = data.get("success_url")
+        cancel_url = data.get("cancel_url")
 
         if not price_id:
             return jsonify({"error": "price_id is required"}), 400
@@ -5355,25 +5355,29 @@ def create_checkout_session():
             return jsonify({"error": "cancel_url is required"}), 400
 
         checkout_session = stripe.checkout.Session.create(
-          payment_method_types=['card'],
-          mode='subscription',
-          line_items=[{
-           'price': price_id,
-           'quantity': 1,
-          }],
-          subscription_data={
-           'trial_period_days': 7
-          },
-         allow_promotion_codes=True,
-         success_url=success_url,
-         cancel_url=cancel_url,
-       )
-
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[
+                {
+                    "price": price_id,
+                    "quantity": 1
+                }
+            ],
+            subscription_data={
+                "trial_period_days": 7
+            },
+            allow_promotion_codes=True,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "user_id": user_id,
+                "plan": plan
+            }
         )
 
         return jsonify({
-            "url": checkout_session.url,
-            "session_id": checkout_session.id
+            "checkout_url": checkout_session.url,
+            "id": checkout_session.id
         })
 
     except Exception as e:
@@ -5381,6 +5385,7 @@ def create_checkout_session():
             "error": "Failed to create checkout session",
             "details": str(e)
         }), 500
+
 
 if __name__ == "__main__":
     ensure_live_engine_started()
