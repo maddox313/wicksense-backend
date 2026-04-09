@@ -5312,118 +5312,52 @@ def update_user_subscription_status(
 
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
-    print("🔥 WEBHOOK HIT")
-
-    payload = request.get_data(as_text=False)
-    sig_header = request.headers.get("Stripe-Signature")
-    webhook_secret = (os.environ.get("STRIPE_WEBHOOK_SECRET") or "").strip()
-
-    print("🔥 SIG HEADER PRESENT:", bool(sig_header))
-    print("🔥 WEBHOOK SECRET PRESENT:", bool(webhook_secret))
-
     try:
-        event = request.get_json()
+        print("🔥 WEBHOOK HIT", flush=True)
 
-        print("🔥 RAW EVENT RECEIVED", flush=True)
-        print(event, flush=True)
+        # SAFELY parse JSON (no Stripe verification yet)
+        event = request.get_json(force=True, silent=True)
 
-        print("🔥 WEBHOOK VERIFIED")
-    except Exception as e:
-        print("🔥 WEBHOOK VERIFY ERROR:", str(e))
-        return jsonify({"error": "Webhook verification failed"}), 400
+        if not event:
+            print("🔥 NO JSON RECEIVED", flush=True)
+            return jsonify({"error": "No JSON"}), 400
 
-    event_type = event["type"]
-    data = event["data"]["object"]
+        print("🔥 EVENT RECEIVED:", event.get("type"), flush=True)
 
-    print("🔥 EVENT TYPE:", event_type)
-
-    try:
+        event_type = event.get("type")
+        data = event.get("data", {}).get("object", {})
 
         # =========================
         # CHECKOUT COMPLETED
         # =========================
         if event_type == "checkout.session.completed":
-
             metadata = data.get("metadata", {}) or {}
             user_id = metadata.get("user_id")
             plan = metadata.get("plan", "pro")
 
-            customer_id = data.get("customer")
-            subscription_id = data.get("subscription")
-
-            print("🔥 CHECKOUT:", user_id, plan)
-
-            if user_id and subscription_id:
-
-                sub = stripe.Subscription.retrieve(subscription_id)
-
-                trial_end_ts = sub.get("trial_end")
-
-                if trial_end_ts:
-                    trial_end_iso = datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
-                else:
-                    trial_end_iso = None
-
-                now_ts = int(datetime.utcnow().timestamp())
-                in_trial = trial_end_ts and trial_end_ts > now_ts
-
-                if plan == "elite":
-                    subscription_status = "trial_elite" if in_trial else "elite"
-                    effective_plan = "elite"
-                else:
-                    subscription_status = "trial_pro" if in_trial else "pro"
-                    effective_plan = "pro"
-
-                print("🔥 STATUS:", subscription_status)
-
-                # TEMP SAFE UPDATE (NO DB CRASH)
-                print("🔥 USER UPDATED:", {
-                    "user_id": user_id,
-                    "subscription_status": subscription_status,
-                    "effective_plan": effective_plan,
-                    "trial_end": trial_end_iso
-                })
+            print("🔥 CHECKOUT:", user_id, plan, flush=True)
 
         # =========================
-        # SUBSCRIPTION UPDATED
+        # SUB UPDATED
         # =========================
         elif event_type == "customer.subscription.updated":
-
-            customer_id = data.get("customer")
-            stripe_status = data.get("status")
-            trial_end_ts = data.get("trial_end")
-
-            if trial_end_ts:
-                trial_end_iso = datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
-            else:
-                trial_end_iso = None
-
-            print("🔥 SUB UPDATED:", stripe_status)
-
-            # TEMP SAFE LOG
-            print("🔥 UPDATE EVENT:", {
-                "customer": customer_id,
-                "status": stripe_status,
-                "trial_end": trial_end_iso
-            })
+            print("🔥 SUB UPDATED", flush=True)
 
         # =========================
-        # SUBSCRIPTION DELETED
+        # SUB DELETED
         # =========================
         elif event_type == "customer.subscription.deleted":
-
-            customer_id = data.get("customer")
-
-            print("🔥 SUB CANCELLED:", customer_id)
+            print("🔥 SUB DELETED", flush=True)
 
         return jsonify({"received": True}), 200
 
     except Exception as e:
-        print("🔥 WEBHOOK ERROR:", str(e))
+        print("🔥 WEBHOOK CRASH:", str(e), flush=True)
         return jsonify({
-            "error": "Webhook failed",
+            "error": "Webhook crashed",
             "details": str(e)
         }), 500
+
 
 @app.route("/webhook-test", methods=["POST"])
 def webhook_test():
