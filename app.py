@@ -5331,6 +5331,7 @@ def stripe_webhook():
         # CHECKOUT COMPLETED
         # =========================
         if event_type == "checkout.session.completed":
+            print("🔥 CHECKOUT SESSION COMPLETED HIT", flush=True)
             metadata = data.get("metadata", {}) or {}
             user_id = metadata.get("user_id")
             plan = metadata.get("plan", "pro")
