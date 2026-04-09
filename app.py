@@ -5425,6 +5425,11 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+@app.route("/webhook-test", methods=["POST"])
+def webhook_test():
+    print("🔥 WEBHOOK TEST HIT", flush=True)
+    return jsonify({"ok": True}), 200
+
 
 
 if __name__ == "__main__":
