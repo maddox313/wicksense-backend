@@ -5277,6 +5277,34 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    ...
+
+
+# 👇 ADD THESE HERE 👇
+def map_price_id_to_plan(price_id):
+    ...
+
+def get_user_by_stripe_customer_id(customer_id):
+    ...
+
+def update_user_subscription_status(...):
+    ...
+
+
+# 👇 YOUR WEBHOOK (leave it as-is) 👇
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+    ...
+
+
+# 👇 LAST 👇
+if __name__ == "__main__":
+    ensure_live_engine_started()
+    app.run(...)
+
+
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.get_data(as_text=False)
