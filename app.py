@@ -5332,6 +5332,7 @@ def stripe_webhook():
         # =========================
         if event_type == "checkout.session.completed":
             print("🔥 CHECKOUT SESSION COMPLETED HIT", flush=True)
+
             metadata = data.get("metadata", {}) or {}
             user_id = metadata.get("user_id")
             plan = metadata.get("plan", "pro")
@@ -5344,35 +5345,35 @@ def stripe_webhook():
             print("🔥 CUSTOMER:", customer_id, flush=True)
             print("🔥 SUBSCRIPTION:", subscription_id, flush=True)
 
-        if subscription_id:
-            sub = stripe.Subscription.retrieve(subscription_id)
+            if subscription_id:
+                sub = stripe.Subscription.retrieve(subscription_id)
 
-            trial_end_ts = sub.get("trial_end")
-            now_ts = int(datetime.utcnow().timestamp())
+                trial_end_ts = sub.get("trial_end")
+                now_ts = int(datetime.utcnow().timestamp())
 
-            in_trial = trial_end_ts is not None and trial_end_ts > now_ts
+                in_trial = trial_end_ts is not None and trial_end_ts > now_ts
 
-        if plan == "elite":
-            subscription_status = "trial_elite" if in_trial else "elite"
-            effective_plan = "elite"
-        else:
-            subscription_status = "trial_pro" if in_trial else "pro"
-            effective_plan = "pro"
+                if plan == "elite":
+                    subscription_status = "trial_elite" if in_trial else "elite"
+                    effective_plan = "elite"
+                else:
+                    subscription_status = "trial_pro" if in_trial else "pro"
+                    effective_plan = "pro"
 
-            print("🔥 FINAL STATUS:", subscription_status, flush=True)
+                print("🔥 FINAL STATUS:", subscription_status, flush=True)
 
-           update_user_subscription_status(
-             user_id=user_id,
-             subscription_status=subscription_status,
-             effective_plan=effective_plan,
-             stripe_customer_id=customer_id,
-             stripe_subscription_id=subscription_id,
-             trial_end=(
-             datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
-             if trial_end_ts else None
-        )
-    )
-       
+                update_user_subscription_status(
+                    user_id=user_id,
+                    subscription_status=subscription_status,
+                    effective_plan=effective_plan,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    trial_end=(
+                        datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                        if trial_end_ts else None
+                    )
+                )
+
         # =========================
         # SUB UPDATED
         # =========================
@@ -5393,6 +5394,7 @@ def stripe_webhook():
             "error": "Webhook crashed",
             "details": str(e)
         }), 500
+
 
 
 @app.route("/webhook-test", methods=["POST"])
