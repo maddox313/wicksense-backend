@@ -5277,32 +5277,37 @@ def create_checkout_session():
             "details": str(e)
         }), 500
 
-@app.route("/create-checkout-session", methods=["POST"])
-def create_checkout_session():
-    ...
-
-
-# 👇 ADD THESE HERE 👇
 def map_price_id_to_plan(price_id):
-    ...
+    pro_price_id = (os.environ.get("STRIPE_PRO_PRICE_ID") or "").strip()
+    elite_price_id = (os.environ.get("STRIPE_ELITE_PRICE_ID") or "").strip()
+
+    if price_id == elite_price_id:
+        return "elite"
+    if price_id == pro_price_id:
+        return "pro"
+    return "free"
+
 
 def get_user_by_stripe_customer_id(customer_id):
-    ...
-
-def update_user_subscription_status(...):
-    ...
-
-
-# 👇 YOUR WEBHOOK (leave it as-is) 👇
-@app.route("/stripe-webhook", methods=["POST"])
-def stripe_webhook():
-    ...
+    # TEMP: replace later with database lookup
+    print("🔥 LOOKUP USER BY CUSTOMER:", customer_id)
+    return {"id": "test_user"}  # temporary fake user
 
 
-# 👇 LAST 👇
-if __name__ == "__main__":
-    ensure_live_engine_started()
-    app.run(...)
+def update_user_subscription_status(
+    user_id,
+    subscription_status,
+    effective_plan,
+    stripe_customer_id=None,
+    stripe_subscription_id=None,
+    trial_end=None
+):
+    print("🔥 USER UPDATED:", {
+        "user_id": user_id,
+        "subscription_status": subscription_status,
+        "effective_plan": effective_plan,
+        "trial_end": trial_end
+    })
 
 
 @app.route("/stripe-webhook", methods=["POST"])
