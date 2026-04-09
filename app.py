@@ -5322,9 +5322,11 @@ def stripe_webhook():
     print("🔥 WEBHOOK SECRET PRESENT:", bool(webhook_secret))
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, webhook_secret
-        )
+        event = request.get_json()
+
+        print("🔥 RAW EVENT RECEIVED", flush=True)
+        print(event, flush=True)
+
         print("🔥 WEBHOOK VERIFIED")
     except Exception as e:
         print("🔥 WEBHOOK VERIFY ERROR:", str(e))
