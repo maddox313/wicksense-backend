@@ -5315,7 +5315,6 @@ def stripe_webhook():
     try:
         print("🔥 WEBHOOK HIT", flush=True)
 
-        # SAFELY parse JSON (no Stripe verification yet)
         event = request.get_json(force=True, silent=True)
 
         if not event:
@@ -5327,9 +5326,6 @@ def stripe_webhook():
         event_type = event.get("type")
         data = event.get("data", {}).get("object", {})
 
-        # =========================
-        # CHECKOUT COMPLETED
-        # =========================
         if event_type == "checkout.session.completed":
             print("🔥 CHECKOUT SESSION COMPLETED HIT", flush=True)
 
@@ -5350,7 +5346,6 @@ def stripe_webhook():
 
                 trial_end_ts = sub.get("trial_end")
                 now_ts = int(datetime.utcnow().timestamp())
-
                 in_trial = trial_end_ts is not None and trial_end_ts > now_ts
 
                 if plan == "elite":
@@ -5361,28 +5356,15 @@ def stripe_webhook():
                     effective_plan = "pro"
 
                 print("🔥 FINAL STATUS:", subscription_status, flush=True)
+                print("🔥 EFFECTIVE PLAN:", effective_plan, flush=True)
+                print("🔥 TRIAL END:", (
+                    datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                    if trial_end_ts else None
+                ), flush=True)
 
-                update_user_subscription_status(
-                    user_id=user_id,
-                    subscription_status=subscription_status,
-                    effective_plan=effective_plan,
-                    stripe_customer_id=customer_id,
-                    stripe_subscription_id=subscription_id,
-                    trial_end=(
-                        datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
-                        if trial_end_ts else None
-                    )
-                )
-
-        # =========================
-        # SUB UPDATED
-        # =========================
         elif event_type == "customer.subscription.updated":
             print("🔥 SUB UPDATED", flush=True)
 
-        # =========================
-        # SUB DELETED
-        # =========================
         elif event_type == "customer.subscription.deleted":
             print("🔥 SUB DELETED", flush=True)
 
