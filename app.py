@@ -4417,6 +4417,44 @@ def scan_markets_route():
 # -----------------------------
 # SIGNAL
 # -----------------------------
+def store_signal(user_id, signal):
+    try:
+        if not user_id:
+            print("📊 SIGNAL NOT STORED: missing user_id", flush=True)
+            return
+
+        payload = {
+            "user_id": user_id,
+            "market": signal.get("market"),
+            "direction": signal.get("signal"),
+            "confidence": signal.get("confidence"),
+            "strategy": signal.get("setup_type") or signal.get("pattern"),
+            "entry": signal.get("entry"),
+            "stop_loss": signal.get("support"),
+            "take_profit": signal.get("resistance"),
+            "timeframe": signal.get("timeframe"),
+            "created_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/signals_history",
+            headers={
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=payload,
+            timeout=20
+        )
+
+        print("📊 SIGNAL STORED STATUS:", response.status_code, flush=True)
+        print("📊 SIGNAL STORED RESPONSE:", response.text, flush=True)
+
+    except Exception as e:
+        print("❌ SIGNAL STORE ERROR:", str(e), flush=True)
+
+
 @app.route("/signal", methods=["POST"])
 def signal():
     try:
