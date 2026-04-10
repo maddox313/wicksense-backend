@@ -5354,21 +5354,22 @@ def update_user_subscription_status(
 
         payload = {
             "id": user_id,
+            "user_id": user_id,  # IMPORTANT
             "plan": subscription_status,
             "status": "trialing" if "trial" in subscription_status else "active",
             "stripe_customer_id": stripe_customer_id,
             "stripe_subscription_id": stripe_subscription_id,
             "current_period_end": trial_end,
-            "updated_at": datetime.utcnow().isoformat() + "Z"
+            "updated_at": datetime.utcnow().isoformat()
         }
 
         print("🔥 PAYLOAD:", payload, flush=True)
 
         response = requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_subscriptions",
+            f"{os.environ.get('SUPABASE_URL')}/rest/v1/user_subscriptions",
             headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "apikey": os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
+                "Authorization": f"Bearer {os.environ.get('SUPABASE_SERVICE_ROLE_KEY')}",
                 "Content-Type": "application/json",
                 "Prefer": "resolution=merge-duplicates"
             },
@@ -5380,41 +5381,6 @@ def update_user_subscription_status(
 
     except Exception as e:
         print("🔥 SUPABASE ERROR:", str(e), flush=True)
-
-import requests
-
-def update_user_subscription_status(
-    user_id,
-    subscription_status,
-    effective_plan,
-    stripe_customer_id,
-    stripe_subscription_id,
-    trial_end
-):
-    url = f"{os.environ.get('SUPABASE_URL')}/rest/v1/user_subscriptions?id=eq.{user_id}"
-
-    headers = {
-        "apikey": os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
-        "Authorization": f"Bearer {os.environ.get('SUPABASE_SERVICE_ROLE_KEY')}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-    }
-
-    payload = {
-        "plan": subscription_status,
-        "status": "trialing" if "trial" in subscription_status else "active",
-        "stripe_customer_id": stripe_customer_id,
-        "stripe_subscription_id": stripe_subscription_id,
-        "current_period_end": trial_end,
-        "updated_at": datetime.utcnow().isoformat()
-    }
-
-    print("🔥 WRITING TO SUPABASE:", payload, flush=True)
-
-    res = requests.patch(url, headers=headers, json=payload)
-
-    print("🔥 SUPABASE RESPONSE:", res.status_code, res.text, flush=True)
-
 
 
 @app.route("/stripe-webhook", methods=["POST"])
