@@ -4439,8 +4439,8 @@ def store_signal(user_id, signal):
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/signals_history",
             headers={
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json",
                 "Prefer": "return=representation"
             },
