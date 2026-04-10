@@ -4436,6 +4436,7 @@ def store_signal(user_id, signal):
             "created_at": datetime.utcnow().isoformat() + "Z"
         }
 
+        print("🔥 store_signal running", flush=True)
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/signals_history",
             headers={
