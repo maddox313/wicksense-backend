@@ -2337,13 +2337,13 @@ def evaluate_signal(df: pd.DataFrame):
     }
 
 
-def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30):
+def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30, user_id: str = None):
     normalized_timeframe = normalize_interval(timeframe)
     df = fetch_live_market_data(market, interval=normalized_timeframe, outputsize=outputsize)
     signal_data = evaluate_signal(df)
     last_row = df.iloc[-1]
 
-    return {
+    final_signal = {
         "market": market,
         "timeframe": normalized_timeframe,
         "signal": signal_data["signal"],
@@ -2368,6 +2368,12 @@ def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 3
         "confluence_bonus": signal_data["confluence_bonus"],
         "reason": ", ".join(signal_data["reasons"])
     }
+
+    if user_id:
+        store_signal(user_id, final_signal)
+
+    return final_signal
+
 
 
 def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
