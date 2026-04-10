@@ -5350,32 +5350,19 @@ def update_user_subscription_status(
     trial_end=None
 ):
     try:
-        if not user_id:
-            raise ValueError("user_id is required")
-
-        # Map frontend/backend expected values
-        # plan column should store: free, trial_pro, pro, trial_elite, elite
-        plan_value = subscription_status
-
-        # status column should store Stripe-like lifecycle status
-        if subscription_status in ["trial_pro", "trial_elite"]:
-            status_value = "trialing"
-        elif subscription_status in ["pro", "elite"]:
-            status_value = "active"
-        elif subscription_status == "free":
-            status_value = "canceled"
-        else:
-            status_value = "active"
+        print("🔥 WRITING TO SUPABASE START", flush=True)
 
         payload = {
             "id": user_id,
-            "plan": plan_value,
-            "status": status_value,
+            "plan": subscription_status,
+            "status": "trialing" if "trial" in subscription_status else "active",
             "stripe_customer_id": stripe_customer_id,
             "stripe_subscription_id": stripe_subscription_id,
             "current_period_end": trial_end,
             "updated_at": datetime.utcnow().isoformat() + "Z"
         }
+
+        print("🔥 PAYLOAD:", payload, flush=True)
 
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/user_subscriptions",
@@ -5383,19 +5370,17 @@ def update_user_subscription_status(
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates,return=representation"
+                "Prefer": "resolution=merge-duplicates"
             },
-            json=payload,
-            timeout=20
+            json=payload
         )
-        response.raise_for_status()
 
-        print("🔥 USER SUBSCRIPTION UPSERTED:", payload, flush=True)
-        return response.json()
+        print("🔥 SUPABASE STATUS:", response.status_code, flush=True)
+        print("🔥 SUPABASE RESPONSE:", response.text, flush=True)
 
     except Exception as e:
-        print("🔥 update_user_subscription_status ERROR:", str(e), flush=True)
-        raise
+        print("🔥 SUPABASE ERROR:", str(e), flush=True)
+
 
 
 @app.route("/stripe-webhook", methods=["POST"])
