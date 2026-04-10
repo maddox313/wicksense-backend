@@ -5309,6 +5309,94 @@ def update_user_subscription_status(
         "trial_end": trial_end
     })
 
+def get_user_by_stripe_customer_id(customer_id):
+    try:
+        if not customer_id:
+            return None
+
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/user_subscriptions",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"
+            },
+            params={
+                "select": "id,plan,status,stripe_customer_id,stripe_subscription_id,current_period_end,updated_at",
+                "stripe_customer_id": f"eq.{customer_id}",
+                "limit": "1"
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+
+        rows = response.json()
+        if isinstance(rows, list) and rows:
+            return rows[0]
+
+        return None
+
+    except Exception as e:
+        print("🔥 get_user_by_stripe_customer_id ERROR:", str(e), flush=True)
+        return None
+
+
+def update_user_subscription_status(
+    user_id,
+    subscription_status,
+    effective_plan,
+    stripe_customer_id=None,
+    stripe_subscription_id=None,
+    trial_end=None
+):
+    try:
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        # Map frontend/backend expected values
+        # plan column should store: free, trial_pro, pro, trial_elite, elite
+        plan_value = subscription_status
+
+        # status column should store Stripe-like lifecycle status
+        if subscription_status in ["trial_pro", "trial_elite"]:
+            status_value = "trialing"
+        elif subscription_status in ["pro", "elite"]:
+            status_value = "active"
+        elif subscription_status == "free":
+            status_value = "canceled"
+        else:
+            status_value = "active"
+
+        payload = {
+            "id": user_id,
+            "plan": plan_value,
+            "status": status_value,
+            "stripe_customer_id": stripe_customer_id,
+            "stripe_subscription_id": stripe_subscription_id,
+            "current_period_end": trial_end,
+            "updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_subscriptions",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates,return=representation"
+            },
+            json=payload,
+            timeout=20
+        )
+        response.raise_for_status()
+
+        print("🔥 USER SUBSCRIPTION UPSERTED:", payload, flush=True)
+        return response.json()
+
+    except Exception as e:
+        print("🔥 update_user_subscription_status ERROR:", str(e), flush=True)
+        raise
+
 
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
@@ -5326,6 +5414,9 @@ def stripe_webhook():
         event_type = event.get("type")
         data = event.get("data", {}).get("object", {})
 
+        # =========================
+        # CHECKOUT COMPLETED
+        # =========================
         if event_type == "checkout.session.completed":
             print("🔥 CHECKOUT SESSION COMPLETED HIT", flush=True)
 
@@ -5341,7 +5432,7 @@ def stripe_webhook():
             print("🔥 CUSTOMER:", customer_id, flush=True)
             print("🔥 SUBSCRIPTION:", subscription_id, flush=True)
 
-            if subscription_id:
+            if subscription_id and user_id:
                 sub = stripe.Subscription.retrieve(subscription_id)
 
                 trial_end_ts = sub.get("trial_end")
@@ -5355,18 +5446,108 @@ def stripe_webhook():
                     subscription_status = "trial_pro" if in_trial else "pro"
                     effective_plan = "pro"
 
-                print("🔥 FINAL STATUS:", subscription_status, flush=True)
-                print("🔥 EFFECTIVE PLAN:", effective_plan, flush=True)
-                print("🔥 TRIAL END:", (
+                trial_end_iso = (
                     datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
                     if trial_end_ts else None
-                ), flush=True)
+                )
 
+                print("🔥 FINAL STATUS:", subscription_status, flush=True)
+
+                update_user_subscription_status(
+                    user_id=user_id,
+                    subscription_status=subscription_status,
+                    effective_plan=effective_plan,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    trial_end=trial_end_iso
+                )
+
+        # =========================
+        # SUB UPDATED
+        # =========================
         elif event_type == "customer.subscription.updated":
             print("🔥 SUB UPDATED", flush=True)
 
+            customer_id = data.get("customer")
+            subscription_id = data.get("id")
+            stripe_status = data.get("status")
+            trial_end_ts = data.get("trial_end")
+
+            print("🔥 SUB UPDATED CUSTOMER:", customer_id, flush=True)
+            print("🔥 SUB UPDATED STATUS:", stripe_status, flush=True)
+
+            user = get_user_by_stripe_customer_id(customer_id)
+
+            if user:
+                price_id = None
+                items = data.get("items", {}).get("data", [])
+                if items and items[0].get("price"):
+                    price_id = items[0]["price"].get("id")
+
+                pro_price_id = (os.environ.get("STRIPE_PRO_PRICE_ID") or "").strip()
+                elite_price_id = (os.environ.get("STRIPE_ELITE_PRICE_ID") or "").strip()
+
+                if price_id == elite_price_id:
+                    mapped_plan = "elite"
+                elif price_id == pro_price_id:
+                    mapped_plan = "pro"
+                else:
+                    mapped_plan = "free"
+
+                now_ts = int(datetime.utcnow().timestamp())
+                in_trial = trial_end_ts is not None and trial_end_ts > now_ts
+
+                if stripe_status in ["canceled", "cancelled", "unpaid", "incomplete_expired", "past_due"]:
+                    subscription_status = "free"
+                    effective_plan = "free"
+                    trial_end_iso = None
+                else:
+                    if mapped_plan == "elite":
+                        subscription_status = "trial_elite" if in_trial else "elite"
+                        effective_plan = "elite"
+                    elif mapped_plan == "pro":
+                        subscription_status = "trial_pro" if in_trial else "pro"
+                        effective_plan = "pro"
+                    else:
+                        subscription_status = "free"
+                        effective_plan = "free"
+
+                    trial_end_iso = (
+                        datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                        if trial_end_ts else None
+                    )
+
+                print("🔥 UPDATED STATUS:", subscription_status, flush=True)
+
+                update_user_subscription_status(
+                    user_id=user["id"],
+                    subscription_status=subscription_status,
+                    effective_plan=effective_plan,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    trial_end=trial_end_iso
+                )
+
+        # =========================
+        # SUB DELETED
+        # =========================
         elif event_type == "customer.subscription.deleted":
             print("🔥 SUB DELETED", flush=True)
+
+            customer_id = data.get("customer")
+            subscription_id = data.get("id")
+
+            user = get_user_by_stripe_customer_id(customer_id)
+
+            if user:
+                update_user_subscription_status(
+                    user_id=user["id"],
+                    subscription_status="free",
+                    effective_plan="free",
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    trial_end=None
+                )
 
         return jsonify({"received": True}), 200
 
@@ -5376,13 +5557,6 @@ def stripe_webhook():
             "error": "Webhook crashed",
             "details": str(e)
         }), 500
-
-
-
-@app.route("/webhook-test", methods=["POST"])
-def webhook_test():
-    print("🔥 WEBHOOK TEST HIT", flush=True)
-    return jsonify({"ok": True}), 200
 
 
 
