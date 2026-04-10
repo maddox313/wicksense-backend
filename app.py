@@ -4422,6 +4422,7 @@ def signal():
     try:
         market = get_market_from_request()
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
+        user_id = get_string_from_request("user_id", None)
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
@@ -4473,6 +4474,10 @@ def signal():
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
+
+        if user_id:
+            store_signal(user_id, response_data)
+
         return jsonify(response_data)
 
     except Exception as e:
@@ -4480,6 +4485,7 @@ def signal():
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
+
 
 
 # -----------------------------
