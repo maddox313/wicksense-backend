@@ -1453,10 +1453,23 @@ def ensure_history_file(filepath):
             json.dump([], f)
 
 
-def load_history(filepath):
-    ensure_history_file(filepath)
-    with open(filepath, "r", encoding="utf-8") as f:
-        return json.load(f)
+def load_history(file_path):
+    try:
+        if not os.path.exists(file_path):
+            return []
+
+        with open(file_path, "r") as f:
+            content = f.read().strip()
+
+            if not content:
+                return []
+
+            return json.loads(content)
+
+    except Exception as e:
+        print("🔥 HISTORY LOAD FAILED:", str(e))
+        return []
+
 
 
 def save_history(filepath, items):
