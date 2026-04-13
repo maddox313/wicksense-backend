@@ -1381,6 +1381,10 @@ def validate_market_df(df: pd.DataFrame):
 
 
 def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int = 50):
+    from datetime import datetime
+    import time
+    import json
+
     api_key = os.environ.get("TWELVE_DATA_API_KEY")
     if not api_key:
         raise ValueError("TWELVE_DATA_API_KEY is missing in Render environment variables")
@@ -1390,19 +1394,38 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
         raise ValueError(f"No live symbol mapping found for market: {market}")
 
     url = "https://api.twelvedata.com/time_series"
+
+    # 🔥 Cache buster added
     params = {
         "symbol": symbol,
         "interval": interval,
         "outputsize": outputsize,
-        "apikey": api_key
+        "apikey": api_key,
+        "timestamp": time.time()
     }
 
+    print("\n========== TWELVEDATA FETCH ==========")
+    print("FETCH TIME:", datetime.now().isoformat())
+    print("MARKET:", market)
+    print("SYMBOL:", symbol)
+    print("INTERVAL:", interval)
+
     response = requests.get(url, params=params, timeout=20)
+    print("HTTP STATUS:", response.status_code)
+
     response.raise_for_status()
     data = response.json()
 
-    if "values" not in data:
+    print("RESPONSE KEYS:", list(data.keys()))
+
+    if "values" not in data or not data["values"]:
+        print("❌ ERROR: No values returned")
+        print("FULL RESPONSE:", json.dumps(data)[:1000])
         raise ValueError(f"Twelve Data returned no values for {market}: {data}")
+
+    # 🔍 Show latest candle (raw)
+    latest = data["values"][0]
+    print("LATEST RAW CANDLE:", latest)
 
     rows = []
     for row in reversed(data["values"]):
@@ -1415,11 +1438,19 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
 
     df = pd.DataFrame(rows)
 
+    print("DATAFRAME ROWS:", len(df))
+
+    if not df.empty:
+        print("LAST ROW CLOSE:", df.iloc[-1]["Close"])
+
     missing = validate_market_df(df)
     if missing:
         raise ValueError(f"Live data missing required columns: {missing}")
 
+    print("========== FETCH COMPLETE ==========\n")
+
     return df
+
 
 
 def ensure_presets_file():
