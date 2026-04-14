@@ -1512,7 +1512,6 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
 
     url = "https://api.twelvedata.com/time_series"
 
-    # 🔥 Cache buster added
     params = {
         "symbol": symbol,
         "interval": interval,
@@ -1526,6 +1525,7 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
     print("MARKET:", market)
     print("SYMBOL:", symbol)
     print("INTERVAL:", interval)
+    print("OUTPUTSIZE:", outputsize)
 
     response = requests.get(url, params=params, timeout=20)
     print("HTTP STATUS:", response.status_code)
@@ -1536,17 +1536,21 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
     print("RESPONSE KEYS:", list(data.keys()))
 
     if "values" not in data or not data["values"]:
-        print("❌ ERROR: No values returned")
+        print("ERROR: No values returned")
         print("FULL RESPONSE:", json.dumps(data)[:1000])
         raise ValueError(f"Twelve Data returned no values for {market}: {data}")
 
-    # 🔍 Show latest candle (raw)
     latest = data["values"][0]
     print("LATEST RAW CANDLE:", latest)
 
     rows = []
     for row in reversed(data["values"]):
+        candle_datetime = row.get("datetime") or row.get("date") or row.get("time")
+        if not candle_datetime:
+            raise ValueError(f"Missing datetime in candle row for {market}: {row}")
+
         rows.append({
+            "Datetime": str(candle_datetime),
             "Open": float(row["open"]),
             "High": float(row["high"]),
             "Low": float(row["low"]),
@@ -1558,9 +1562,11 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
     print("DATAFRAME ROWS:", len(df))
 
     if not df.empty:
+        print("FIRST DATETIME:", df.iloc[0]["Datetime"])
+        print("LAST DATETIME:", df.iloc[-1]["Datetime"])
         print("LAST ROW CLOSE:", df.iloc[-1]["Close"])
 
-    missing = validate_market_df(df)
+    missing = [col for col in ["Datetime", "Open", "High", "Low", "Close"] if col not in df.columns]
     if missing:
         raise ValueError(f"Live data missing required columns: {missing}")
 
@@ -1568,6 +1574,91 @@ def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int 
 
     return df
 
+# -----------------------------
+# FETCH CANDLES FOR ROCKET PROXY
+# -----------------------------
+@app.route("/fetch-candles", methods=["POST", "OPTIONS"])
+def fetch_candles():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True}), 200
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        market = data.get("market")
+        timeframe = data.get("timeframe", "1h")
+        outputsize = int(data.get("outputsize", 500))
+
+        if not market:
+            return jsonify({"error": "Missing required field: market"}), 400
+
+        # Normalize Rocket/Frontend timeframe values to TwelveData interval values
+        interval_map = {
+            "1m": "1min",
+            "5m": "5min",
+            "15m": "15min",
+            "15min": "15min",
+            "30m": "30min",
+            "30min": "30min",
+            "45m": "45min",
+            "45min": "45min",
+            "1h": "1h",
+            "2h": "2h",
+            "4h": "4h",
+            "8h": "8h",
+            "1d": "1day",
+            "1day": "1day",
+            "1w": "1week",
+            "1week": "1week",
+            "1mo": "1month",
+            "1month": "1month",
+        }
+
+        interval = interval_map.get(str(timeframe).strip().lower(), "1h")
+
+        df = fetch_live_market_data(
+            market=market,
+            interval=interval,
+            outputsize=outputsize
+        )
+
+        # Make sure datetime exists if your downstream logic needs it
+        candles = []
+        for i, row in df.iterrows():
+            candle = {
+                "index": int(i),
+                "Open": float(row["Open"]),
+                "High": float(row["High"]),
+                "Low": float(row["Low"]),
+                "Close": float(row["Close"]),
+            }
+
+            # Preserve datetime if present
+            if "Datetime" in df.columns:
+                candle["Datetime"] = str(row["Datetime"])
+            elif "datetime" in df.columns:
+                candle["Datetime"] = str(row["datetime"])
+            elif "Date" in df.columns:
+                candle["Datetime"] = str(row["Date"])
+            elif "date" in df.columns:
+                candle["Datetime"] = str(row["date"])
+
+            candles.append(candle)
+
+        return jsonify({
+            "ok": True,
+            "market": market,
+            "timeframe": timeframe,
+            "interval_used": interval,
+            "count": len(candles),
+            "candles": candles
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 
 def ensure_presets_file():
