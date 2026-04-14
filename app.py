@@ -110,6 +110,73 @@ def markets():
         "Forex"
     ])
 
+@app.route("/resolve-outcomes", methods=["POST"])
+def resolve_outcomes():
+    data = request.json
+    signals = data.get("signals", [])
+
+    results = []
+
+    for signal in signals:
+        try:
+            market = signal["market"]
+            entry = float(signal["entry"])
+            sl = float(signal["stop_loss"])
+            tp = float(signal["take_profit"])
+            direction = signal["direction"]
+            created_at = signal["created_at"]
+
+            df = fetch_live_market_data(market, interval="1min", outputsize=200)
+
+            outcome = "expired"
+            exit_reason = "timeout"
+            exit_price = None
+
+            for _, row in df.iterrows():
+                high = row["High"]
+                low = row["Low"]
+
+                if direction == "BUY":
+                    if high >= tp:
+                        outcome = "win"
+                        exit_reason = "tp_hit"
+                        exit_price = tp
+                        break
+                    if low <= sl:
+                        outcome = "loss"
+                        exit_reason = "sl_hit"
+                        exit_price = sl
+                        break
+
+                elif direction == "SELL":
+                    if low <= tp:
+                        outcome = "win"
+                        exit_reason = "tp_hit"
+                        exit_price = tp
+                        break
+                    if high >= sl:
+                        outcome = "loss"
+                        exit_reason = "sl_hit"
+                        exit_price = sl
+                        break
+
+            results.append({
+                "id": signal.get("id"),
+                "status": "resolved",
+                "outcome": outcome,
+                "exit_reason": exit_reason,
+                "exit_price": exit_price
+            })
+
+        except Exception as e:
+            results.append({
+                "id": signal.get("id"),
+                "status": "error",
+                "error": str(e)
+            })
+
+    return jsonify({"results": results})
+
 
 # -----------------------------
 # OPENAPI
