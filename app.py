@@ -1583,6 +1583,8 @@ def fetch_candles():
         return jsonify({"ok": True}), 200
 
     try:
+        import time
+
         data = request.get_json(silent=True) or {}
 
         market = data.get("market")
@@ -1591,9 +1593,11 @@ def fetch_candles():
         outputsize = int(data.get("outputsize", 1000))
 
         if not market:
-            return jsonify({"ok": False, "error": "Missing required field: market"}), 400
+            return jsonify({
+                "ok": False,
+                "error": "Missing required field: market"
+            }), 400
 
-        # Normalize frontend timeframe values to TwelveData interval values
         interval_map = {
             "1m": "1min",
             "5m": "5min",
@@ -1624,29 +1628,34 @@ def fetch_candles():
         print("START_DATE:", start_date)
         print("OUTPUTSIZE:", outputsize)
 
+        # Small throttle to reduce rate-limit pressure
+        time.sleep(0.2)
+
         df = fetch_live_market_data(
             market=market,
             interval=interval,
             outputsize=outputsize
         )
 
-        # Ensure Datetime column exists
         if "Datetime" not in df.columns:
             return jsonify({
                 "ok": False,
                 "error": "Datetime column missing from fetched candle data"
             }), 500
 
-        # Convert Datetime column safely
-        df["Datetime"] = pd.to_datetime(df["Datetime"], errors="coerce")
+        # Normalize Datetime column
+        df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
         df = df.dropna(subset=["Datetime"]).copy()
 
         print("TOTAL CANDLES BEFORE FILTER:", len(df))
+        if not df.empty:
+            print("FIRST CANDLE BEFORE FILTER:", df["Datetime"].iloc[0])
+            print("LAST CANDLE BEFORE FILTER:", df["Datetime"].iloc[-1])
 
-        # Filter to candles AFTER signal start time
+        # Apply start_date filter
         if start_date:
             try:
-                start_dt = pd.to_datetime(start_date, errors="coerce")
+                start_dt = pd.to_datetime(start_date, utc=True, errors="coerce")
 
                 if pd.isna(start_dt):
                     return jsonify({
@@ -1654,17 +1663,27 @@ def fetch_candles():
                         "error": f"Invalid start_date received: {start_date}"
                     }), 400
 
-                df = df[df["Datetime"] > start_dt].copy()
-                print("TOTAL CANDLES AFTER START_DATE FILTER:", len(df))
+                print("START_DT NORMALIZED:", start_dt)
+                print("DF Datetime dtype:", df["Datetime"].dtype)
+
+                df = df[df["Datetime"] >= start_dt].copy()
+
+                print("TOTAL CANDLES AFTER FILTER:", len(df))
+                if not df.empty:
+                    print("FIRST CANDLE AFTER FILTER:", df["Datetime"].iloc[0])
+                    print("LAST CANDLE AFTER FILTER:", df["Datetime"].iloc[-1])
+                else:
+                    print("ALL CANDLES FILTERED OUT")
 
             except Exception as e:
+                print("START DATE FILTER ERROR:", str(e))
                 return jsonify({
                     "ok": False,
                     "error": f"Failed to apply start_date filter: {str(e)}"
                 }), 500
 
         candles = []
-        for i, row in df.iterrows():
+        for _, row in df.iterrows():
             candles.append({
                 "Datetime": row["Datetime"].isoformat(),
                 "Open": float(row["Open"]),
