@@ -167,6 +167,8 @@ def resolve_outcomes():
                 "exit_reason": exit_reason,
                 "exit_price": exit_price
             })
+            
+            time.sleep(0.35)
 
         except Exception as e:
             results.append({
