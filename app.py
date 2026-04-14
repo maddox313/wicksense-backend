@@ -110,15 +110,21 @@ def markets():
         "Forex"
     ])
 
+from flask import request, jsonify
+import time
+
 @app.route("/resolve-outcomes", methods=["POST"])
 def resolve_outcomes():
-    data = request.json or {}
-    signals = data.get("signals", [])[:25]  # process only 25 per request
+    data = request.json
+    signals = data.get("signals", [])
 
     results = []
 
     for signal in signals:
         try:
+            # -----------------------------
+            # EXTRACT SIGNAL DATA
+            # -----------------------------
             market = signal["market"]
             entry = float(signal["entry"])
             sl = float(signal["stop_loss"])
@@ -126,15 +132,30 @@ def resolve_outcomes():
             direction = signal["direction"]
             created_at = signal["created_at"]
 
-            df = fetch_live_market_data(market, interval="1h", outputsize=500)
+            # -----------------------------
+            # FETCH MARKET DATA
+            # -----------------------------
+            df = fetch_live_market_data(
+                market,
+                interval="1min",
+                outputsize=500
+            )
 
             outcome = "expired"
             exit_reason = "timeout"
             exit_price = None
+            pnl = 0
+            last_close = None
 
+            # -----------------------------
+            # WALK THROUGH CANDLES
+            # -----------------------------
             for _, row in df.iterrows():
-                high = row["High"]
-                low = row["Low"]
+                high = float(row["High"])
+                low = float(row["Low"])
+                close = float(row["Close"])
+
+                last_close = close
 
                 if direction == "BUY":
                     if high >= tp:
@@ -142,6 +163,7 @@ def resolve_outcomes():
                         exit_reason = "tp_hit"
                         exit_price = tp
                         break
+
                     if low <= sl:
                         outcome = "loss"
                         exit_reason = "sl_hit"
@@ -154,21 +176,47 @@ def resolve_outcomes():
                         exit_reason = "tp_hit"
                         exit_price = tp
                         break
+
                     if high >= sl:
                         outcome = "loss"
                         exit_reason = "sl_hit"
                         exit_price = sl
                         break
 
+            # -----------------------------
+            # HANDLE EXPIRED TRADES
+            # -----------------------------
+            if exit_price is None and last_close is not None:
+                exit_price = last_close
+
+                if direction == "BUY":
+                    pnl = exit_price - entry
+                else:
+                    pnl = entry - exit_price
+
+            # -----------------------------
+            # HANDLE TP/SL PNL
+            # -----------------------------
+            elif exit_price is not None:
+                if direction == "BUY":
+                    pnl = exit_price - entry
+                else:
+                    pnl = entry - exit_price
+
+            # -----------------------------
+            # SAVE RESULT
+            # -----------------------------
             results.append({
                 "id": signal.get("id"),
                 "status": "resolved",
                 "outcome": outcome,
                 "exit_reason": exit_reason,
-                "exit_price": exit_price
+                "exit_price": exit_price,
+                "pnl_pts": pnl
             })
 
-            time.sleep(0.35)
+            # Avoid API rate limits
+            time.sleep(0.2)
 
         except Exception as e:
             results.append({
@@ -177,11 +225,7 @@ def resolve_outcomes():
                 "error": str(e)
             })
 
-    return jsonify({
-        "results": results,
-        "processed": len(signals)
-    })
-
+    return jsonify({"results": results})
 
 
 # -----------------------------
