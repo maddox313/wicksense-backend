@@ -1587,12 +1587,13 @@ def fetch_candles():
 
         market = data.get("market")
         timeframe = data.get("timeframe", "1h")
-        outputsize = int(data.get("outputsize", 500))
+        start_date = data.get("start_date")
+        outputsize = int(data.get("outputsize", 1000))
 
         if not market:
-            return jsonify({"error": "Missing required field: market"}), 400
+            return jsonify({"ok": False, "error": "Missing required field: market"}), 400
 
-        # Normalize Rocket/Frontend timeframe values to TwelveData interval values
+        # Normalize frontend timeframe values to TwelveData interval values
         interval_map = {
             "1m": "1min",
             "5m": "5min",
@@ -1616,45 +1617,81 @@ def fetch_candles():
 
         interval = interval_map.get(str(timeframe).strip().lower(), "1h")
 
+        print("\n========== FETCH CANDLES ROUTE ==========")
+        print("MARKET:", market)
+        print("TIMEFRAME:", timeframe)
+        print("INTERVAL USED:", interval)
+        print("START_DATE:", start_date)
+        print("OUTPUTSIZE:", outputsize)
+
         df = fetch_live_market_data(
             market=market,
             interval=interval,
             outputsize=outputsize
         )
 
-        # Make sure datetime exists if your downstream logic needs it
+        # Ensure Datetime column exists
+        if "Datetime" not in df.columns:
+            return jsonify({
+                "ok": False,
+                "error": "Datetime column missing from fetched candle data"
+            }), 500
+
+        # Convert Datetime column safely
+        df["Datetime"] = pd.to_datetime(df["Datetime"], errors="coerce")
+        df = df.dropna(subset=["Datetime"]).copy()
+
+        print("TOTAL CANDLES BEFORE FILTER:", len(df))
+
+        # Filter to candles AFTER signal start time
+        if start_date:
+            try:
+                start_dt = pd.to_datetime(start_date, errors="coerce")
+
+                if pd.isna(start_dt):
+                    return jsonify({
+                        "ok": False,
+                        "error": f"Invalid start_date received: {start_date}"
+                    }), 400
+
+                df = df[df["Datetime"] > start_dt].copy()
+                print("TOTAL CANDLES AFTER START_DATE FILTER:", len(df))
+
+            except Exception as e:
+                return jsonify({
+                    "ok": False,
+                    "error": f"Failed to apply start_date filter: {str(e)}"
+                }), 500
+
         candles = []
         for i, row in df.iterrows():
-            candle = {
-                "index": int(i),
+            candles.append({
+                "Datetime": row["Datetime"].isoformat(),
                 "Open": float(row["Open"]),
                 "High": float(row["High"]),
                 "Low": float(row["Low"]),
-                "Close": float(row["Close"]),
-            }
+                "Close": float(row["Close"])
+            })
 
-            # Preserve datetime if present
-            if "Datetime" in df.columns:
-                candle["Datetime"] = str(row["Datetime"])
-            elif "datetime" in df.columns:
-                candle["Datetime"] = str(row["datetime"])
-            elif "Date" in df.columns:
-                candle["Datetime"] = str(row["Date"])
-            elif "date" in df.columns:
-                candle["Datetime"] = str(row["date"])
+        print("CANDLES RETURNED:", len(candles))
+        if candles:
+            print("FIRST RETURNED CANDLE:", candles[0])
+            print("LAST RETURNED CANDLE:", candles[-1])
 
-            candles.append(candle)
+        print("========== FETCH CANDLES COMPLETE ==========\n")
 
         return jsonify({
             "ok": True,
             "market": market,
             "timeframe": timeframe,
             "interval_used": interval,
+            "start_date": start_date,
             "count": len(candles),
             "candles": candles
         }), 200
 
     except Exception as e:
+        print("FETCH CANDLES ERROR:", str(e))
         return jsonify({
             "ok": False,
             "error": str(e)
