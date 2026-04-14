@@ -112,8 +112,8 @@ def markets():
 
 @app.route("/resolve-outcomes", methods=["POST"])
 def resolve_outcomes():
-    data = request.json
-    signals = data.get("signals", [])
+    data = request.json or {}
+    signals = data.get("signals", [])[:25]  # process only 25 per request
 
     results = []
 
@@ -126,7 +126,7 @@ def resolve_outcomes():
             direction = signal["direction"]
             created_at = signal["created_at"]
 
-            df = fetch_live_market_data(market, interval="1min", outputsize=200)
+            df = fetch_live_market_data(market, interval="1h", outputsize=500)
 
             outcome = "expired"
             exit_reason = "timeout"
@@ -167,7 +167,7 @@ def resolve_outcomes():
                 "exit_reason": exit_reason,
                 "exit_price": exit_price
             })
-            
+
             time.sleep(0.35)
 
         except Exception as e:
@@ -177,7 +177,11 @@ def resolve_outcomes():
                 "error": str(e)
             })
 
-    return jsonify({"results": results})
+    return jsonify({
+        "results": results,
+        "processed": len(signals)
+    })
+
 
 
 # -----------------------------
