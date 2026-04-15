@@ -1235,6 +1235,7 @@ def update_live_signal(market):
         save_live_signal_history_entry(market, new_payload)
 
 def run_polling_fallback():
+    print("🔥 run_polling_fallback entered", flush=True)
     global POLLING_ACTIVE, STREAM_STATUS
 
     POLLING_ACTIVE = True
@@ -1244,8 +1245,10 @@ def run_polling_fallback():
 
     while POLLING_ACTIVE:
         try:
+            print("🔄 polling loop tick", flush=True)
+
             for market in LIVE_MARKET_STATE.keys():
-                df = fetch_live_market_data(market, interval="1min", outputsize=50)
+                df = fetch_live_market_data(market, interval="1min", outputsize=2)
 
                 if df is None or df.empty:
                     continue
@@ -1263,19 +1266,27 @@ def run_polling_fallback():
                 state["last_updated"] = datetime.utcnow().isoformat() + "Z"
                 LIVE_MARKET_STATE[market] = state
 
-                update_live_signal(market)
+                try:
+                    update_live_signal(market)
+                except Exception as signal_error:
+                    print(f"❌ update_live_signal error for {market}: {signal_error}", flush=True)
 
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
             STREAM_STATUS["status"] = "connected"
             STREAM_STATUS["provider"] = "polling"
+            STREAM_STATUS["polling_active"] = True
+            STREAM_STATUS["websocket_active"] = False
+
+            time.sleep(10)
 
         except Exception as e:
-            STREAM_STATUS["status"] = "error"
-            STREAM_STATUS["provider"] = "polling"
             STREAM_STATUS["last_error"] = str(e)
-
-        time.sleep(POLLING_INTERVAL)
-
+            STREAM_STATUS["status"] = "disconnected"
+            STREAM_STATUS["provider"] = "polling"
+            STREAM_STATUS["polling_active"] = False
+            STREAM_STATUS["websocket_active"] = False
+            print(f"❌ polling error: {e}", flush=True)
+            time.sleep(5)
 
 
 
@@ -5937,9 +5948,6 @@ def stripe_webhook():
 
         print("🔥 EVENT:", event_type, flush=True)
 
-        # =========================
-        # CHECKOUT COMPLETED
-        # =========================
         if event_type == "checkout.session.completed":
             print("🔥 CHECKOUT HIT", flush=True)
 
@@ -5960,21 +5968,19 @@ def stripe_webhook():
                 return jsonify({"error": "Missing user_id"}), 200
 
             trial_end_ts = None
-            in_trial = True  # default assume trial
+            in_trial = True
 
-            # SAFE subscription fetch
             if subscription_id:
                 try:
                     sub = stripe.Subscription.retrieve(subscription_id)
                     trial_end_ts = sub.get("trial_end")
 
                     now_ts = int(datetime.utcnow().timestamp())
-                    in_trial = trial_end_ts and trial_end_ts > now_ts
+                    in_trial = bool(trial_end_ts and trial_end_ts > now_ts)
 
                 except Exception as sub_error:
                     print("🔥 SUB FETCH ERROR:", str(sub_error), flush=True)
 
-            # Determine plan
             if plan == "elite":
                 subscription_status = "trial_elite" if in_trial else "elite"
                 effective_plan = "elite"
@@ -5989,9 +5995,6 @@ def stripe_webhook():
 
             print("🔥 FINAL STATUS:", subscription_status, flush=True)
 
-            # =========================
-            # WRITE TO SUPABASE
-            # =========================
             try:
                 update_user_subscription_status(
                     user_id=user_id,
@@ -6013,20 +6016,30 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+
 # -----------------------------
 # START BACKGROUND LIVE ENGINE
 # -----------------------------
 import threading
 
+
 def start_background_tasks():
-    thread = threading.Thread(target=run_polling_fallback, daemon=True)
-    thread.start()
+    try:
+        print("🚀 starting background live engine", flush=True)
+        ensure_live_engine_started()
+        print("✅ ensure_live_engine_started finished", flush=True)
+
+        thread = threading.Thread(target=run_polling_fallback, daemon=True)
+        thread.start()
+        print("✅ background polling thread started", flush=True)
+
+    except Exception as e:
+        print(f"❌ failed to start background tasks: {e}", flush=True)
+
 
 start_background_tasks()
 
 
 if __name__ == "__main__":
-    ensure_live_engine_started()
-
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
