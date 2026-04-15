@@ -2469,74 +2469,120 @@ def evaluate_signal(df):
     bearish = 0
     reasons = []
 
+    strategy_breakdown = {}
+    confluence_bonus = 0
+
+    breakout_label = None
+    liquidity_event = None
+    trendline_label = None
+
+    upper_wick = float(latest["UpperWick"]) if "UpperWick" in latest and pd.notna(latest["UpperWick"]) else None
+    lower_wick = float(latest["LowerWick"]) if "LowerWick" in latest and pd.notna(latest["LowerWick"]) else None
+    ma20 = float(latest["MA20"]) if "MA20" in latest and pd.notna(latest["MA20"]) else None
+    ma50 = float(latest["MA50"]) if "MA50" in latest and pd.notna(latest["MA50"]) else None
+    vwap = float(latest["VWAP"]) if "VWAP" in latest and pd.notna(latest["VWAP"]) else None
+    support = float(latest["Support"]) if "Support" in latest and pd.notna(latest["Support"]) else None
+    resistance = float(latest["Resistance"]) if "Resistance" in latest and pd.notna(latest["Resistance"]) else None
+
+    pattern = detect_wick_pattern(df)
+
     # -----------------------------
     # STRATEGY EXECUTION (HYBRID)
     # -----------------------------
     strategy_functions = [
-        ("wick_strategy", wick_strategy, df),
+        ("wick_strategy", wick_strategy, (df, pattern)),
         ("ma_trend_strategy", ma_trend_strategy, df),
         ("vwap_strategy", vwap_strategy, df),
         ("support_resistance_strategy", support_resistance_strategy, df),
         ("breakout_strategy", breakout_strategy, df),
-        ("liquidity_sweep_strategy", liquidity_sweep_strategy, latest),  # <-- row-based
+        ("liquidity_sweep_strategy", liquidity_sweep_strategy, latest),
         ("trendline_strategy", trendline_strategy, df),
     ]
 
     for strategy_name, strategy_func, strategy_input in strategy_functions:
         try:
-            result = strategy_func(strategy_input)
+            if isinstance(strategy_input, tuple):
+                result = strategy_func(*strategy_input)
+            else:
+                result = strategy_func(strategy_input)
 
-            bullish += result.get("bullish", 0)
-            bearish += result.get("bearish", 0)
-
+            bullish_points = int(result.get("bullish", 0))
+            bearish_points = int(result.get("bearish", 0))
             strategy_reasons = result.get("reasons", [])
+
+            bullish += bullish_points
+            bearish += bearish_points
+
             if strategy_reasons:
                 reasons.extend(strategy_reasons)
 
+            strategy_breakdown[strategy_name] = {
+                "bullish": bullish_points,
+                "bearish": bearish_points,
+                "reasons": strategy_reasons
+            }
+
+            if strategy_name == "breakout_strategy":
+                breakout_label = result.get("breakout")
+
+            if strategy_name == "liquidity_sweep_strategy":
+                liquidity_event = result.get("liquidity_event")
+
+            if strategy_name == "trendline_strategy":
+                trendline_label = result.get("trendline")
+
         except Exception as e:
-            reasons.append(f"{strategy_name} error: {str(e)}")
+            error_msg = f"{strategy_name} error: {str(e)}"
+            reasons.append(error_msg)
+            strategy_breakdown[strategy_name] = {
+                "bullish": 0,
+                "bearish": 0,
+                "reasons": [error_msg]
+            }
 
     # -----------------------------
-    # PHASE 9 TRADE FILTER
+    # CONFLUENCE BONUS
     # -----------------------------
-    avg_range = None
-    try:
-        if len(df) >= 20:
-            avg_range = float(df["Range"].tail(20).mean())
-    except Exception:
-        avg_range = None
-
-    trade_ok, trade_filter_reasons = should_take_trade(latest, avg_range=avg_range)
+    if bullish >= 2 and bearish == 0:
+        bullish += 1
+        confluence_bonus = 1
+        reasons.append("Bullish confluence bonus applied")
+    elif bearish >= 2 and bullish == 0:
+        bearish += 1
+        confluence_bonus = 1
+        reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
-    # FINAL SIGNAL DECISION
+    # FINAL SIGNAL
     # -----------------------------
     if bullish > bearish:
         signal = "Bullish"
+        confidence = min(100, round((bullish / max(bullish + bearish, 1)) * 100, 1))
     elif bearish > bullish:
         signal = "Bearish"
+        confidence = min(100, round((bearish / max(bullish + bearish, 1)) * 100, 1))
     else:
         signal = "Neutral"
-
-    # Apply quality filter
-    if signal in ["Bullish", "Bearish"] and not trade_ok:
-        reasons.append("Trade blocked by Phase 9 quality filter")
-        reasons.extend(trade_filter_reasons)
-        signal = "Neutral"
-    else:
-        reasons.extend(trade_filter_reasons)
-
-    # Confidence score
-    confidence = 50.0
-    total_score = bullish + bearish
-    if total_score > 0:
-        confidence = round((max(bullish, bearish) / total_score) * 100, 2)
+        confidence = 50.0
 
     return {
         "signal": signal,
         "confidence": confidence,
-        "bullish": bullish,
-        "bearish": bearish,
+        "pattern": pattern,
+        "upper_wick": upper_wick,
+        "lower_wick": lower_wick,
+        "ma20": ma20,
+        "ma50": ma50,
+        "vwap": vwap,
+        "support": support,
+        "resistance": resistance,
+        "breakout": breakout_label,
+        "liquidity_event": liquidity_event,
+        "trendline": trendline_label,
+        "strategy_breakdown": strategy_breakdown,
+        "confluence_bonus": confluence_bonus,
+        "bullish_points": bullish,
+        "bearish_points": bearish,
         "reasons": reasons
     }
 
