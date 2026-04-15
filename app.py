@@ -2125,6 +2125,49 @@ def detect_wick_pattern(row):
 
     return None
 
+def should_take_trade(row, avg_range=None):
+    try:
+        close_price = float(row["Close"])
+        ma50 = float(row["MA50"])
+        vwap = float(row["VWAP"])
+        body_size = float(row["BodySize"])
+        candle_range = float(row["Range"])
+
+        # Safety check
+        if candle_range <= 0:
+            return False, ["Invalid candle range"]
+
+        reasons = []
+
+        # 1. Trend filter
+        trend_ok = close_price > ma50
+        reasons.append(f"Trend filter: {'PASS' if trend_ok else 'FAIL'} (Close vs MA50)")
+
+        # 2. VWAP confirmation
+        vwap_ok = close_price > vwap
+        reasons.append(f"VWAP filter: {'PASS' if vwap_ok else 'FAIL'} (Close vs VWAP)")
+
+        # 3. Candle body strength
+        body_ok = body_size > (candle_range * 0.4)
+        reasons.append(f"Body strength: {'PASS' if body_ok else 'FAIL'} (Body > 40% of range)")
+
+        # 4. Volatility filter
+        volatility_ok = True
+        if avg_range is not None:
+            volatility_ok = candle_range > avg_range
+            reasons.append(
+                f"Volatility filter: {'PASS' if volatility_ok else 'FAIL'} "
+                f"(Range {candle_range:.5f} vs AvgRange {avg_range:.5f})"
+            )
+        else:
+            reasons.append("Volatility filter: SKIPPED (avg_range not provided)")
+
+        all_ok = trend_ok and vwap_ok and body_ok and volatility_ok
+        return all_ok, reasons
+
+    except Exception as e:
+        return False, [f"Trade filter error: {str(e)}"]
+
 
 def wick_strategy(row, pattern):
     bullish = 0
