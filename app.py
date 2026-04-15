@@ -5923,7 +5923,6 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
-
 # -----------------------------
 # START BACKGROUND LIVE ENGINE
 # -----------------------------
@@ -5931,17 +5930,20 @@ import threading
 
 
 def start_background_tasks():
+    print("🚀 starting background live engine", flush=True)
+
     try:
-        print("🚀 starting background live engine", flush=True)
         ensure_live_engine_started()
         print("✅ ensure_live_engine_started finished", flush=True)
+    except Exception as e:
+        print(f"⚠️ ensure_live_engine_started failed: {e}", flush=True)
 
+    try:
         thread = threading.Thread(target=run_polling_fallback, daemon=True)
         thread.start()
         print("✅ background polling thread started", flush=True)
-
     except Exception as e:
-        print(f"❌ failed to start background tasks: {e}", flush=True)
+        print(f"❌ failed to start polling thread: {e}", flush=True)
 
 
 start_background_tasks()
