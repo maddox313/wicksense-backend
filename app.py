@@ -2487,20 +2487,19 @@ def evaluate_signal(df):
     pattern_result = detect_wick_pattern(df)
 
     if isinstance(pattern_result, tuple):
-       pattern = pattern_result[0]
+        pattern = pattern_result[0]
     else:
-       pattern = pattern_result
-
+        pattern = pattern_result
 
     # -----------------------------
     # STRATEGY EXECUTION (HYBRID)
     # -----------------------------
     strategy_functions = [
         ("wick_strategy", wick_strategy, (df, pattern)),
-        ("ma_trend_strategy", ma_trend_strategy, df),
-        ("vwap_strategy", vwap_strategy, df),
-        ("support_resistance_strategy", support_resistance_strategy, df),
-        ("breakout_strategy", breakout_strategy, df),
+        ("ma_trend_strategy", ma_trend_strategy, latest),
+        ("vwap_strategy", vwap_strategy, latest),
+        ("support_resistance_strategy", support_resistance_strategy, latest),
+        ("breakout_strategy", breakout_strategy, latest),
         ("liquidity_sweep_strategy", liquidity_sweep_strategy, latest),
         ("trendline_strategy", trendline_strategy, df),
     ]
