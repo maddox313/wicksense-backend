@@ -2475,7 +2475,7 @@ def evaluate_signal(df):
     confluence_bonus = 0
     strategy_breakdown = {}
 
-    # Core values from latest candle
+    # --- CORE VALUES ---
     upper_wick = float(latest["UpperWick"]) if "UpperWick" in latest and pd.notna(latest["UpperWick"]) else None
     lower_wick = float(latest["LowerWick"]) if "LowerWick" in latest and pd.notna(latest["LowerWick"]) else None
     ma20 = float(latest["MA20"]) if "MA20" in latest and pd.notna(latest["MA20"]) else None
@@ -2484,18 +2484,15 @@ def evaluate_signal(df):
     support = float(latest["Support"]) if "Support" in latest and pd.notna(latest["Support"]) else None
     resistance = float(latest["Resistance"]) if "Resistance" in latest and pd.notna(latest["Resistance"]) else None
 
-    # Pattern detection
+    # --- PATTERN ---
     pattern_result = detect_wick_pattern(df)
-    if isinstance(pattern_result, tuple):
-        pattern = pattern_result[0]
-    else:
-        pattern = pattern_result
+    pattern = pattern_result[0] if isinstance(pattern_result, tuple) else pattern_result
 
     # -----------------------------
-    # STRATEGY EXECUTION (HYBRID)
+    # STRATEGY EXECUTION (FIXED)
     # -----------------------------
     strategy_functions = [
-        ("wick_strategy", wick_strategy, (df, pattern)),
+        ("wick_strategy", wick_strategy, (latest, pattern)),   # ✅ FIXED
         ("ma_trend_strategy", ma_trend_strategy, latest),
         ("vwap_strategy", vwap_strategy, latest),
         ("support_resistance_strategy", support_resistance_strategy, latest),
@@ -2567,16 +2564,17 @@ def evaluate_signal(df):
             bearish_agreement += 1
 
     if bullish_agreement >= 3 and bullish > bearish:
+        bullish += 2
         confluence_bonus = 2
-        bullish += confluence_bonus
         reasons.append("Bullish confluence bonus applied")
+
     elif bearish_agreement >= 3 and bearish > bullish:
+        bearish += 2
         confluence_bonus = 2
-        bearish += confluence_bonus
         reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
-    # FINAL SIGNAL + CONFIDENCE
+    # FINAL SIGNAL
     # -----------------------------
     total_points = bullish + bearish
 
