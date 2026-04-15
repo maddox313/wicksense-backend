@@ -2470,21 +2470,21 @@ def evaluate_signal(df):
     reasons = []
 
     # -----------------------------
-    # STRATEGY SCORING
+    # STRATEGY EXECUTION (HYBRID)
     # -----------------------------
     strategy_functions = [
-        wick_strategy,
-        ma_trend_strategy,
-        vwap_strategy,
-        support_resistance_strategy,
-        breakout_strategy,
-        liquidity_sweep_strategy,
-        trendline_strategy,
+        ("wick_strategy", wick_strategy, df),
+        ("ma_trend_strategy", ma_trend_strategy, df),
+        ("vwap_strategy", vwap_strategy, df),
+        ("support_resistance_strategy", support_resistance_strategy, df),
+        ("breakout_strategy", breakout_strategy, df),
+        ("liquidity_sweep_strategy", liquidity_sweep_strategy, latest),  # <-- row-based
+        ("trendline_strategy", trendline_strategy, df),
     ]
 
-    for strategy_func in strategy_functions:
+    for strategy_name, strategy_func, strategy_input in strategy_functions:
         try:
-            result = strategy_func(df)
+            result = strategy_func(strategy_input)
 
             bullish += result.get("bullish", 0)
             bearish += result.get("bearish", 0)
@@ -2494,7 +2494,7 @@ def evaluate_signal(df):
                 reasons.extend(strategy_reasons)
 
         except Exception as e:
-            reasons.append(f"{strategy_func.__name__} error: {str(e)}")
+            reasons.append(f"{strategy_name} error: {str(e)}")
 
     # -----------------------------
     # PHASE 9 TRADE FILTER
@@ -2518,7 +2518,7 @@ def evaluate_signal(df):
     else:
         signal = "Neutral"
 
-    # Only block directional trades
+    # Apply quality filter
     if signal in ["Bullish", "Bearish"] and not trade_ok:
         reasons.append("Trade blocked by Phase 9 quality filter")
         reasons.extend(trade_filter_reasons)
@@ -2526,6 +2526,7 @@ def evaluate_signal(df):
     else:
         reasons.extend(trade_filter_reasons)
 
+    # Confidence score
     confidence = 50.0
     total_score = bullish + bearish
     if total_score > 0:
