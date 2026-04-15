@@ -4821,6 +4821,8 @@ def signal():
         if user_id:
             store_signal(user_id, response_data)
 
+        print("🔥 LIVE SIGNAL:", json.dumps(response_data, indent=2))
+        
         return jsonify(response_data)
 
     except Exception as e:
