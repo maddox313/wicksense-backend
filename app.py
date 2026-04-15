@@ -5920,6 +5920,99 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+    try:
+        print("🔥 WEBHOOK HIT", flush=True)
+
+        event = request.get_json(force=True, silent=True)
+
+        if not event:
+            print("🔥 NO JSON", flush=True)
+            return jsonify({"error": "No JSON"}), 400
+
+        event_type = event.get("type")
+        data = event.get("data", {}).get("object", {})
+
+        print("🔥 EVENT:", event_type, flush=True)
+
+        # =========================
+        # CHECKOUT COMPLETED
+        # =========================
+        if event_type == "checkout.session.completed":
+            print("🔥 CHECKOUT HIT", flush=True)
+
+            metadata = data.get("metadata", {}) or {}
+            user_id = metadata.get("user_id")
+            plan = metadata.get("plan", "pro")
+
+            customer_id = data.get("customer")
+            subscription_id = data.get("subscription")
+
+            print("🔥 USER:", user_id, flush=True)
+            print("🔥 PLAN:", plan, flush=True)
+            print("🔥 CUSTOMER:", customer_id, flush=True)
+            print("🔥 SUB:", subscription_id, flush=True)
+
+            if not user_id:
+                print("🔥 ERROR: Missing user_id", flush=True)
+                return jsonify({"error": "Missing user_id"}), 200
+
+            trial_end_ts = None
+            in_trial = True  # default assume trial
+
+            # SAFE subscription fetch
+            if subscription_id:
+                try:
+                    sub = stripe.Subscription.retrieve(subscription_id)
+                    trial_end_ts = sub.get("trial_end")
+
+                    now_ts = int(datetime.utcnow().timestamp())
+                    in_trial = trial_end_ts and trial_end_ts > now_ts
+
+                except Exception as sub_error:
+                    print("🔥 SUB FETCH ERROR:", str(sub_error), flush=True)
+
+            # Determine plan
+            if plan == "elite":
+                subscription_status = "trial_elite" if in_trial else "elite"
+                effective_plan = "elite"
+            else:
+                subscription_status = "trial_pro" if in_trial else "pro"
+                effective_plan = "pro"
+
+            trial_end_iso = (
+                datetime.utcfromtimestamp(trial_end_ts).isoformat() + "Z"
+                if trial_end_ts else None
+            )
+
+            print("🔥 FINAL STATUS:", subscription_status, flush=True)
+
+            # =========================
+            # WRITE TO SUPABASE
+            # =========================
+            try:
+                update_user_subscription_status(
+                    user_id=user_id,
+                    subscription_status=subscription_status,
+                    effective_plan=effective_plan,
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    trial_end=trial_end_iso
+                )
+            except Exception as db_error:
+                print("🔥 SUPABASE ERROR:", str(db_error), flush=True)
+
+        return jsonify({"received": True}), 200
+
+    except Exception as e:
+        print("🔥 WEBHOOK CRASH:", str(e), flush=True)
+        return jsonify({
+            "error": "Webhook crashed",
+            "details": str(e)
+        }), 500
+
 # -----------------------------
 # START BACKGROUND LIVE ENGINE
 # -----------------------------
