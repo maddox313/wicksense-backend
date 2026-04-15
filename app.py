@@ -2535,16 +2535,21 @@ def evaluate_signal(df):
 
             if strategy_name == "trendline_strategy":
                 trendline_label = result.get("trendline")
+    except Exception as e:
+        import traceback
 
-        except Exception as e:
-            error_msg = f"{strategy_name} error: {str(e)}"
-            reasons.append(error_msg)
-            strategy_breakdown[strategy_name] = {
-                "bullish": 0,
-                "bearish": 0,
-                "reasons": [error_msg]
-            }
+        print("\n========== SIGNAL ROUTE ERROR ==========")
+        print("ERROR:", str(e))
+        traceback.print_exc()
+        print("========== END SIGNAL ROUTE ERROR ==========\n")
 
+    return jsonify({
+        "error": "Signal generation failed",
+        "details": str(e)
+    }), 500
+
+
+   
     # -----------------------------
     # CONFLUENCE BONUS
     # -----------------------------
