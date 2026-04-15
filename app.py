@@ -4660,6 +4660,93 @@ def store_signal(user_id, signal):
         print("❌ SIGNAL STORE ERROR:", str(e), flush=True)
 
 
+def build_trade_levels(signal_data, last_row):
+    signal = signal_data.get("signal", "Neutral")
+    entry = float(last_row["Close"])
+    candle_high = float(last_row["High"])
+    candle_low = float(last_row["Low"])
+    candle_range = max(candle_high - candle_low, 0.000001)
+
+    support = signal_data.get("support")
+    resistance = signal_data.get("resistance")
+
+    try:
+        support = float(support) if support is not None else None
+    except Exception:
+        support = None
+
+    try:
+        resistance = float(resistance) if resistance is not None else None
+    except Exception:
+        resistance = None
+
+    stop_loss = None
+    take_profit = None
+    risk_per_unit = None
+    reward_per_unit = None
+    risk_reward = None
+
+    # Bullish setup
+    if signal == "Bullish":
+        structural_stop = support if support is not None and support < entry else None
+        fallback_stop = candle_low - (candle_range * 0.25)
+
+        stop_loss = structural_stop if structural_stop is not None else fallback_stop
+
+        # Make sure stop is actually below entry
+        if stop_loss >= entry:
+            stop_loss = entry - max(candle_range * 0.75, 0.000001)
+
+        risk_per_unit = entry - stop_loss
+
+        structural_target = resistance if resistance is not None and resistance > entry else None
+        rr_target = entry + (risk_per_unit * 1.8)
+
+        take_profit = structural_target if structural_target is not None else rr_target
+
+        # Make sure TP is actually above entry
+        if take_profit <= entry:
+            take_profit = entry + (risk_per_unit * 1.8)
+
+        reward_per_unit = take_profit - entry
+
+    # Bearish setup
+    elif signal == "Bearish":
+        structural_stop = resistance if resistance is not None and resistance > entry else None
+        fallback_stop = candle_high + (candle_range * 0.25)
+
+        stop_loss = structural_stop if structural_stop is not None else fallback_stop
+
+        # Make sure stop is actually above entry
+        if stop_loss <= entry:
+            stop_loss = entry + max(candle_range * 0.75, 0.000001)
+
+        risk_per_unit = stop_loss - entry
+
+        structural_target = support if support is not None and support < entry else None
+        rr_target = entry - (risk_per_unit * 1.8)
+
+        take_profit = structural_target if structural_target is not None else rr_target
+
+        # Make sure TP is actually below entry
+        if take_profit >= entry:
+            take_profit = entry - (risk_per_unit * 1.8)
+
+        reward_per_unit = entry - take_profit
+
+    if risk_per_unit is not None and reward_per_unit is not None and risk_per_unit > 0:
+        risk_reward = round(reward_per_unit / risk_per_unit, 2)
+
+    return {
+        "entry": round(entry, 6),
+        "stop_loss": round(stop_loss, 6) if stop_loss is not None else None,
+        "take_profit": round(take_profit, 6) if take_profit is not None else None,
+        "risk_per_unit": round(risk_per_unit, 6) if risk_per_unit is not None else None,
+        "reward_per_unit": round(reward_per_unit, 6) if reward_per_unit is not None else None,
+        "risk_reward": risk_reward
+    }
+
+
 @app.route("/signal", methods=["POST"])
 def signal():
     try:
@@ -4678,42 +4765,55 @@ def signal():
         session_data = get_market_session()
         last_row = df.iloc[-1]
 
+        trade_levels = build_trade_levels(signal_data, last_row)
+
         response_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
-            "signal": signal_data["signal"],
+            "signal": signal_data.get("signal"),
             "setup_type": setup_type,
-            "confidence": signal_data["confidence"],
-            "pattern": signal_data["pattern"],
-            "entry": float(last_row["Close"]),
+            "confidence": signal_data.get("confidence"),
+
+            "pattern": signal_data.get("pattern"),
+            "entry": trade_levels["entry"],
+            "stop_loss": trade_levels["stop_loss"],
+            "take_profit": trade_levels["take_profit"],
+            "risk_per_unit": trade_levels["risk_per_unit"],
+            "reward_per_unit": trade_levels["reward_per_unit"],
+            "risk_reward": trade_levels["risk_reward"],
+
             "open": float(last_row["Open"]),
             "high": float(last_row["High"]),
             "low": float(last_row["Low"]),
             "close": float(last_row["Close"]),
-            "upper_wick": signal_data["upper_wick"],
-            "lower_wick": signal_data["lower_wick"],
-            "ma20": signal_data["ma20"],
-            "ma50": signal_data["ma50"],
-            "vwap": signal_data["vwap"],
-            "support": signal_data["support"],
-            "resistance": signal_data["resistance"],
-            "breakout": signal_data["breakout"],
-            "liquidity_event": signal_data["liquidity_event"],
-            "trendline": signal_data["trendline"],
-            "strategy_breakdown": signal_data["strategy_breakdown"],
-            "confluence_bonus": signal_data["confluence_bonus"],
-            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-            "timeframe_alignment": mtf_data["timeframe_alignment"],
-            "multi_timeframe": mtf_data["multi_timeframe"],
-            "reason": ", ".join(signal_data["reasons"]),
-            "ai_summary": ai_text["ai_summary"],
-            "trade_thesis": ai_text["trade_thesis"],
-            "risk_note": ai_text["risk_note"],
-            "session_label": session_data["session_label"],
-            "active_sessions": session_data["active_sessions"],
-            "liquidity_profile": session_data["liquidity_profile"],
-            "utc_hour": session_data["utc_hour"]
+
+            "upper_wick": signal_data.get("upper_wick"),
+            "lower_wick": signal_data.get("lower_wick"),
+            "ma20": signal_data.get("ma20"),
+            "ma50": signal_data.get("ma50"),
+            "vwap": signal_data.get("vwap"),
+            "support": signal_data.get("support"),
+            "resistance": signal_data.get("resistance"),
+            "breakout": signal_data.get("breakout"),
+            "liquidity_event": signal_data.get("liquidity_event"),
+            "trendline": signal_data.get("trendline"),
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "confluence_bonus": signal_data.get("confluence_bonus"),
+
+            "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
+            "timeframe_alignment": mtf_data.get("timeframe_alignment"),
+            "multi_timeframe": mtf_data.get("multi_timeframe"),
+
+            "reason": ", ".join(signal_data.get("reasons", [])),
+            "ai_summary": ai_text.get("ai_summary"),
+            "trade_thesis": ai_text.get("trade_thesis"),
+            "risk_note": ai_text.get("risk_note"),
+
+            "session_label": session_data.get("session_label"),
+            "active_sessions": session_data.get("active_sessions"),
+            "liquidity_profile": session_data.get("liquidity_profile"),
+            "utc_hour": session_data.get("utc_hour")
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -4728,7 +4828,6 @@ def signal():
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
-
 
 
 # -----------------------------
