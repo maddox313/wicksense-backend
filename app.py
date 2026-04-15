@@ -5920,6 +5920,16 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+# -----------------------------
+# START BACKGROUND LIVE ENGINE
+# -----------------------------
+import threading
+
+def start_background_tasks():
+    thread = threading.Thread(target=run_polling_fallback, daemon=True)
+    thread.start()
+
+start_background_tasks()
 
 
 if __name__ == "__main__":
