@@ -2461,230 +2461,82 @@ def trendline_strategy(df: pd.DataFrame):
     }
 
 
-def evaluate_signal(df: pd.DataFrame):
+def evaluate_signal(df):
     df = add_indicators(df)
-    row = df.iloc[-1]
+    latest = df.iloc[-1]
 
-    close_price = float(row["Close"])
-    open_price = float(row["Open"])
-    upper_wick = float(row["UpperWick"])
-    lower_wick = float(row["LowerWick"])
-    ma20 = float(row["MA20"]) if pd.notna(row["MA20"]) else close_price
-    ma50 = float(row["MA50"]) if pd.notna(row["MA50"]) else close_price
-    vwap = float(row["VWAP"]) if pd.notna(row["VWAP"]) else close_price
-    support = float(row["Support"]) if pd.notna(row["Support"]) else float(row["Low"])
-    resistance = float(row["Resistance"]) if pd.notna(row["Resistance"]) else float(row["High"])
-
-    wick_pattern = detect_wick_pattern(row)
-    engulfing_pattern, engulfing_strength = detect_engulfing_pattern(df)
-
-    # Give engulfing priority if present
-    pattern = engulfing_pattern or wick_pattern
-
-    strategies = {
-        "wick_strategy": wick_strategy(row, pattern),
-        "ma_trend_strategy": ma_trend_strategy(row),
-        "vwap_strategy": vwap_strategy(row),
-        "support_resistance_strategy": support_resistance_strategy(row),
-        "breakout_strategy": breakout_strategy(row),
-        "liquidity_sweep_strategy": liquidity_sweep_strategy(row),
-        "trendline_strategy": trendline_strategy(df)
-    }
-
-    bullish_points = sum(s["bullish"] for s in strategies.values())
-    bearish_points = sum(s["bearish"] for s in strategies.values())
-
+    bullish = 0
+    bearish = 0
     reasons = []
-    for s in strategies.values():
-        reasons.extend(s["reasons"])
-
-    confluence_bonus = 0
-
-    trend_dir = strategies["ma_trend_strategy"]["bullish"] - strategies["ma_trend_strategy"]["bearish"]
-    vwap_dir = strategies["vwap_strategy"]["bullish"] - strategies["vwap_strategy"]["bearish"]
-    sr_dir = strategies["support_resistance_strategy"]["bullish"] - strategies["support_resistance_strategy"]["bearish"]
-    wick_dir = strategies["wick_strategy"]["bullish"] - strategies["wick_strategy"]["bearish"]
-    breakout = strategies["breakout_strategy"]["breakout"]
-    liquidity_event = strategies["liquidity_sweep_strategy"]["liquidity_event"]
-    trendline = strategies["trendline_strategy"]["trendline"]
 
     # -----------------------------
-    # Existing confluence logic
+    # STRATEGY SCORING
     # -----------------------------
-    if trend_dir > 0 and vwap_dir > 0:
-        bullish_points += 2
-        confluence_bonus += 2
-        reasons.append("Trend + VWAP bullish confluence")
+    strategy_functions = [
+        wick_strategy,
+        ma_trend_strategy,
+        vwap_strategy,
+        support_resistance_strategy,
+        breakout_strategy,
+        liquidity_sweep_strategy,
+        trendline_strategy,
+    ]
 
-    if trend_dir < 0 and vwap_dir < 0:
-        bearish_points += 2
-        confluence_bonus += 2
-        reasons.append("Trend + VWAP bearish confluence")
+    for strategy_func in strategy_functions:
+        try:
+            result = strategy_func(df)
 
-    if sr_dir > 0 and wick_dir > 0:
-        bullish_points += 2
-        confluence_bonus += 2
-        reasons.append("Support + wick reversal confluence")
+            bullish += result.get("bullish", 0)
+            bearish += result.get("bearish", 0)
 
-    if sr_dir < 0 and wick_dir < 0:
-        bearish_points += 2
-        confluence_bonus += 2
-        reasons.append("Resistance + wick rejection confluence")
+            strategy_reasons = result.get("reasons", [])
+            if strategy_reasons:
+                reasons.extend(strategy_reasons)
 
-    if breakout == "Bullish Breakout" and trend_dir > 0:
-        bullish_points += 2
-        confluence_bonus += 2
-        reasons.append("Breakout + trend continuation")
-
-    if breakout == "Bearish Breakdown" and trend_dir < 0:
-        bearish_points += 2
-        confluence_bonus += 2
-        reasons.append("Breakout + trend continuation")
-
-    if liquidity_event == "Bullish Liquidity Sweep" and sr_dir > 0:
-        bullish_points += 2
-        confluence_bonus += 2
-        reasons.append("Liquidity sweep + support confluence")
-
-    if liquidity_event == "Bearish Liquidity Sweep" and sr_dir < 0:
-        bearish_points += 2
-        confluence_bonus += 2
-        reasons.append("Liquidity sweep + resistance confluence")
-
-    if trendline == "Rising Trendline Support":
-        bullish_points += 1
-        reasons.append("Trendline support bounce")
-
-    if trendline == "Falling Trendline Resistance":
-        bearish_points += 1
-        reasons.append("Trendline resistance rejection")
-
-    if close_price > open_price:
-        bullish_points += 1
-        reasons.append("Bullish candle close")
-    elif close_price < open_price:
-        bearish_points += 1
-        reasons.append("Bearish candle close")
+        except Exception as e:
+            reasons.append(f"{strategy_func.__name__} error: {str(e)}")
 
     # -----------------------------
-    # NEW: Engulfing strength boost
+    # PHASE 9 TRADE FILTER
     # -----------------------------
-    if pattern == "Bullish Engulfing":
-        if engulfing_strength > 2:
-            bullish_points += 2
-            confluence_bonus += 2
-            reasons.append("Strong bullish engulfing momentum")
-        else:
-            bullish_points += 1
-            reasons.append("Valid bullish engulfing momentum")
+    avg_range = None
+    try:
+        if len(df) >= 20:
+            avg_range = float(df["Range"].tail(20).mean())
+    except Exception:
+        avg_range = None
 
-    if pattern == "Bearish Engulfing":
-        if engulfing_strength > 2:
-            bearish_points += 2
-            confluence_bonus += 2
-            reasons.append("Strong bearish engulfing momentum")
-        else:
-            bearish_points += 1
-            reasons.append("Valid bearish engulfing momentum")
+    trade_ok, trade_filter_reasons = should_take_trade(latest, avg_range=avg_range)
 
     # -----------------------------
-    # NEW: Engulfing + wick trap detection
+    # FINAL SIGNAL DECISION
     # -----------------------------
-    if pattern == "Bullish Engulfing":
-        if row["LowerWick"] > row["UpperWick"] * 1.5:
-            bullish_points += 2
-            confluence_bonus += 2
-            reasons.append("Bullish liquidity trap detected (stop hunt reversal)")
-
-    if pattern == "Bearish Engulfing":
-        if row["UpperWick"] > row["LowerWick"] * 1.5:
-            bearish_points += 2
-            confluence_bonus += 2
-            reasons.append("Bearish liquidity trap detected (stop hunt reversal)")
-
-    # -----------------------------
-    # NEW: Engulfing + location boost
-    # -----------------------------
-    near_support = support > 0 and abs(close_price - support) / max(close_price, 1) < 0.01
-    near_resistance = resistance > 0 and abs(close_price - resistance) / max(close_price, 1) < 0.01
-
-
-    if pattern == "Bullish Engulfing" and near_support:
-        bullish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bullish engulfing near support")
-
-    if pattern == "Bearish Engulfing" and near_resistance:
-        bearish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bearish engulfing near resistance")
-
-    if pattern == "Bullish Engulfing" and liquidity_event == "Bullish Liquidity Sweep":
-        bullish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bullish engulfing aligned with liquidity sweep")
-
-    if pattern == "Bearish Engulfing" and liquidity_event == "Bearish Liquidity Sweep":
-        bearish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bearish engulfing aligned with liquidity sweep")
-
-    if pattern == "Bullish Engulfing" and trendline == "Rising Trendline Support":
-        bullish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bullish engulfing aligned with trendline support")
-
-    if pattern == "Bearish Engulfing" and trendline == "Falling Trendline Resistance":
-        bearish_points += 1
-        confluence_bonus += 1
-        reasons.append("Bearish engulfing aligned with trendline resistance")
-
-    # -----------------------------
-    # Final signal
-    # -----------------------------
-    if bullish_points > bearish_points:
-        signal_type = "Bullish"
-    elif bearish_points > bullish_points:
-        signal_type = "Bearish"
+    if bullish > bearish:
+        signal = "Bullish"
+    elif bearish > bullish:
+        signal = "Bearish"
     else:
-        signal_type = "Neutral"
+        signal = "Neutral"
 
-    total_points = bullish_points + bearish_points
-    confidence = 50 if total_points == 0 else round((max(bullish_points, bearish_points) / total_points) * 100, 2)
+    # Only block directional trades
+    if signal in ["Bullish", "Bearish"] and not trade_ok:
+        reasons.append("Trade blocked by Phase 9 quality filter")
+        reasons.extend(trade_filter_reasons)
+        signal = "Neutral"
+    else:
+        reasons.extend(trade_filter_reasons)
 
-    strategy_breakdown = {}
-    for name, s in strategies.items():
-        if s["bullish"] > s["bearish"]:
-            direction = "Bullish"
-        elif s["bearish"] > s["bullish"]:
-            direction = "Bearish"
-        else:
-            direction = "Neutral"
-
-        strategy_breakdown[name] = {
-            "direction": direction,
-            "bullish_score": s["bullish"],
-            "bearish_score": s["bearish"],
-            "reasons": s["reasons"]
-        }
+    confidence = 50.0
+    total_score = bullish + bearish
+    if total_score > 0:
+        confidence = round((max(bullish, bearish) / total_score) * 100, 2)
 
     return {
-        "signal": signal_type,
+        "signal": signal,
         "confidence": confidence,
-        "reasons": reasons,
-        "pattern": pattern,
-        "ma20": round(ma20, 4),
-        "ma50": round(ma50, 4),
-        "vwap": round(vwap, 4),
-        "support": round(support, 4),
-        "resistance": round(resistance, 4),
-        "upper_wick": round(upper_wick, 4),
-        "lower_wick": round(lower_wick, 4),
-        "breakout": breakout,
-        "liquidity_event": liquidity_event,
-        "trendline": trendline,
-        "strategy_breakdown": strategy_breakdown,
-        "confluence_bonus": confluence_bonus
+        "bullish": bullish,
+        "bearish": bearish,
+        "reasons": reasons
     }
 
 
