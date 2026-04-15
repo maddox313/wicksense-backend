@@ -4838,6 +4838,8 @@ def signal():
         if not market:
             return jsonify({"error": "No market was provided"}), 400
 
+        print(f"📡 /signal requested | market={market} timeframe={timeframe}", flush=True)
+
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
 
         if df is None or df.empty:
@@ -4845,6 +4847,8 @@ def signal():
                 "error": "No market data available",
                 "details": "Failed to fetch market data"
             }), 500
+
+        print(f"📊 fetched rows={len(df)} for market={market}", flush=True)
 
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
@@ -4879,6 +4883,8 @@ def signal():
             "trendline": signal_data.get("trendline"),
             "strategy_breakdown": signal_data.get("strategy_breakdown"),
             "confluence_bonus": signal_data.get("confluence_bonus"),
+            "bullish_points": signal_data.get("bullish_points"),
+            "bearish_points": signal_data.get("bearish_points"),
             "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
             "timeframe_alignment": mtf_data.get("timeframe_alignment"),
             "multi_timeframe": mtf_data.get("multi_timeframe"),
@@ -4895,17 +4901,19 @@ def signal():
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
 
         if user_id:
-            store_signal(user_id, response_data)
+            try:
+                store_signal(user_id, response_data)
+            except Exception as store_error:
+                print(f"⚠️ store_signal failed: {store_error}", flush=True)
 
         return jsonify(response_data)
 
     except Exception as e:
         import traceback
-
-        print("\n========== SIGNAL ROUTE ERROR ==========")
-        print("ERROR:", str(e))
+        print("\n========== SIGNAL ROUTE ERROR ==========", flush=True)
+        print("ERROR:", str(e), flush=True)
         traceback.print_exc()
-        print("========== END SIGNAL ROUTE ERROR ==========\n")
+        print("========== END SIGNAL ROUTE ERROR ==========\n", flush=True)
 
         return jsonify({
             "error": "Signal generation failed",
