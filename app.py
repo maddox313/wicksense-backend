@@ -2516,7 +2516,10 @@ def evaluate_signal(df):
 
             bullish_points = int(result.get("bullish", 0) or 0)
             bearish_points = int(result.get("bearish", 0) or 0)
-            strategy_reasons = result.get("reasons", []) or []
+
+            strategy_reasons = result.get("reasons", [])
+            if not isinstance(strategy_reasons, list):
+                strategy_reasons = [str(strategy_reasons)]
 
             bullish += bullish_points
             bearish += bearish_points
@@ -2551,25 +2554,26 @@ def evaluate_signal(df):
     # -----------------------------
     # CONFLUENCE BONUS
     # -----------------------------
-    agreement_count = 0
+    bullish_agreement = 0
+    bearish_agreement = 0
 
     for breakdown in strategy_breakdown.values():
         b = int(breakdown.get("bullish", 0) or 0)
         s = int(breakdown.get("bearish", 0) or 0)
 
         if b > s and b > 0:
-            agreement_count += 1
+            bullish_agreement += 1
         elif s > b and s > 0:
-            agreement_count += 1
+            bearish_agreement += 1
 
-    if agreement_count >= 3:
+    if bullish_agreement >= 3 and bullish > bearish:
         confluence_bonus = 2
-        if bullish > bearish:
-            bullish += confluence_bonus
-            reasons.append("Bullish confluence bonus applied")
-        elif bearish > bullish:
-            bearish += confluence_bonus
-            reasons.append("Bearish confluence bonus applied")
+        bullish += confluence_bonus
+        reasons.append("Bullish confluence bonus applied")
+    elif bearish_agreement >= 3 and bearish > bullish:
+        confluence_bonus = 2
+        bearish += confluence_bonus
+        reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
     # FINAL SIGNAL + CONFIDENCE
@@ -2606,6 +2610,7 @@ def evaluate_signal(df):
         "bearish_points": bearish,
         "reasons": reasons
     }
+
 
 
 def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30, user_id: str = None):
@@ -4825,49 +4830,57 @@ def signal():
             return jsonify({"error": "No market was provided"}), 400
 
         df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+
+        if df is None or df.empty:
+            return jsonify({
+                "error": "No market data available",
+                "details": "Failed to fetch market data"
+            }), 500
+
         signal_data = evaluate_signal(df)
         ai_text = build_ai_explanation(signal_data)
         setup_type = get_setup_type(signal_data)
         mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
+
         last_row = df.iloc[-1]
 
         response_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "market": market,
             "timeframe": timeframe,
-            "signal": signal_data["signal"],
+            "signal": signal_data.get("signal"),
             "setup_type": setup_type,
-            "confidence": signal_data["confidence"],
-            "pattern": signal_data["pattern"],
+            "confidence": signal_data.get("confidence"),
+            "pattern": signal_data.get("pattern"),
             "entry": float(last_row["Close"]),
             "open": float(last_row["Open"]),
             "high": float(last_row["High"]),
             "low": float(last_row["Low"]),
             "close": float(last_row["Close"]),
-            "upper_wick": signal_data["upper_wick"],
-            "lower_wick": signal_data["lower_wick"],
-            "ma20": signal_data["ma20"],
-            "ma50": signal_data["ma50"],
-            "vwap": signal_data["vwap"],
-            "support": signal_data["support"],
-            "resistance": signal_data["resistance"],
-            "breakout": signal_data["breakout"],
-            "liquidity_event": signal_data["liquidity_event"],
-            "trendline": signal_data["trendline"],
-            "strategy_breakdown": signal_data["strategy_breakdown"],
-            "confluence_bonus": signal_data["confluence_bonus"],
-            "higher_timeframe_bias": mtf_data["higher_timeframe_bias"],
-            "timeframe_alignment": mtf_data["timeframe_alignment"],
-            "multi_timeframe": mtf_data["multi_timeframe"],
-            "reason": ", ".join(signal_data["reasons"]),
-            "ai_summary": ai_text["ai_summary"],
-            "trade_thesis": ai_text["trade_thesis"],
-            "risk_note": ai_text["risk_note"],
-            "session_label": session_data["session_label"],
-            "active_sessions": session_data["active_sessions"],
-            "liquidity_profile": session_data["liquidity_profile"],
-            "utc_hour": session_data["utc_hour"]
+            "upper_wick": signal_data.get("upper_wick"),
+            "lower_wick": signal_data.get("lower_wick"),
+            "ma20": signal_data.get("ma20"),
+            "ma50": signal_data.get("ma50"),
+            "vwap": signal_data.get("vwap"),
+            "support": signal_data.get("support"),
+            "resistance": signal_data.get("resistance"),
+            "breakout": signal_data.get("breakout"),
+            "liquidity_event": signal_data.get("liquidity_event"),
+            "trendline": signal_data.get("trendline"),
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "confluence_bonus": signal_data.get("confluence_bonus"),
+            "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
+            "timeframe_alignment": mtf_data.get("timeframe_alignment"),
+            "multi_timeframe": mtf_data.get("multi_timeframe"),
+            "reason": ", ".join(signal_data.get("reasons", [])),
+            "ai_summary": ai_text.get("ai_summary"),
+            "trade_thesis": ai_text.get("trade_thesis"),
+            "risk_note": ai_text.get("risk_note"),
+            "session_label": session_data.get("session_label"),
+            "active_sessions": session_data.get("active_sessions"),
+            "liquidity_profile": session_data.get("liquidity_profile"),
+            "utc_hour": session_data.get("utc_hour")
         }
 
         append_history(SIGNAL_HISTORY_FILE, response_data, max_items=200)
@@ -4889,7 +4902,6 @@ def signal():
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
-
 
 
 # -----------------------------
@@ -5336,13 +5348,23 @@ def tradeplan():
 
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
-
         close_price = float(last_row["Close"])
-        support_price = float(signal_data.get("support", close_price))
-        resistance_price = float(signal_data.get("resistance", close_price))
 
-        atr = (recent_rows["High"] - recent_rows["Low"]).mean()
-        if atr <= 0:
+        # --- SAFE SUPPORT / RESISTANCE ---
+        support_price = signal_data.get("support")
+        resistance_price = signal_data.get("resistance")
+
+        support_price = float(support_price) if support_price is not None else close_price
+        resistance_price = float(resistance_price) if resistance_price is not None else close_price
+
+        # --- SAFE ATR CALCULATION ---
+        try:
+            atr_series = recent_rows["High"] - recent_rows["Low"]
+            atr = float(atr_series.mean())
+        except Exception:
+            atr = close_price * 0.01
+
+        if atr is None or atr <= 0:
             atr = close_price * 0.01
 
         # --- SIGNAL NORMALIZATION ---
@@ -5473,10 +5495,19 @@ def tradeplan():
         return jsonify(response_data)
 
     except Exception as e:
+        import traceback
+
+        print("\n========== TRADEPLAN ROUTE ERROR ==========")
+        print("ERROR:", str(e))
+        traceback.print_exc()
+        print("========== END TRADEPLAN ROUTE ERROR ==========\n")
+
         return jsonify({
             "error": "Trade plan generation failed",
             "details": str(e)
         }), 500
+
+
 
 @app.route("/live-candles", methods=["GET"])
 def live_candles():
