@@ -2484,7 +2484,13 @@ def evaluate_signal(df):
     support = float(latest["Support"]) if "Support" in latest and pd.notna(latest["Support"]) else None
     resistance = float(latest["Resistance"]) if "Resistance" in latest and pd.notna(latest["Resistance"]) else None
 
-    pattern = detect_wick_pattern(df)
+    pattern_result = detect_wick_pattern(df)
+
+    if isinstance(pattern_result, tuple):
+       pattern = pattern_result[0]
+    else:
+       pattern = pattern_result
+
 
     # -----------------------------
     # STRATEGY EXECUTION (HYBRID)
