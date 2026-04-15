@@ -1242,6 +1242,8 @@ def run_polling_fallback():
     STREAM_STATUS["status"] = "connected"
     STREAM_STATUS["provider"] = "polling"
     STREAM_STATUS["last_error"] = None
+    STREAM_STATUS["polling_active"] = True
+    STREAM_STATUS["websocket_active"] = False
 
     while POLLING_ACTIVE:
         try:
@@ -1287,8 +1289,6 @@ def run_polling_fallback():
             STREAM_STATUS["websocket_active"] = False
             print(f"❌ polling error: {e}", flush=True)
             time.sleep(5)
-
-
 
 def get_simulated_base_price(market):
     base_prices = {
@@ -5837,7 +5837,6 @@ def update_user_subscription_status(
 
     except Exception as e:
         print("🔥 SUPABASE ERROR:", str(e), flush=True)
-
 
 
 @app.route("/stripe-webhook", methods=["POST"])
