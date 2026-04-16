@@ -1120,119 +1120,204 @@ def process_auto_triggers():
 def update_live_signal(market):
     global LIVE_MARKET_STATE
 
-    state = LIVE_MARKET_STATE.get(market, {})
-    previous_state = state.copy()
-    current_candle = state.get("current_candle")
-    completed_candles = state.get("completed_candles", [])
+    try:
+        state = LIVE_MARKET_STATE.get(market, {})
+        previous_state = dict(state) if isinstance(state, dict) else {}
 
-    if not current_candle:
-        return
+        current_candle = state.get("current_candle")
+        completed_candles = state.get("completed_candles", [])
 
-    candles = completed_candles + [current_candle]
+        if not isinstance(current_candle, dict) or not current_candle:
+            return
 
-    if len(candles) < 20:
+        if not isinstance(completed_candles, list):
+            completed_candles = []
+
+        candles = completed_candles + [current_candle]
+
+        if len(candles) < 20:
+            wick_data = calculate_live_wicks(current_candle)
+            state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
+            state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
+            state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+            LIVE_MARKET_STATE[market] = state
+            return
+
+        df = pd.DataFrame(candles)
+
+        if df is None or df.empty:
+            return
+
+        required_cols = ["Open", "High", "Low", "Close"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            print(f"❌ update_live_signal missing columns for {market}: {missing_cols}", flush=True)
+            return
+
+        for col in required_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=required_cols).copy()
+
+        if df.empty:
+            print(f"❌ update_live_signal empty dataframe after numeric cleanup for {market}", flush=True)
+            return
+
+        try:
+            signal_data = evaluate_signal(df)
+            if not isinstance(signal_data, dict):
+                signal_data = {}
+        except Exception as e:
+            print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            return
+
+        signal_data["confidence"] = safe_float(signal_data.get("confidence"), 50)
+        signal_data["trade_readiness_score"] = safe_float(get_trade_readiness(signal_data), 0)
+        signal_data["entry_timing"] = get_entry_timing(signal_data)
+
+        try:
+            ai_text = build_ai_explanation(signal_data)
+            if not isinstance(ai_text, dict):
+                ai_text = {}
+        except Exception as e:
+            print(f"⚠️ build_ai_explanation failed for {market}: {e}", flush=True)
+            ai_text = {}
+
+        try:
+            ai_summary = build_ai_summary(signal_data)
+        except Exception as e:
+            print(f"⚠️ build_ai_summary failed for {market}: {e}", flush=True)
+            ai_summary = None
+
+        try:
+            trade_thesis = build_trade_thesis(signal_data)
+        except Exception as e:
+            print(f"⚠️ build_trade_thesis failed for {market}: {e}", flush=True)
+            trade_thesis = None
+
+        try:
+            strategy_data = build_strategy_engine_output(df, signal_data)
+            if not isinstance(strategy_data, dict):
+                strategy_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_engine_output failed for {market}: {e}", flush=True)
+            strategy_data = {}
+
+        try:
+            strategy_visual_data = build_strategy_visual_output(df, signal_data)
+            if not isinstance(strategy_visual_data, dict):
+                strategy_visual_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_visual_output failed for {market}: {e}", flush=True)
+            strategy_visual_data = {}
+
+        try:
+            strategy_timing_data = build_strategy_timing_output(df, signal_data)
+            if not isinstance(strategy_timing_data, dict):
+                strategy_timing_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_timing_output failed for {market}: {e}", flush=True)
+            strategy_timing_data = {}
+
+        try:
+            setup_type = get_setup_type(signal_data)
+        except Exception as e:
+            print(f"⚠️ get_setup_type failed for {market}: {e}", flush=True)
+            setup_type = None
+
+        signal = str(signal_data.get("signal", "")).upper()
+
+        if isinstance(setup_type, str):
+            if signal in ["SELL", "BEARISH"] and "Bullish" in setup_type:
+                setup_type = setup_type.replace("Bullish", "Bearish")
+            elif signal in ["BUY", "BULLISH"] and "Bearish" in setup_type:
+                setup_type = setup_type.replace("Bearish", "Bullish")
+
         wick_data = calculate_live_wicks(current_candle)
-        state["upper_wick"] = wick_data["upper_wick"]
-        state["lower_wick"] = wick_data["lower_wick"]
+        session_data = get_market_session()
+
+        if not isinstance(wick_data, dict):
+            wick_data = {}
+
+        if not isinstance(session_data, dict):
+            session_data = {}
+
+        trade_readiness = safe_float(signal_data.get("trade_readiness_score"), 0)
+        entry_timing = signal_data.get("entry_timing")
+
+        try:
+            execution_guidance = get_execution_guidance(
+                entry_timing,
+                signal_data.get("signal")
+            )
+        except Exception as e:
+            print(f"⚠️ get_execution_guidance failed for {market}: {e}", flush=True)
+            execution_guidance = None
+
+        new_payload = {
+            "market": market,
+            "open": safe_float(current_candle.get("Open")),
+            "high": safe_float(current_candle.get("High")),
+            "low": safe_float(current_candle.get("Low")),
+            "close": safe_float(current_candle.get("Close")),
+            "upper_wick": safe_float(wick_data.get("upper_wick")),
+            "lower_wick": safe_float(wick_data.get("lower_wick")),
+
+            "signal": signal_data.get("signal"),
+            "confidence": safe_float(signal_data.get("confidence"), 50),
+            "pattern": signal_data.get("pattern"),
+            "breakout": signal_data.get("breakout"),
+            "liquidity_event": signal_data.get("liquidity_event"),
+            "trendline": signal_data.get("trendline"),
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "confluence_bonus": safe_float(signal_data.get("confluence_bonus"), 0),
+
+            "setup_type": setup_type,
+            "ai_summary": ai_summary,
+            "trade_thesis": trade_thesis,
+            "risk_note": ai_text.get("risk_note"),
+
+            "support_levels": strategy_data.get("support_levels"),
+            "resistance_levels": strategy_data.get("resistance_levels"),
+            "strategy_recommendation": strategy_data.get("strategy_recommendation"),
+            "strategy_reason": strategy_data.get("strategy_reason"),
+            "suggested_action": strategy_data.get("suggested_action"),
+
+            "trendline_points": strategy_visual_data.get("trendline_points"),
+            "breakout_zone": strategy_visual_data.get("breakout_zone"),
+            "entry_zone": strategy_visual_data.get("entry_zone"),
+            "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
+
+            "entry_timing": entry_timing,
+            "confirmation_state": strategy_timing_data.get("confirmation_state"),
+            "trade_readiness_score": trade_readiness,
+            "execution_guidance": execution_guidance,
+
+            "session_label": session_data.get("session_label"),
+            "active_sessions": session_data.get("active_sessions"),
+            "liquidity_profile": session_data.get("liquidity_profile"),
+            "utc_hour": session_data.get("utc_hour"),
+
+            "last_updated": datetime.utcnow().isoformat() + "Z"
+        }
+
+        state.update(new_payload)
         LIVE_MARKET_STATE[market] = state
-        return
 
-    df = pd.DataFrame(candles)
+        try:
+            changed = has_live_signal_changed(previous_state, new_payload)
+            if changed:
+                handle_live_signal_change(market, previous_state, new_payload)
+                save_live_signal_history_entry(market, new_payload)
+        except Exception as e:
+            print(f"⚠️ post-update live signal hooks failed for {market}: {e}", flush=True)
 
-    # Core signal engine
-    signal_data = evaluate_signal(df)
-    signal_data["confidence"] = safe_float(signal_data.get("confidence"), 50)
-
-    # Readiness + timing
-    signal_data["trade_readiness_score"] = get_trade_readiness(signal_data)
-    signal_data["entry_timing"] = get_entry_timing(signal_data)
-
-    # AI layers
-    ai_text = build_ai_explanation(signal_data)
-    ai_summary = build_ai_summary(signal_data)
-    trade_thesis = build_trade_thesis(signal_data)
-
-    # Strategy layers
-    strategy_data = build_strategy_engine_output(df, signal_data)
-    strategy_visual_data = build_strategy_visual_output(df, signal_data)
-    strategy_timing_data = build_strategy_timing_output(df, signal_data)
-
-    # Setup type
-    setup_type = get_setup_type(signal_data)
-
-    # Force setup label to align with signal direction
-    signal = str(signal_data.get("signal", "")).upper()
-    if signal in ["SELL", "BEARISH"] and setup_type and "Bullish" in setup_type:
-        setup_type = setup_type.replace("Bullish", "Bearish")
-    elif signal in ["BUY", "BULLISH"] and setup_type and "Bearish" in setup_type:
-        setup_type = setup_type.replace("Bearish", "Bullish")
-
-    # Market context
-    wick_data = calculate_live_wicks(current_candle)
-    session_data = get_market_session()
-
-    trade_readiness = signal_data.get("trade_readiness_score")
-    entry_timing = signal_data.get("entry_timing")
-
-    execution_guidance = get_execution_guidance(
-        entry_timing,
-        signal_data.get("signal")
-    )
-
-    # Final payload saved into LIVE_MARKET_STATE
-    new_payload = {
-        "market": market,
-        "open": safe_float(current_candle.get("Open")),
-        "high": safe_float(current_candle.get("High")),
-        "low": safe_float(current_candle.get("Low")),
-        "close": safe_float(current_candle.get("Close")),
-        "upper_wick": wick_data["upper_wick"],
-        "lower_wick": wick_data["lower_wick"],
-
-        "signal": signal_data.get("signal"),
-        "confidence": signal_data.get("confidence"),
-        "pattern": signal_data.get("pattern"),
-        "breakout": signal_data.get("breakout"),
-        "liquidity_event": signal_data.get("liquidity_event"),
-        "trendline": signal_data.get("trendline"),
-        "strategy_breakdown": signal_data.get("strategy_breakdown"),
-        "confluence_bonus": signal_data.get("confluence_bonus"),
-
-        "setup_type": setup_type,
-        "ai_summary": ai_summary,
-        "trade_thesis": trade_thesis,
-        "risk_note": ai_text.get("risk_note"),
-
-        "support_levels": strategy_data.get("support_levels"),
-        "resistance_levels": strategy_data.get("resistance_levels"),
-        "strategy_recommendation": strategy_data.get("strategy_recommendation"),
-        "strategy_reason": strategy_data.get("strategy_reason"),
-        "suggested_action": strategy_data.get("suggested_action"),
-
-        "trendline_points": strategy_visual_data.get("trendline_points"),
-        "breakout_zone": strategy_visual_data.get("breakout_zone"),
-        "entry_zone": strategy_visual_data.get("entry_zone"),
-        "strategy_visual_bias": strategy_visual_data.get("strategy_visual_bias"),
-
-        "entry_timing": entry_timing,
-        "confirmation_state": strategy_timing_data.get("confirmation_state"),
-        "trade_readiness_score": trade_readiness,
-        "execution_guidance": execution_guidance,
-
-        "session_label": session_data.get("session_label"),
-        "active_sessions": session_data.get("active_sessions"),
-        "liquidity_profile": session_data.get("liquidity_profile"),
-        "utc_hour": session_data.get("utc_hour"),
-
-        "last_updated": datetime.utcnow().isoformat() + "Z"
-    }
-
-    state.update(new_payload)
-    LIVE_MARKET_STATE[market] = state
-
-    if has_live_signal_changed(previous_state, new_payload):
-        handle_live_signal_change(market, previous_state, new_payload)
-        save_live_signal_history_entry(market, new_payload)
+    except Exception as e:
+        print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 def run_polling_fallback():
     print("🔥 run_polling_fallback entered", flush=True)
