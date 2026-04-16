@@ -6038,6 +6038,72 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+@app.route("/run-full-backtest", methods=["POST"])
+def run_full_backtest():
+    try:
+        results = []
+
+        markets = list(MARKET_SYMBOLS.keys())
+        strategies = ["trendline", "breakout", "confluence"]
+
+        for market in markets:
+            try:
+                df = fetch_live_market_data(market, interval="1h", outputsize=500)
+
+                if df is None or df.empty:
+                    continue
+
+                df = add_indicators(df)
+
+                for strategy in strategies:
+                    try:
+                        trades = run_strategy_backtest(df, strategy)
+
+                        if not trades:
+                            continue
+
+                        wins = sum(1 for t in trades if t["result"] == "win")
+                        losses = sum(1 for t in trades if t["result"] == "loss")
+
+                        total = wins + losses
+                        win_rate = (wins / total * 100) if total > 0 else 0
+
+                        profit = sum(t["pnl"] for t in trades)
+                        loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+
+                        profit_factor = (profit / loss) if loss > 0 else 0
+
+                        expectancy = profit / total if total > 0 else 0
+
+                        results.append({
+                            "market": market,
+                            "strategy": strategy,
+                            "trades": total,
+                            "win_rate": round(win_rate, 2),
+                            "profit_factor": round(profit_factor, 2),
+                            "expectancy": round(expectancy, 2),
+                            "net_profit": round(profit, 2)
+                        })
+
+                    except Exception as strat_error:
+                        print(f"❌ strategy error {market}-{strategy}: {strat_error}", flush=True)
+
+            except Exception as market_error:
+                print(f"❌ market error {market}: {str(market_error)}", flush=True)
+
+        # 🔥 Rank best strategies
+        results = sorted(results, key=lambda x: (x["profit_factor"], x["win_rate"]), reverse=True)
+
+        return jsonify({
+            "status": "success",
+            "results": results[:20]  # top 20
+        })
+
+    except Exception as e:
+        print(f"❌ FULL BACKTEST CRASH: {str(e)}", flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
 # -----------------------------
 # START BACKGROUND LIVE ENGINE
 # -----------------------------
