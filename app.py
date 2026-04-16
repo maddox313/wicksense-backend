@@ -2201,25 +2201,47 @@ def add_indicators(df: pd.DataFrame):
     return df
 
 
-def detect_wick_pattern(row):
-    body = abs(row["Close"] - row["Open"])
-    upper_wick = row["UpperWick"]
-    lower_wick = row["LowerWick"]
-    candle_range = row["Range"] if row["Range"] != 0 else 1
+def detect_wick_pattern(df):
+    try:
+        if df is None or df.empty:
+            return None
 
-    if body <= candle_range * 0.15:
-        return "Doji"
+        # Always work on the LAST ROW safely
+        row = df.iloc[-1]
 
-    if lower_wick > body * 2 and upper_wick <= body * 0.5:
-        return "Hammer"
+        # Safe numeric extraction
+        open_price = float(row.get("Open", 0))
+        high_price = float(row.get("High", 0))
+        low_price = float(row.get("Low", 0))
+        close_price = float(row.get("Close", 0))
 
-    if upper_wick > body * 2 and lower_wick <= body * 0.5:
-        return "Shooting Star"
+        candle_range = high_price - low_price
+        if candle_range == 0:
+            candle_range = 1  # prevent division crash
 
-    if (lower_wick > body * 1.5 or upper_wick > body * 1.5) and body <= candle_range * 0.35:
-        return "Pin Bar"
+        body = abs(close_price - open_price)
+        upper_wick = high_price - max(open_price, close_price)
+        lower_wick = min(open_price, close_price) - low_price
 
-    return None
+        # Pattern logic
+        if body < candle_range * 0.2:
+            return "Doji"
+
+        if lower_wick > body * 2 and upper_wick < body:
+            return "Hammer"
+
+        if upper_wick > body * 2 and lower_wick < body:
+            return "Shooting Star"
+
+        if lower_wick > body * 2 or upper_wick > body * 2:
+            return "Pin Bar"
+
+        return None
+
+    except Exception as e:
+        print(f"❌ detect_wick_pattern error: {e}", flush=True)
+        return None
+
 
 def should_take_trade(row, avg_range=None):
     try:
