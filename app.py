@@ -6258,8 +6258,7 @@ def run_strategy_backtest(df, strategy_name):
 def run_full_backtest():
     try:
         results = []
-
-        markets = list(MARKET_SYMBOLS.keys())
+        markets = ["Forex", "Gold", "NaturalGas", "NASDAQ", "DowJones", "Futures"]
         strategies = ["trendline", "breakout", "confluence"]
 
         for market in markets:
@@ -6267,38 +6266,44 @@ def run_full_backtest():
                 df = fetch_live_market_data(market, interval="1h", outputsize=300)
 
                 if df is None or df.empty:
+                    print(f"❌ market error {market}: no data returned", flush=True)
                     continue
-
-                df = add_indicators(df)
 
                 for strategy in strategies:
                     try:
-                        trades = run_strategy_backtest(df, strategy)
+                        trades = run_strategy_backtest(df.copy(), strategy)
 
                         if not trades:
                             continue
 
-                        wins = sum(1 for t in trades if t["result"] == "win")
-                        losses = sum(1 for t in trades if t["result"] == "loss")
+                        wins = sum(1 for t in trades if t.get("result") == "win")
+                        losses = sum(1 for t in trades if t.get("result") == "loss")
+                        total_trades = len(trades)
 
-                        total = wins + losses
-                        win_rate = (wins / total * 100) if total > 0 else 0
+                        resolved = wins + losses
+                        win_rate = round((wins / resolved) * 100, 1) if resolved > 0 else 0.0
 
-                        profit = sum(t["pnl"] for t in trades)
-                        loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+                        gross_profit = sum(float(t.get("pnl", 0)) for t in trades if float(t.get("pnl", 0)) > 0)
+                        gross_loss = abs(sum(float(t.get("pnl", 0)) for t in trades if float(t.get("pnl", 0)) < 0))
+                        net_profit = round(sum(float(t.get("pnl", 0)) for t in trades), 2)
 
-                        profit_factor = (profit / loss) if loss > 0 else 0
+                        if gross_loss > 0:
+                            profit_factor = round(gross_profit / gross_loss, 2)
+                        else:
+                            profit_factor = round(gross_profit, 2) if gross_profit > 0 else 0.0
 
-                        expectancy = profit / total if total > 0 else 0
+                        expectancy = round(net_profit / total_trades, 2) if total_trades > 0 else 0.0
 
                         results.append({
                             "market": market,
                             "strategy": strategy,
-                            "trades": total,
-                            "win_rate": round(win_rate, 2),
-                            "profit_factor": round(profit_factor, 2),
-                            "expectancy": round(expectancy, 2),
-                            "net_profit": round(profit, 2)
+                            "trades": total_trades,
+                            "wins": wins,
+                            "losses": losses,
+                            "win_rate": win_rate,
+                            "profit_factor": profit_factor,
+                            "expectancy": expectancy,
+                            "net_profit": net_profit
                         })
 
                     except Exception as strat_error:
@@ -6307,43 +6312,35 @@ def run_full_backtest():
             except Exception as market_error:
                 print(f"❌ market error {market}: {str(market_error)}", flush=True)
 
-        # 🔥 Rank best strategies
-        results = sorted(results, key=lambda x: (x["profit_factor"], x["win_rate"]), reverse=True)
+        # Filter out low sample-size results first
+        filtered_results = []
+        for r in results:
+            if r.get("trades", 0) >= 20:
+                filtered_results.append(r)
+
+        # fallback if everything gets filtered out
+        if len(filtered_results) == 0:
+            filtered_results = results
+
+        # Rank best strategies
+        filtered_results = sorted(
+            filtered_results,
+            key=lambda x: (
+                x.get("profit_factor", 0),
+                x.get("win_rate", 0),
+                x.get("net_profit", 0)
+            ),
+            reverse=True
+        )
 
         return jsonify({
             "status": "success",
-            "results": results[:20]  # top 20
+            "results": filtered_results[:20]
         })
 
     except Exception as e:
         print(f"❌ FULL BACKTEST CRASH: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
-
-
-# -----------------------------
-# START BACKGROUND LIVE ENGINE
-# -----------------------------
-import threading
-
-
-def start_background_tasks():
-    print("🚀 starting background live engine", flush=True)
-
-    try:
-        ensure_live_engine_started()
-        print("✅ ensure_live_engine_started finished", flush=True)
-    except Exception as e:
-        print(f"⚠️ ensure_live_engine_started failed: {e}", flush=True)
-
-    try:
-        thread = threading.Thread(target=run_polling_fallback, daemon=True)
-        thread.start()
-        print("✅ background polling thread started", flush=True)
-    except Exception as e:
-        print(f"❌ failed to start polling thread: {e}", flush=True)
-
-
-start_background_tasks()
 
 
 if __name__ == "__main__":
