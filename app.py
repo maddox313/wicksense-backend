@@ -6103,7 +6103,7 @@ def run_strategy_backtest(df, strategy_name):
             if bullish_points == bearish_points:
                 continue
 
-            if total_strength < 2:
+            if total_strength < 4:
                 continue
 
             direction = "buy" if bullish_points > bearish_points else "sell"
