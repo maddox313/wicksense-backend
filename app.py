@@ -6072,24 +6072,19 @@ def run_strategy_backtest(df, strategy_name):
 
                 bullish += int(ma_result.get("bullish", 0) or 0)
                 bearish += int(ma_result.get("bearish", 0) or 0)
-                reasons.extend(ma_result.get("reasons", []) or [])
 
                 bullish += int(vwap_result.get("bullish", 0) or 0)
                 bearish += int(vwap_result.get("bearish", 0) or 0)
-                reasons.extend(vwap_result.get("reasons", []) or [])
 
                 bullish += int(sr_result.get("bullish", 0) or 0)
                 bearish += int(sr_result.get("bearish", 0) or 0)
-                reasons.extend(sr_result.get("reasons", []) or [])
 
                 bullish += int(liq_result.get("bullish", 0) or 0)
                 bearish += int(liq_result.get("bearish", 0) or 0)
-                reasons.extend(liq_result.get("reasons", []) or [])
 
                 result = {
                     "bullish": bullish,
-                    "bearish": bearish,
-                    "reasons": reasons
+                    "bearish": bearish
                 }
 
             else:
@@ -6101,15 +6096,14 @@ def run_strategy_backtest(df, strategy_name):
             bullish_points = int(result.get("bullish", 0) or 0)
             bearish_points = int(result.get("bearish", 0) or 0)
 
+            # ✅ FIXED: strength defined BEFORE use
+            total_strength = bullish_points + bearish_points
+
             if bullish_points == bearish_points:
                 continue
-               
-            # 🚨 NEW: Minimum strength filter
-                total_strength = bullish_points + bearish_points
 
             if total_strength < 2:
                 continue
-
 
             direction = "buy" if bullish_points > bearish_points else "sell"
 
@@ -6147,20 +6141,12 @@ def run_strategy_backtest(df, strategy_name):
                 close_price = float(future_row["Close"])
 
                 if direction == "buy":
-                    tp_hit = high_price >= take_profit
-                    sl_hit = low_price <= stop_loss
-
-                    if sl_hit and tp_hit:
-                        outcome = "loss"
-                        exit_price = stop_loss
-                        pnl = -risk_per_unit
-                        break
-                    elif tp_hit:
+                    if high_price >= take_profit:
                         outcome = "win"
                         exit_price = take_profit
                         pnl = reward_per_unit
                         break
-                    elif sl_hit:
+                    elif low_price <= stop_loss:
                         outcome = "loss"
                         exit_price = stop_loss
                         pnl = -risk_per_unit
@@ -6170,20 +6156,12 @@ def run_strategy_backtest(df, strategy_name):
                         pnl = exit_price - entry_price
 
                 else:
-                    tp_hit = low_price <= take_profit
-                    sl_hit = high_price >= stop_loss
-
-                    if sl_hit and tp_hit:
-                        outcome = "loss"
-                        exit_price = stop_loss
-                        pnl = -risk_per_unit
-                        break
-                    elif tp_hit:
+                    if low_price <= take_profit:
                         outcome = "win"
                         exit_price = take_profit
                         pnl = reward_per_unit
                         break
-                    elif sl_hit:
+                    elif high_price >= stop_loss:
                         outcome = "loss"
                         exit_price = stop_loss
                         pnl = -risk_per_unit
@@ -6199,12 +6177,12 @@ def run_strategy_backtest(df, strategy_name):
                 "stop_loss": round(stop_loss, 4),
                 "take_profit": round(take_profit, 4),
                 "exit_price": round(float(exit_price), 4),
-                "result": outcome if outcome in ["win", "loss"] else "expired",
+                "result": outcome,
                 "pnl": round(float(pnl), 4)
             })
 
         except Exception as e:
-            print(f"❌ run_strategy_backtest row error ({strategy_name} @ index {i}): {str(e)}", flush=True)
+            print(f"❌ run_strategy_backtest error ({strategy_name} @ {i}): {str(e)}", flush=True)
             continue
 
     return trades
