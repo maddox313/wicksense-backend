@@ -6070,17 +6070,19 @@ def run_strategy_backtest(df, strategy_name):
                 sr_result = support_resistance_strategy(row)
                 liq_result = liquidity_sweep_strategy(row)
 
-                bullish += int(ma_result.get("bullish", 0) or 0)
-                bearish += int(ma_result.get("bearish", 0) or 0)
+                # Weighted scoring system
+                bullish += int(ma_result.get("bullish", 0) or 0) * 2
+                bearish += int(ma_result.get("bearish", 0) or 0) * 2
 
-                bullish += int(vwap_result.get("bullish", 0) or 0)
-                bearish += int(vwap_result.get("bearish", 0) or 0)
+                bullish += int(vwap_result.get("bullish", 0) or 0) * 2
+                bearish += int(vwap_result.get("bearish", 0) or 0) * 2
 
-                bullish += int(sr_result.get("bullish", 0) or 0)
-                bearish += int(sr_result.get("bearish", 0) or 0)
+                bullish += int(sr_result.get("bullish", 0) or 0) * 1
+                bearish += int(sr_result.get("bearish", 0) or 0) * 1
 
-                bullish += int(liq_result.get("bullish", 0) or 0)
-                bearish += int(liq_result.get("bearish", 0) or 0)
+                bullish += int(liq_result.get("bullish", 0) or 0) * 3
+                bearish += int(liq_result.get("bearish", 0) or 0) * 3
+
 
                 result = {
                     "bullish": bullish,
