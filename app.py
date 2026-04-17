@@ -6043,8 +6043,11 @@ def run_strategy_backtest(df, strategy_name):
     trades = []
 
     min_bars = 20
-    lookahead_bars = 8
-    rr_multiple = 1.8
+    lookahead_bars = 12
+    rr_multiple = 2.0
+    breakeven_trigger_r = 1.0
+    trailing_trigger_r = 1.5
+    trailing_buffer_r = 0.5
 
     if len(df) < (min_bars + lookahead_bars + 1):
         return trades
@@ -6063,14 +6066,12 @@ def run_strategy_backtest(df, strategy_name):
             elif strategy_name == "confluence":
                 bullish = 0
                 bearish = 0
-                reasons = []
 
                 ma_result = ma_trend_strategy(row)
                 vwap_result = vwap_strategy(row)
                 sr_result = support_resistance_strategy(row)
                 liq_result = liquidity_sweep_strategy(row)
 
-                # Weighted scoring system
                 bullish += int(ma_result.get("bullish", 0) or 0) * 2
                 bearish += int(ma_result.get("bearish", 0) or 0) * 2
 
@@ -6082,7 +6083,6 @@ def run_strategy_backtest(df, strategy_name):
 
                 bullish += int(liq_result.get("bullish", 0) or 0) * 3
                 bearish += int(liq_result.get("bearish", 0) or 0) * 3
-
 
                 result = {
                     "bullish": bullish,
@@ -6098,7 +6098,6 @@ def run_strategy_backtest(df, strategy_name):
             bullish_points = int(result.get("bullish", 0) or 0)
             bearish_points = int(result.get("bearish", 0) or 0)
 
-            # ✅ FIXED: strength defined BEFORE use
             total_strength = bullish_points + bearish_points
 
             if bullish_points == bearish_points:
@@ -6108,7 +6107,6 @@ def run_strategy_backtest(df, strategy_name):
                 continue
 
             direction = "buy" if bullish_points > bearish_points else "sell"
-
             entry_price = float(row["Close"])
 
             recent_rows = history.tail(14)
@@ -6128,14 +6126,18 @@ def run_strategy_backtest(df, strategy_name):
                 stop_loss = entry_price + risk_per_unit
                 take_profit = entry_price - reward_per_unit
 
+            initial_stop_loss = stop_loss
             future_rows = df.iloc[i + 1 : i + 1 + lookahead_bars].copy()
 
             if future_rows.empty:
                 continue
 
             outcome = "expired"
+            exit_reason = "time_expired"
             exit_price = float(future_rows.iloc[-1]["Close"])
             pnl = 0.0
+            moved_to_breakeven = False
+            trailing_active = False
 
             for _, future_row in future_rows.iterrows():
                 high_price = float(future_row["High"])
@@ -6143,43 +6145,105 @@ def run_strategy_backtest(df, strategy_name):
                 close_price = float(future_row["Close"])
 
                 if direction == "buy":
+                    max_favorable_move = high_price - entry_price
+
+                    if (not moved_to_breakeven) and max_favorable_move >= (risk_per_unit * breakeven_trigger_r):
+                        stop_loss = max(stop_loss, entry_price)
+                        moved_to_breakeven = True
+
+                    if max_favorable_move >= (risk_per_unit * trailing_trigger_r):
+                        trailing_active = True
+                        trailing_stop = high_price - (risk_per_unit * trailing_buffer_r)
+                        stop_loss = max(stop_loss, trailing_stop)
+
+                    if low_price <= stop_loss:
+                        exit_price = stop_loss
+                        if exit_price > entry_price:
+                            outcome = "win"
+                            exit_reason = "trailing_stop"
+                        elif abs(exit_price - entry_price) < 1e-9:
+                            outcome = "expired"
+                            exit_reason = "breakeven_stop"
+                        else:
+                            outcome = "loss"
+                            exit_reason = "stop_loss"
+                        pnl = exit_price - entry_price
+                        break
+
                     if high_price >= take_profit:
                         outcome = "win"
+                        exit_reason = "take_profit"
                         exit_price = take_profit
                         pnl = reward_per_unit
                         break
-                    elif low_price <= stop_loss:
-                        outcome = "loss"
-                        exit_price = stop_loss
-                        pnl = -risk_per_unit
-                        break
-                    else:
+
+                    # Early weakness exit on bearish reversal after some positive movement
+                    if close_price < entry_price and moved_to_breakeven:
+                        outcome = "expired"
+                        exit_reason = "momentum_fade"
                         exit_price = close_price
                         pnl = exit_price - entry_price
+                        break
+
+                    exit_price = close_price
+                    pnl = exit_price - entry_price
 
                 else:
+                    max_favorable_move = entry_price - low_price
+
+                    if (not moved_to_breakeven) and max_favorable_move >= (risk_per_unit * breakeven_trigger_r):
+                        stop_loss = min(stop_loss, entry_price)
+                        moved_to_breakeven = True
+
+                    if max_favorable_move >= (risk_per_unit * trailing_trigger_r):
+                        trailing_active = True
+                        trailing_stop = low_price + (risk_per_unit * trailing_buffer_r)
+                        stop_loss = min(stop_loss, trailing_stop)
+
+                    if high_price >= stop_loss:
+                        exit_price = stop_loss
+                        if exit_price < entry_price:
+                            outcome = "win"
+                            exit_reason = "trailing_stop"
+                        elif abs(exit_price - entry_price) < 1e-9:
+                            outcome = "expired"
+                            exit_reason = "breakeven_stop"
+                        else:
+                            outcome = "loss"
+                            exit_reason = "stop_loss"
+                        pnl = entry_price - exit_price
+                        break
+
                     if low_price <= take_profit:
                         outcome = "win"
+                        exit_reason = "take_profit"
                         exit_price = take_profit
                         pnl = reward_per_unit
                         break
-                    elif high_price >= stop_loss:
-                        outcome = "loss"
-                        exit_price = stop_loss
-                        pnl = -risk_per_unit
-                        break
-                    else:
+
+                    # Early weakness exit on bullish reversal after some positive movement
+                    if close_price > entry_price and moved_to_breakeven:
+                        outcome = "expired"
+                        exit_reason = "momentum_fade"
                         exit_price = close_price
                         pnl = entry_price - exit_price
+                        break
+
+                    exit_price = close_price
+                    pnl = entry_price - exit_price
 
             trades.append({
                 "strategy": strategy_name,
                 "direction": direction,
                 "entry": round(entry_price, 4),
-                "stop_loss": round(stop_loss, 4),
+                "initial_stop_loss": round(initial_stop_loss, 4),
+                "final_stop_loss": round(float(stop_loss), 4),
                 "take_profit": round(take_profit, 4),
                 "exit_price": round(float(exit_price), 4),
                 "result": outcome,
+                "exit_reason": exit_reason,
+                "used_breakeven": moved_to_breakeven,
+                "used_trailing": trailing_active,
                 "pnl": round(float(pnl), 4)
             })
 
