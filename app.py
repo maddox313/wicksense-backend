@@ -6347,52 +6347,23 @@ def run_full_backtest():
         print(f"❌ FULL BACKTEST CRASH: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
-# -----------------------------
-# AI TRADE THESIS
-# -----------------------------
 @app.route("/trade-thesis", methods=["POST"])
 def trade_thesis():
     try:
-        data = request.json
+        print("🔥 /trade-thesis HIT", flush=True)
 
-        market = data.get("market", "Unknown")
-        strategy = data.get("strategy", "Unknown")
-        entry = data.get("entry", "N/A")
-        support = data.get("support", "N/A")
-        resistance = data.get("resistance", "N/A")
-
-        prompt = f"""
-        You are an elite trading analyst.
-
-        Analyze this setup:
-
-        Market: {market}
-        Strategy: {strategy}
-        Entry: {entry}
-        Support: {support}
-        Resistance: {resistance}
-
-        Give a short, professional trade explanation including:
-        - Direction (bullish/bearish)
-        - Why the setup makes sense
-        - Risk consideration
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        analysis = response.choices[0].message.content
+        data = request.get_json(silent=True) or {}
+        print(f"🔥 incoming data: {data}", flush=True)
 
         return jsonify({
             "status": "success",
-            "analysis": analysis
+            "analysis": "AI CONNECTED SUCCESSFULLY"
         })
 
     except Exception as e:
-        print(f"❌ AI TRADE THESIS ERROR: {str(e)}", flush=True)
+        print(f"❌ ERROR: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == "__main__":
