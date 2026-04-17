@@ -6038,6 +6038,171 @@ def stripe_webhook():
             "details": str(e)
         }), 500
 
+def run_strategy_backtest(df, strategy_name):
+    df = add_indicators(df.copy())
+    trades = []
+
+    min_bars = 20
+    lookahead_bars = 8
+    rr_multiple = 1.8
+
+    if len(df) < (min_bars + lookahead_bars + 1):
+        return trades
+
+    for i in range(min_bars, len(df) - lookahead_bars):
+        history = df.iloc[: i + 1].copy()
+        row = history.iloc[-1]
+
+        try:
+            if strategy_name == "trendline":
+                result = trendline_strategy(history)
+
+            elif strategy_name == "breakout":
+                result = breakout_strategy(row)
+
+            elif strategy_name == "confluence":
+                bullish = 0
+                bearish = 0
+                reasons = []
+
+                ma_result = ma_trend_strategy(row)
+                vwap_result = vwap_strategy(row)
+                sr_result = support_resistance_strategy(row)
+                liq_result = liquidity_sweep_strategy(row)
+
+                bullish += int(ma_result.get("bullish", 0) or 0)
+                bearish += int(ma_result.get("bearish", 0) or 0)
+                reasons.extend(ma_result.get("reasons", []) or [])
+
+                bullish += int(vwap_result.get("bullish", 0) or 0)
+                bearish += int(vwap_result.get("bearish", 0) or 0)
+                reasons.extend(vwap_result.get("reasons", []) or [])
+
+                bullish += int(sr_result.get("bullish", 0) or 0)
+                bearish += int(sr_result.get("bearish", 0) or 0)
+                reasons.extend(sr_result.get("reasons", []) or [])
+
+                bullish += int(liq_result.get("bullish", 0) or 0)
+                bearish += int(liq_result.get("bearish", 0) or 0)
+                reasons.extend(liq_result.get("reasons", []) or [])
+
+                result = {
+                    "bullish": bullish,
+                    "bearish": bearish,
+                    "reasons": reasons
+                }
+
+            else:
+                continue
+
+            if not isinstance(result, dict):
+                continue
+
+            bullish_points = int(result.get("bullish", 0) or 0)
+            bearish_points = int(result.get("bearish", 0) or 0)
+
+            if bullish_points == bearish_points:
+                continue
+
+            direction = "buy" if bullish_points > bearish_points else "sell"
+
+            entry_price = float(row["Close"])
+
+            recent_rows = history.tail(14)
+            atr_series = recent_rows["High"].astype(float) - recent_rows["Low"].astype(float)
+            atr = float(atr_series.mean()) if len(atr_series) > 0 else 0.0
+
+            if not pd.notna(atr) or atr <= 0:
+                atr = abs(entry_price) * 0.01
+
+            risk_per_unit = atr
+            reward_per_unit = atr * rr_multiple
+
+            if direction == "buy":
+                stop_loss = entry_price - risk_per_unit
+                take_profit = entry_price + reward_per_unit
+            else:
+                stop_loss = entry_price + risk_per_unit
+                take_profit = entry_price - reward_per_unit
+
+            future_rows = df.iloc[i + 1 : i + 1 + lookahead_bars].copy()
+
+            if future_rows.empty:
+                continue
+
+            outcome = "expired"
+            exit_price = float(future_rows.iloc[-1]["Close"])
+            pnl = 0.0
+
+            for _, future_row in future_rows.iterrows():
+                high_price = float(future_row["High"])
+                low_price = float(future_row["Low"])
+                close_price = float(future_row["Close"])
+
+                if direction == "buy":
+                    tp_hit = high_price >= take_profit
+                    sl_hit = low_price <= stop_loss
+
+                    if sl_hit and tp_hit:
+                        outcome = "loss"
+                        exit_price = stop_loss
+                        pnl = -risk_per_unit
+                        break
+                    elif tp_hit:
+                        outcome = "win"
+                        exit_price = take_profit
+                        pnl = reward_per_unit
+                        break
+                    elif sl_hit:
+                        outcome = "loss"
+                        exit_price = stop_loss
+                        pnl = -risk_per_unit
+                        break
+                    else:
+                        exit_price = close_price
+                        pnl = exit_price - entry_price
+
+                else:
+                    tp_hit = low_price <= take_profit
+                    sl_hit = high_price >= stop_loss
+
+                    if sl_hit and tp_hit:
+                        outcome = "loss"
+                        exit_price = stop_loss
+                        pnl = -risk_per_unit
+                        break
+                    elif tp_hit:
+                        outcome = "win"
+                        exit_price = take_profit
+                        pnl = reward_per_unit
+                        break
+                    elif sl_hit:
+                        outcome = "loss"
+                        exit_price = stop_loss
+                        pnl = -risk_per_unit
+                        break
+                    else:
+                        exit_price = close_price
+                        pnl = entry_price - exit_price
+
+            trades.append({
+                "strategy": strategy_name,
+                "direction": direction,
+                "entry": round(entry_price, 4),
+                "stop_loss": round(stop_loss, 4),
+                "take_profit": round(take_profit, 4),
+                "exit_price": round(float(exit_price), 4),
+                "result": outcome if outcome in ["win", "loss"] else "expired",
+                "pnl": round(float(pnl), 4)
+            })
+
+        except Exception as e:
+            print(f"❌ run_strategy_backtest row error ({strategy_name} @ index {i}): {str(e)}", flush=True)
+            continue
+
+    return trades
+
+
 @app.route("/run-full-backtest", methods=["POST"])
 def run_full_backtest():
     try:
