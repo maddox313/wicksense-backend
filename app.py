@@ -46,9 +46,9 @@ RISK_SETTINGS_FILE = "risk_settings.json"
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
     "Gold": "XAU/USD",
-    "NaturalGas": "NG",      # FIXED
-    "NASDAQ": "NDX",         # already working
-    "DowJones": "DIA",       # FIXED
+    "NaturalGas": "NG",      
+    "NASDAQ": "NDX",         
+    "DowJones": "DIA",       
     "Futures": "ES"
 }
 
