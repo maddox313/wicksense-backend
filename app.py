@@ -46,10 +46,10 @@ RISK_SETTINGS_FILE = "risk_settings.json"
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
     "Gold": "XAU/USD",
-    "NaturalGas": "UNG",
-    "NASDAQ": "QQQ",
-    "DowJones": "DIA",
-    "Futures": "SPY"
+    "NaturalGas": "NG",
+    "NASDAQ": "NDX",
+    "DowJones": "DJI",
+    "Futures": "ES"
 }
 
 LIVE_SCAN_CACHE = {
