@@ -1340,58 +1340,71 @@ def run_polling_fallback():
         try:
             print("🔄 polling loop tick", flush=True)
 
-            for market in LIVE_MARKET_STATE.keys():
-                df = fetch_live_market_data(market, interval="1min", outputsize=2)
-
-                if df is None or df.empty:
-                    print(f"⚠️ No data for {market}", flush=True)
-                    continue
-
-                latest = df.iloc[-1]
-
+            for market in list(LIVE_MARKET_STATE.keys()):
                 try:
-                    open_p = float(latest["Open"])
-                    high_p = float(latest["High"])
-                    low_p = float(latest["Low"])
-                    close_p = float(latest["Close"])
-                except Exception as parse_error:
-                    print(f"❌ Parse error for {market}: {parse_error}", flush=True)
+                    # Fetch market data
+                    df = fetch_live_market_data(
+                        market,
+                        interval="1min",
+                        outputsize=10
+                    )
+
+                    if df is None or df.empty:
+                        print(f"⚠️ No data for {market}", flush=True)
+                        continue
+
+                    latest = df.iloc[-1]
+
+                    try:
+                        open_p = float(latest["Open"])
+                        high_p = float(latest["High"])
+                        low_p = float(latest["Low"])
+                        close_p = float(latest["Close"])
+                    except Exception as parse_error:
+                        print(f"❌ Parse error for {market}: {parse_error}", flush=True)
+                        continue
+
+                    # -----------------------------
+                    # SCALE VALIDATION GUARD (FIXED)
+                    # -----------------------------
+                    if market == "NaturalGas" and (close_p <= 0 or close_p > 10):
+                        print(f"🚫 REJECTED NaturalGas bad scale: {close_p}", flush=True)
+                        continue
+
+                    if market == "Forex" and (close_p <= 0 or close_p > 5):
+                        print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
+                        continue
+
+                    if market == "Gold" and (close_p < 1000 or close_p > 5000):
+                        print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
+                        continue
+
+                    # Build updated state
+                    state = LIVE_MARKET_STATE.get(market, {})
+
+                    state["current_candle"] = {
+                        "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                        "Open": open_p,
+                        "High": high_p,
+                        "Low": low_p,
+                        "Close": close_p
+                    }
+
+                    state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+
+                    LIVE_MARKET_STATE[market] = state
+
+                    # Update signals
+                    try:
+                        update_live_signal(market)
+                    except Exception as signal_error:
+                        print(f"❌ update_live_signal error for {market}: {signal_error}", flush=True)
+
+                except Exception as market_error:
+                    print(f"❌ Market loop error for {market}: {market_error}", flush=True)
                     continue
 
-                # 🔒 SCALE VALIDATION GUARD
-                if market == "NaturalGas" and close_p > 50:
-                    print(f"🚫 REJECTED NaturalGas bad scale: {close_p}", flush=True)
-                    continue
-
-                if market == "Forex" and close_p > 5:
-                    print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
-                    continue
-
-                if market == "Gold" and close_p < 500:
-                    print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
-                    continue
-
-                print(f"✅ {market} OK | O:{open_p} H:{high_p} L:{low_p} C:{close_p}", flush=True)
-
-                state = LIVE_MARKET_STATE.get(market, {})
-
-                state["current_candle"] = {
-                    "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-                    "Open": open_p,
-                    "High": high_p,
-                    "Low": low_p,
-                    "Close": close_p
-                }
-
-                state["last_updated"] = datetime.utcnow().isoformat() + "Z"
-
-                LIVE_MARKET_STATE[market] = state
-
-                try:
-                    update_live_signal(market)
-                except Exception as signal_error:
-                    print(f"❌ update_live_signal error for {market}: {signal_error}", flush=True)
-
+            # Update stream status
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
             STREAM_STATUS["status"] = "connected"
             STREAM_STATUS["provider"] = "polling"
@@ -1408,8 +1421,8 @@ def run_polling_fallback():
             STREAM_STATUS["websocket_active"] = False
 
             print(f"❌ polling error: {e}", flush=True)
-            time.sleep(5)
 
+            time.sleep(5)
 
 def get_simulated_base_price(market):
     base_prices = {
