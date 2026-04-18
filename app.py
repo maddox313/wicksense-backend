@@ -1603,82 +1603,61 @@ def validate_market_df(df: pd.DataFrame):
     return missing
 
 
-def fetch_live_market_data(market: str, interval: str = "1day", outputsize: int = 50):
-    from datetime import datetime
-    import time
-    import json
+def fetch_live_market_data(market: str, interval: str = "1min", outputsize: int = 50):
+    try:
+        symbol = MARKET_SYMBOLS.get(market)
 
-    api_key = os.environ.get("TWELVE_DATA_API_KEY")
-    if not api_key:
-        raise ValueError("TWELVE_DATA_API_KEY is missing in Render environment variables")
+        if not symbol:
+            print(f"❌ Unknown market: {market}", flush=True)
+            return None
 
-    symbol = MARKET_SYMBOLS.get(market)
-    if not symbol:
-        raise ValueError(f"No live symbol mapping found for market: {market}")
+        url = "https://api.twelvedata.com/time_series"
 
-    url = "https://api.twelvedata.com/time_series"
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "outputsize": outputsize,
+            "apikey": TWELVE_DATA_API_KEY
+        }
 
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "outputsize": outputsize,
-        "apikey": api_key,
-        "timestamp": time.time()
-    }
+        print(f"📡 Fetching {market} ({symbol}) | interval={interval}", flush=True)
 
-    print("\n========== TWELVEDATA FETCH ==========")
-    print("FETCH TIME:", datetime.now().isoformat())
-    print("MARKET:", market)
-    print("SYMBOL:", symbol)
-    print("INTERVAL:", interval)
-    print("OUTPUTSIZE:", outputsize)
+        response = requests.get(url, params=params)
+        data = response.json()
 
-    response = requests.get(url, params=params, timeout=20)
-    print("HTTP STATUS:", response.status_code)
+        if "values" not in data:
+            print(f"❌ Invalid API response for {market}: {data}", flush=True)
+            return None
 
-    response.raise_for_status()
-    data = response.json()
+        df = pd.DataFrame(data["values"])
 
-    print("RESPONSE KEYS:", list(data.keys()))
+        # Rename columns to match your system
+        df.rename(columns={
+            "datetime": "Datetime",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close"
+        }, inplace=True)
 
-    if "values" not in data or not data["values"]:
-        print("ERROR: No values returned")
-        print("FULL RESPONSE:", json.dumps(data)[:1000])
-        raise ValueError(f"Twelve Data returned no values for {market}: {data}")
+        # Convert types
+        df["Open"] = pd.to_numeric(df["Open"], errors="coerce")
+        df["High"] = pd.to_numeric(df["High"], errors="coerce")
+        df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
+        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
 
-    latest = data["values"][0]
-    print("LATEST RAW CANDLE:", latest)
+        df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
 
-    rows = []
-    for row in reversed(data["values"]):
-        candle_datetime = row.get("datetime") or row.get("date") or row.get("time")
-        if not candle_datetime:
-            raise ValueError(f"Missing datetime in candle row for {market}: {row}")
+        df.dropna(inplace=True)
+        df.sort_values("Datetime", inplace=True)
 
-        rows.append({
-            "Datetime": str(candle_datetime),
-            "Open": float(row["open"]),
-            "High": float(row["high"]),
-            "Low": float(row["low"]),
-            "Close": float(row["close"])
-        })
+        print(f"✅ {market} candles fetched: {len(df)}", flush=True)
 
-    df = pd.DataFrame(rows)
+        return df
 
-    print("DATAFRAME ROWS:", len(df))
-
-    if not df.empty:
-        print("FIRST DATETIME:", df.iloc[0]["Datetime"])
-        print("LAST DATETIME:", df.iloc[-1]["Datetime"])
-        print("LAST ROW CLOSE:", df.iloc[-1]["Close"])
-
-    missing = [col for col in ["Datetime", "Open", "High", "Low", "Close"] if col not in df.columns]
-    if missing:
-        raise ValueError(f"Live data missing required columns: {missing}")
-
-    print("========== FETCH COMPLETE ==========\n")
-
-    return df
+    except Exception as e:
+        print(f"❌ fetch_live_market_data error for {market}: {e}", flush=True)
+        return None
 
 # -----------------------------
 # FETCH CANDLES FOR ROCKET PROXY
