@@ -1532,7 +1532,6 @@ def start_twelvedata_stream_with_reconnect():
         time.sleep(30)
 
 
-
 def ensure_live_engine_started():
     global LIVE_ENGINE_STARTED
 
@@ -1543,7 +1542,14 @@ def ensure_live_engine_started():
         if LIVE_ENGINE_STARTED:
             return
 
-        seed_live_market_state()
+        print("🚀 Starting live engine with EMPTY market state only")
+
+        for market in LIVE_MARKET_STATE.keys():
+            LIVE_MARKET_STATE[market] = {
+                "completed_candles": [],
+                "current_candle": None,
+                "last_updated": datetime.utcnow().isoformat() + "Z"
+            }
 
         def start_engine():
             if TWELVE_DATA_API_KEY and websocket is not None:
