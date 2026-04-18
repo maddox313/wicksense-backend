@@ -1669,57 +1669,44 @@ def validate_market_df(df: pd.DataFrame):
     return missing
 
 
-def fetch_live_market_data(market: str, interval: str = "1min", outputsize: int = 50):
-    try:
-        symbol = MARKET_SYMBOLS.get(market)
+def fetch_live_market_data(market, interval="1min", outputsize=100):
+    symbol = MARKET_SYMBOLS.get(market)
 
-        if not symbol:
-            print(f"❌ Unknown market: {market}", flush=True)
-            return None
+    # 🚨 DEBUG LINE (THIS IS WHAT WE NEED)
+    print(f"🚨 FETCH SYMBOL: {market} → {symbol}", flush=True)
 
-        url = "https://api.twelvedata.com/time_series"
+    if not symbol:
+        print(f"❌ No symbol mapping for market: {market}", flush=True)
+        return pd.DataFrame()
 
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "outputsize": outputsize,
-            "apikey": TWELVE_DATA_API_KEY
-        }
+    url = "https://api.twelvedata.com/time_series"
+    
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "outputsize": outputsize,
+        "apikey": TWELVE_DATA_API_KEY
+    }
 
-        print(f"📡 Fetching data for {market} ({symbol}) interval={interval}", flush=True)
+    print(f"📡 Requesting TwelveData: {params}", flush=True)
 
-        response = requests.get(url, params=params)
-        data = response.json()
+    response = requests.get(url, params=params)
+    data = response.json()
 
-        if "values" not in data:
-            print(f"❌ No values returned for {market}: {data}", flush=True)
-            return None
+    if "values" not in data:
+        print(f"❌ TwelveData ERROR: {data}", flush=True)
+        return pd.DataFrame()
 
-        df = pd.DataFrame(data["values"])
+    df = pd.DataFrame(data["values"])
+    df.rename(columns={
+        "datetime": "Datetime",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close"
+    }, inplace=True)
 
-        df = df.rename(columns={
-            "datetime": "Datetime",
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "close": "Close"
-        })
-
-        df = df[["Datetime", "Open", "High", "Low", "Close"]]
-
-        for col in ["Open", "High", "Low", "Close"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
-        df = df.dropna()
-
-        print(f"✅ {market} candles fetched: {len(df)}", flush=True)
-
-        return df
-
-    except Exception as e:
-        print(f"❌ fetch_live_market_data error for {market}: {e}", flush=True)
-        return None
+    return df
 
 
 # -----------------------------
