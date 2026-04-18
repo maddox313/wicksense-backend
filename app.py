@@ -48,7 +48,7 @@ MARKET_SYMBOLS = {
     "Gold": "XAU/USD",
     "NaturalGas": "NG",      # FIXED
     "NASDAQ": "NDX",         # already working
-    "DowJones": "DJI",       # FIXED
+    "DowJones": "DIA",       # FIXED
     "Futures": "ES"
 }
 
