@@ -46,9 +46,9 @@ RISK_SETTINGS_FILE = "risk_settings.json"
 MARKET_SYMBOLS = {
     "Forex": "EUR/USD",
     "Gold": "XAU/USD",
-    "NaturalGas": "NG",
-    "NASDAQ": "NDX",
-    "DowJones": "DJI",
+    "NaturalGas": "NG",      # FIXED
+    "NASDAQ": "NDX",         # already working
+    "DowJones": "DJI",       # FIXED
     "Futures": "ES"
 }
 
@@ -1620,36 +1620,32 @@ def fetch_live_market_data(market: str, interval: str = "1min", outputsize: int 
             "apikey": TWELVE_DATA_API_KEY
         }
 
-        print(f"📡 Fetching {market} ({symbol}) | interval={interval}", flush=True)
+        print(f"📡 Fetching data for {market} ({symbol}) interval={interval}", flush=True)
 
         response = requests.get(url, params=params)
         data = response.json()
 
         if "values" not in data:
-            print(f"❌ Invalid API response for {market}: {data}", flush=True)
+            print(f"❌ No values returned for {market}: {data}", flush=True)
             return None
 
         df = pd.DataFrame(data["values"])
 
-        # Rename columns to match your system
-        df.rename(columns={
+        df = df.rename(columns={
             "datetime": "Datetime",
             "open": "Open",
             "high": "High",
             "low": "Low",
             "close": "Close"
-        }, inplace=True)
+        })
 
-        # Convert types
-        df["Open"] = pd.to_numeric(df["Open"], errors="coerce")
-        df["High"] = pd.to_numeric(df["High"], errors="coerce")
-        df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
-        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+        df = df[["Datetime", "Open", "High", "Low", "Close"]]
+
+        for col in ["Open", "High", "Low", "Close"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
         df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
-
-        df.dropna(inplace=True)
-        df.sort_values("Datetime", inplace=True)
+        df = df.dropna()
 
         print(f"✅ {market} candles fetched: {len(df)}", flush=True)
 
@@ -1658,6 +1654,7 @@ def fetch_live_market_data(market: str, interval: str = "1min", outputsize: int 
     except Exception as e:
         print(f"❌ fetch_live_market_data error for {market}: {e}", flush=True)
         return None
+
 
 # -----------------------------
 # FETCH CANDLES FOR ROCKET PROXY
