@@ -1440,14 +1440,65 @@ def get_simulated_base_price(market):
 def seed_live_market_state():
     global LIVE_MARKET_STATE
 
-    print("⚠️ Skipping fake seed data — initializing empty live state")
+    print("🌱 Seeding live market state...", flush=True)
+
+    # ✅ FORCE markets to exist FIRST
+    LIVE_MARKET_STATE = {
+        "Forex": {},
+        "Gold": {},
+        "NaturalGas": {},
+        "NASDAQ": {},
+        "DowJones": {},
+        "Futures": {}
+    }
 
     for market in LIVE_MARKET_STATE.keys():
-        LIVE_MARKET_STATE[market] = {
-            "completed_candles": [],
-            "current_candle": None,
-            "last_updated": datetime.utcnow().isoformat() + "Z"
-        }
+        try:
+            print(f"🌱 Seeding {market}", flush=True)
+
+            base_price = get_simulated_base_price(market)
+            completed_candles = []
+
+            for i in range(25):
+                if market == "Forex":
+                    drift = random.uniform(-0.003, 0.003)
+                    spread = random.uniform(0.0005, 0.002)
+                elif market == "NaturalGas":
+                    drift = random.uniform(-0.08, 0.08)
+                    spread = random.uniform(0.02, 0.08)
+                elif market == "Gold":
+                    drift = random.uniform(-8.0, 8.0)
+                    spread = random.uniform(1.5, 5.0)
+                else:
+                    drift = random.uniform(-2.0, 2.0)
+                    spread = random.uniform(0.5, 2.5)
+
+                open_price = max(base_price + drift, 0.0001)
+                close_price = max(open_price + random.uniform(-spread, spread), 0.0001)
+                high_price = max(open_price, close_price) + abs(random.uniform(0, spread))
+                low_price = min(open_price, close_price) - abs(random.uniform(0, spread))
+                low_price = max(low_price, 0.0001)
+
+                completed_candles.append({
+                    "minute": f"seed-{i}",
+                    "Open": round(open_price, 6),
+                    "High": round(high_price, 6),
+                    "Low": round(low_price, 6),
+                    "Close": round(close_price, 6)
+                })
+
+                base_price = close_price
+
+            LIVE_MARKET_STATE[market] = {
+                "completed_candles": completed_candles,
+                "current_candle": completed_candles[-1].copy(),
+                "last_updated": datetime.utcnow().isoformat() + "Z"
+            }
+
+            update_live_signal(market)
+
+        except Exception as e:
+            print(f"❌ Seed error for {market}: {e}", flush=True)
 
 
 def run_live_signal_engine():
