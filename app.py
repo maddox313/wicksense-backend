@@ -1706,12 +1706,12 @@ def fetch_candles():
 
         interval = interval_map.get(str(timeframe).strip().lower(), "1h")
 
-        print("\n========== FETCH CANDLES ROUTE ==========")
-        print("MARKET:", market)
-        print("TIMEFRAME:", timeframe)
-        print("INTERVAL USED:", interval)
-        print("START_DATE:", start_date)
-        print("OUTPUTSIZE:", outputsize)
+        print("\n========== FETCH CANDLES ROUTE ==========", flush=True)
+        print("MARKET:", market, flush=True)
+        print("TIMEFRAME:", timeframe, flush=True)
+        print("INTERVAL USED:", interval, flush=True)
+        print("START_DATE:", start_date, flush=True)
+        print("OUTPUTSIZE:", outputsize, flush=True)
 
         # Small throttle to reduce rate-limit pressure
         time.sleep(0.2)
@@ -1722,7 +1722,34 @@ def fetch_candles():
             outputsize=outputsize
         )
 
+        # Handle completely missing fetch result
+        if df is None:
+            print(f"⚠️ fetch_live_market_data returned None for {market}", flush=True)
+            return jsonify({
+                "ok": True,
+                "market": market,
+                "timeframe": timeframe,
+                "interval_used": interval,
+                "start_date": start_date,
+                "count": 0,
+                "candles": []
+            }), 200
+
+        # Handle empty dataframe
+        if df.empty:
+            print(f"⚠️ Empty dataframe returned for {market}", flush=True)
+            return jsonify({
+                "ok": True,
+                "market": market,
+                "timeframe": timeframe,
+                "interval_used": interval,
+                "start_date": start_date,
+                "count": 0,
+                "candles": []
+            }), 200
+
         if "Datetime" not in df.columns:
+            print(f"❌ Datetime column missing for {market}. Columns: {list(df.columns)}", flush=True)
             return jsonify({
                 "ok": False,
                 "error": "Datetime column missing from fetched candle data"
@@ -1732,10 +1759,10 @@ def fetch_candles():
         df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
         df = df.dropna(subset=["Datetime"]).copy()
 
-        print("TOTAL CANDLES BEFORE FILTER:", len(df))
+        print("TOTAL CANDLES BEFORE FILTER:", len(df), flush=True)
         if not df.empty:
-            print("FIRST CANDLE BEFORE FILTER:", df["Datetime"].iloc[0])
-            print("LAST CANDLE BEFORE FILTER:", df["Datetime"].iloc[-1])
+            print("FIRST CANDLE BEFORE FILTER:", df["Datetime"].iloc[0], flush=True)
+            print("LAST CANDLE BEFORE FILTER:", df["Datetime"].iloc[-1], flush=True)
 
         # Apply start_date filter
         if start_date:
@@ -1748,24 +1775,37 @@ def fetch_candles():
                         "error": f"Invalid start_date received: {start_date}"
                     }), 400
 
-                print("START_DT NORMALIZED:", start_dt)
-                print("DF Datetime dtype:", df["Datetime"].dtype)
+                print("START_DT NORMALIZED:", start_dt, flush=True)
+                print("DF Datetime dtype:", df["Datetime"].dtype, flush=True)
 
                 df = df[df["Datetime"] >= start_dt].copy()
 
-                print("TOTAL CANDLES AFTER FILTER:", len(df))
+                print("TOTAL CANDLES AFTER FILTER:", len(df), flush=True)
                 if not df.empty:
-                    print("FIRST CANDLE AFTER FILTER:", df["Datetime"].iloc[0])
-                    print("LAST CANDLE AFTER FILTER:", df["Datetime"].iloc[-1])
+                    print("FIRST CANDLE AFTER FILTER:", df["Datetime"].iloc[0], flush=True)
+                    print("LAST CANDLE AFTER FILTER:", df["Datetime"].iloc[-1], flush=True)
                 else:
-                    print("ALL CANDLES FILTERED OUT")
+                    print("ALL CANDLES FILTERED OUT", flush=True)
 
             except Exception as e:
-                print("START DATE FILTER ERROR:", str(e))
+                print("START DATE FILTER ERROR:", str(e), flush=True)
                 return jsonify({
                     "ok": False,
                     "error": f"Failed to apply start_date filter: {str(e)}"
                 }), 500
+
+        # If everything got filtered out, return empty cleanly
+        if df.empty:
+            print(f"⚠️ No candles remaining after filtering for {market}", flush=True)
+            return jsonify({
+                "ok": True,
+                "market": market,
+                "timeframe": timeframe,
+                "interval_used": interval,
+                "start_date": start_date,
+                "count": 0,
+                "candles": []
+            }), 200
 
         candles = []
         for _, row in df.iterrows():
@@ -1777,12 +1817,12 @@ def fetch_candles():
                 "Close": float(row["Close"])
             })
 
-        print("CANDLES RETURNED:", len(candles))
+        print("CANDLES RETURNED:", len(candles), flush=True)
         if candles:
-            print("FIRST RETURNED CANDLE:", candles[0])
-            print("LAST RETURNED CANDLE:", candles[-1])
+            print("FIRST RETURNED CANDLE:", candles[0], flush=True)
+            print("LAST RETURNED CANDLE:", candles[-1], flush=True)
 
-        print("========== FETCH CANDLES COMPLETE ==========\n")
+        print("========== FETCH CANDLES COMPLETE ==========\n", flush=True)
 
         return jsonify({
             "ok": True,
@@ -1795,7 +1835,7 @@ def fetch_candles():
         }), 200
 
     except Exception as e:
-        print("FETCH CANDLES ERROR:", str(e))
+        print("FETCH CANDLES ERROR:", str(e), flush=True)
         return jsonify({
             "ok": False,
             "error": str(e)
