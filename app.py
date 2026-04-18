@@ -1326,6 +1326,7 @@ def update_live_signal(market):
 
 def run_polling_fallback():
     print("🔥 run_polling_fallback entered", flush=True)
+
     global POLLING_ACTIVE, STREAM_STATUS
 
     POLLING_ACTIVE = True
@@ -1343,19 +1344,47 @@ def run_polling_fallback():
                 df = fetch_live_market_data(market, interval="1min", outputsize=2)
 
                 if df is None or df.empty:
+                    print(f"⚠️ No data for {market}", flush=True)
                     continue
 
                 latest = df.iloc[-1]
 
+                try:
+                    open_p = float(latest["Open"])
+                    high_p = float(latest["High"])
+                    low_p = float(latest["Low"])
+                    close_p = float(latest["Close"])
+                except Exception as parse_error:
+                    print(f"❌ Parse error for {market}: {parse_error}", flush=True)
+                    continue
+
+                # 🔒 SCALE VALIDATION GUARD
+                if market == "NaturalGas" and close_p > 50:
+                    print(f"🚫 REJECTED NaturalGas bad scale: {close_p}", flush=True)
+                    continue
+
+                if market == "Forex" and close_p > 5:
+                    print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
+                    continue
+
+                if market == "Gold" and close_p < 500:
+                    print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
+                    continue
+
+                print(f"✅ {market} OK | O:{open_p} H:{high_p} L:{low_p} C:{close_p}", flush=True)
+
                 state = LIVE_MARKET_STATE.get(market, {})
+
                 state["current_candle"] = {
                     "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-                    "Open": float(latest["Open"]),
-                    "High": float(latest["High"]),
-                    "Low": float(latest["Low"]),
-                    "Close": float(latest["Close"])
+                    "Open": open_p,
+                    "High": high_p,
+                    "Low": low_p,
+                    "Close": close_p
                 }
+
                 state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+
                 LIVE_MARKET_STATE[market] = state
 
                 try:
@@ -1377,8 +1406,10 @@ def run_polling_fallback():
             STREAM_STATUS["provider"] = "polling"
             STREAM_STATUS["polling_active"] = False
             STREAM_STATUS["websocket_active"] = False
+
             print(f"❌ polling error: {e}", flush=True)
             time.sleep(5)
+
 
 def get_simulated_base_price(market):
     base_prices = {
