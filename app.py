@@ -97,7 +97,9 @@ POLLING_THREAD_STARTED = False
 # -----------------------------
 @app.route("/")
 def home():
-    return "WickSense API is running!"
+    ensure_live_engine_started()
+    return jsonify({"status": "ok"})
+
 
 
 @app.route("/health", methods=["GET"])
