@@ -48,7 +48,7 @@ MARKET_SYMBOLS = {
     "GOLD": "XAU/USD",
 
     # 🔥 CRITICAL FIX (THIS IS THE BIG ONE)
-    "NATURALGAS": "XNG/USD",
+    "NATURALGAS": "NG",
 
     "NASDAQ": "NDX",
     "DOWJONES": "DJI",
