@@ -5029,7 +5029,6 @@ def build_trade_levels(signal_data, last_row):
         "risk_reward": risk_reward
     }
 
-
 @app.route("/signal", methods=["GET", "POST"])
 def signal():
     try:
