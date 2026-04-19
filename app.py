@@ -5074,6 +5074,8 @@ def signal():
         # -----------------------------
         market = get_market_from_request()
 
+        market = market.upper().replace(" ", "")
+
         if request.method == "GET":
             timeframe = request.args.get("timeframe", "1h")
         else:
@@ -5082,6 +5084,8 @@ def signal():
                 timeframe = body.get("timeframe", "1h")
             else:
                 timeframe = request.form.get("timeframe", "1h")
+
+                timeframe = timeframe.lower()
 
         if not market:
             return jsonify({"error": "No market provided"}), 400
