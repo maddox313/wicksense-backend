@@ -2879,61 +2879,93 @@ def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 3
 
 
 
-def get_multi_timeframe_confirmation(market: str, base_timeframe: str):
-    normalized = normalize_interval(base_timeframe)
+def get_multi_timeframe_confirmation(market, base_timeframe):
+    try:
+        timeframes = ["1h", "4h"]
+        results = {}
 
-    timeframe_map = {
-        "15min": ["15min", "1h"],
-        "1h": ["1h", "4h"],
-        "4h": ["4h", "1day"],
-        "1day": ["1day"]
-    }
+        for tf in timeframes:
+            try:
+                df = fetch_live_market_data(
+                    market,
+                    interval=tf,
+                    outputsize=50
+                )
 
-    timeframes = timeframe_map.get(normalized, [normalized])
+                if df is None or df.empty:
+                    results[tf] = {"error": "No data returned"}
+                    continue
 
-    multi_timeframe = {}
-    bullish_count = 0
-    bearish_count = 0
+                # -----------------------------
+                # FORCE CLEAN NUMERIC DATA
+                # -----------------------------
+                required_cols = ["Open", "High", "Low", "Close"]
 
-    for tf in timeframes:
-        try:
-            tf_signal = evaluate_signal_from_market(market, tf)
+                for col in required_cols:
+                    if col not in df.columns:
+                        results[tf] = {"error": f"Missing column: {col}"}
+                        continue
 
-            multi_timeframe[tf] = {
-                "signal": tf_signal["signal"],
-                "confidence": tf_signal["confidence"],
-                "pattern": tf_signal["pattern"]
-            }
+                    df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
 
-            if tf_signal["signal"] == "Bullish":
-                bullish_count += 1
-            elif tf_signal["signal"] == "Bearish":
-                bearish_count += 1
+                df = df.dropna(subset=required_cols).copy()
 
-        except Exception as e:
-            multi_timeframe[tf] = {"error": str(e)}
+                if df.empty:
+                    results[tf] = {"error": "No valid numeric data after cleaning"}
+                    continue
 
-    if bullish_count > bearish_count and bullish_count >= 2:
-        alignment = "Strong Bullish Alignment"
-        bias = "Bullish"
-    elif bearish_count > bullish_count and bearish_count >= 2:
-        alignment = "Strong Bearish Alignment"
-        bias = "Bearish"
-    elif bullish_count > bearish_count:
-        alignment = "Mild Bullish Alignment"
-        bias = "Bullish"
-    elif bearish_count > bullish_count:
-        alignment = "Mild Bearish Alignment"
-        bias = "Bearish"
-    else:
-        alignment = "Mixed / Neutral"
-        bias = "Neutral"
+                # -----------------------------
+                # RUN SIGNAL ENGINE
+                # -----------------------------
+                signal_data = evaluate_signal(df)
 
-    return {
-        "multi_timeframe": multi_timeframe,
-        "higher_timeframe_bias": bias,
-        "timeframe_alignment": alignment
-    }
+                results[tf] = {
+                    "signal": signal_data.get("signal"),
+                    "confidence": signal_data.get("confidence"),
+                    "bias": signal_data.get("signal")
+                }
+
+            except Exception as tf_error:
+                results[tf] = {"error": str(tf_error)}
+
+        # -----------------------------
+        # DETERMINE ALIGNMENT
+        # -----------------------------
+        valid_signals = [
+            v.get("signal") for v in results.values()
+            if isinstance(v, dict) and v.get("signal")
+        ]
+
+        if len(valid_signals) >= 2:
+            if all(s == "Bullish" for s in valid_signals):
+                alignment = "Strong Bullish Alignment"
+            elif all(s == "Bearish" for s in valid_signals):
+                alignment = "Strong Bearish Alignment"
+            else:
+                alignment = "Mixed / Neutral"
+        else:
+            alignment = "Insufficient Data"
+
+        # -----------------------------
+        # HIGHER TIMEFRAME BIAS
+        # -----------------------------
+        higher_bias = results.get("4h", {}).get("signal", "Neutral")
+
+        return {
+            "multi_timeframe": results,
+            "higher_timeframe_bias": higher_bias,
+            "timeframe_alignment": alignment
+        }
+
+    except Exception as e:
+        return {
+            "multi_timeframe": {},
+            "higher_timeframe_bias": "Unknown",
+            "timeframe_alignment": "Error",
+            "error": str(e)
+        }
+
 
 def build_ai_summary(signal_data):
     signal = signal_data.get("signal")
