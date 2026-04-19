@@ -5923,31 +5923,56 @@ def tradeplan():
 @app.route("/live-candles", methods=["GET"])
 def live_candles():
     try:
-        ensure_live_engine_started()
+        market = request.args.get("market")
+        timeframe = request.args.get("interval", "1h")
 
-        market = request.args.get("market", "Futures")
+        if not market:
+            return jsonify({"error": "No market provided"}), 400
 
-        state = LIVE_MARKET_STATE.get(market, {})
+        market = market.upper()
+        symbol = MARKET_SYMBOLS.get(market)
 
-        completed = state.get("completed_candles", [])
-        current = state.get("current_candle")
+        if not symbol:
+            return jsonify({"error": f"Invalid market: {market}"}), 400
 
-        candles = completed.copy()
+        interval = INTERVAL_MAP.get(timeframe, "1h")
 
-        if current:
-            candles.append(current)
+        print(f"📡 LIVE CANDLES | {market} → {symbol} | interval={interval}")
+
+        df = fetch_live_market_data(
+            market,
+            interval=interval,
+            outputsize=50
+        )
+
+        # 🚨 IMPORTANT FIX
+        if df is None or df.empty:
+            print(f"❌ No data returned for {market}")
+            return jsonify({"candles": [], "count": 0, "market": market})
+
+        # ✅ Convert dataframe → candles
+        candles = []
+        for _, row in df.iterrows():
+            candles.append({
+                "time": str(row.get("Datetime") or row.get("datetime")),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"])
+            })
+
+        print(f"✅ Returning {len(candles)} candles for {market}")
 
         return jsonify({
-            "market": market,
+            "candles": candles,
             "count": len(candles),
-            "candles": candles[-100:]
+            "market": market
         })
 
     except Exception as e:
-        return jsonify({
-            "error": "Failed to load live candles",
-            "details": str(e)
-        }), 500
+        print(f"🔥 LIVE CANDLES ERROR: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 
 # -----------------------------
