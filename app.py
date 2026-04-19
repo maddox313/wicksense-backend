@@ -1589,7 +1589,7 @@ def start_twelvedata_stream():
                     "QQQ": "NASDAQ",
                     "DIA": "DowJones",
                     "XAU/USD": "Gold",
-                    "NG": "NaturalGas",
+                    "UNG": "NaturalGas",
                     "EUR/USD": "Forex",
                     "SPY": "Futures"
                 }
@@ -5923,21 +5923,17 @@ def tradeplan():
 @app.route("/live-candles", methods=["GET"])
 def live_candles():
     try:
-        market = request.args.get("market")
-        timeframe = request.args.get("interval", "1h")
+        market = request.args.get("market", "").strip()
+        timeframe = request.args.get("interval", "1h").strip().lower()
 
         if not market:
             return jsonify({"error": "No market provided"}), 400
 
         market = market.upper()
-        symbol = MARKET_SYMBOLS.get(market)
 
-        if not symbol:
-            return jsonify({"error": f"Invalid market: {market}"}), 400
+        print(f"📡 LIVE CANDLES request | market={market} timeframe={timeframe}", flush=True)
 
         interval = INTERVAL_MAP.get(timeframe, "1h")
-
-        print(f"📡 LIVE CANDLES | {market} → {symbol} | interval={interval}")
 
         df = fetch_live_market_data(
             market,
@@ -5945,23 +5941,67 @@ def live_candles():
             outputsize=50
         )
 
-        # 🚨 IMPORTANT FIX
         if df is None or df.empty:
-            print(f"❌ No data returned for {market}")
-            return jsonify({"candles": [], "count": 0, "market": market})
+            print(f"❌ No data returned for {market}", flush=True)
+            return jsonify({
+                "candles": [],
+                "count": 0,
+                "market": market
+            })
 
-        # ✅ Convert dataframe → candles
+        print(f"✅ Data fetched: {len(df)} rows", flush=True)
+        print(f"📊 Raw DF columns for {market}: {list(df.columns)}", flush=True)
+
+        required_cols = ["Open", "High", "Low", "Close"]
+        for col in required_cols:
+            if col not in df.columns:
+                print(f"❌ Missing column in live-candles: {col}", flush=True)
+                return jsonify({
+                    "candles": [],
+                    "count": 0,
+                    "market": market
+                })
+
+        for col in required_cols:
+            df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=required_cols).copy()
+
+        if df.empty:
+            print(f"❌ No valid numeric rows remain for {market}", flush=True)
+            return jsonify({
+                "candles": [],
+                "count": 0,
+                "market": market
+            })
+
+        if "Datetime" in df.columns:
+            time_col = "Datetime"
+        elif "datetime" in df.columns:
+            time_col = "datetime"
+        else:
+            print(f"❌ No datetime column found for {market}", flush=True)
+            return jsonify({
+                "candles": [],
+                "count": 0,
+                "market": market
+            })
+
+        df[time_col] = df[time_col].astype(str)
+        df = df.sort_values(by=time_col).reset_index(drop=True)
+
         candles = []
         for _, row in df.iterrows():
             candles.append({
-                "time": str(row.get("Datetime") or row.get("datetime")),
+                "time": row[time_col],
                 "open": float(row["Open"]),
                 "high": float(row["High"]),
                 "low": float(row["Low"]),
                 "close": float(row["Close"])
             })
 
-        print(f"✅ Returning {len(candles)} candles for {market}")
+        print(f"✅ Returning {len(candles)} candles for {market}", flush=True)
 
         return jsonify({
             "candles": candles,
@@ -5970,24 +6010,18 @@ def live_candles():
         })
 
     except Exception as e:
-        print(f"🔥 LIVE CANDLES ERROR: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        print("\n========== LIVE CANDLES ROUTE ERROR ==========", flush=True)
+        print("ERROR:", str(e), flush=True)
+        traceback.print_exc()
+        print("========== END LIVE CANDLES ROUTE ERROR ==========\n", flush=True)
 
-
-
-# -----------------------------
-# PRESETS
-# -----------------------------
-@app.route("/presets", methods=["GET"])
-def get_presets():
-    try:
-        presets = load_presets()
-        return jsonify(presets)
-    except Exception as e:
         return jsonify({
-            "error": "Failed to fetch presets",
-            "details": str(e)
-        }), 500
+            "candles": [],
+            "count": 0,
+            "market": request.args.get("market", "")
+        }), 200
+
 
 
 @app.route("/presets", methods=["POST"])
