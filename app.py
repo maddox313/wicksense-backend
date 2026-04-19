@@ -5041,7 +5041,6 @@ def signal():
         # -----------------------------
         market = get_market_from_request()
 
-        timeframe = None
         if request.method == "GET":
             timeframe = request.args.get("timeframe", "1h")
         else:
@@ -5080,8 +5079,98 @@ def signal():
 
         for col in required_cols:
             if col not in df.columns:
-                print(f"❌ Missing column: {
+                print(f"❌ Missing column: {col}", flush=True)
+                return jsonify({"error": f"Missing column: {col}"}), 500
 
+            df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=required_cols).copy()
+
+        print("📊 CLEANED DATA TYPES:", flush=True)
+        print(df[required_cols].dtypes, flush=True)
+
+        if df.empty:
+            print(f"❌ No valid numeric rows remain for {market}", flush=True)
+            return jsonify({
+                "error": "No valid numeric data after cleaning"
+            }), 500
+
+        # -----------------------------
+        # RUN REAL SIGNAL ENGINE
+        # -----------------------------
+        signal_data = evaluate_signal(df)
+
+        try:
+            ai_text = build_ai_explanation(signal_data)
+        except Exception as ai_error:
+            print(f"⚠️ build_ai_explanation failed: {ai_error}", flush=True)
+            ai_text = {}
+
+        try:
+            mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+        except Exception as mtf_error:
+            print(f"⚠️ get_multi_timeframe_confirmation failed: {mtf_error}", flush=True)
+            mtf_data = {}
+
+        last_row = df.iloc[-1]
+
+        response = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "market": market,
+            "timeframe": timeframe,
+
+            "signal": signal_data.get("signal"),
+            "confidence": signal_data.get("confidence"),
+            "pattern": signal_data.get("pattern"),
+
+            "open": float(last_row["Open"]),
+            "high": float(last_row["High"]),
+            "low": float(last_row["Low"]),
+            "close": float(last_row["Close"]),
+
+            "ma20": signal_data.get("ma20"),
+            "ma50": signal_data.get("ma50"),
+            "vwap": signal_data.get("vwap"),
+            "support": signal_data.get("support"),
+            "resistance": signal_data.get("resistance"),
+            "upper_wick": signal_data.get("upper_wick"),
+            "lower_wick": signal_data.get("lower_wick"),
+
+            "breakout": signal_data.get("breakout"),
+            "liquidity_event": signal_data.get("liquidity_event"),
+            "trendline": signal_data.get("trendline"),
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "bullish_points": signal_data.get("bullish_points"),
+            "bearish_points": signal_data.get("bearish_points"),
+            "confluence_bonus": signal_data.get("confluence_bonus"),
+            "reason": ", ".join(signal_data.get("reasons", [])) if signal_data.get("reasons") else "",
+
+            "multi_timeframe": mtf_data.get("multi_timeframe"),
+            "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
+            "timeframe_alignment": mtf_data.get("timeframe_alignment"),
+
+            "ai_summary": ai_text.get("ai_summary"),
+            "trade_thesis": ai_text.get("trade_thesis"),
+            "risk_note": ai_text.get("risk_note"),
+
+            "status": "ok"
+        }
+
+        print(f"✅ FULL SIGNAL GENERATED for {market}", flush=True)
+        return jsonify(response)
+
+    except Exception as e:
+        import traceback
+        print("\n========== SIGNAL ROUTE ERROR ==========", flush=True)
+        print("ERROR:", str(e), flush=True)
+        traceback.print_exc()
+        print("========== END SIGNAL ROUTE ERROR ==========\n", flush=True)
+
+        return jsonify({
+            "error": "Signal generation failed",
+            "details": str(e)
+        }), 500
 
 # -----------------------------
 # BACKTEST
