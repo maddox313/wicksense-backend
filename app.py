@@ -44,12 +44,17 @@ NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
-    "Forex": "EUR/USD",
-    "Gold": "XAU/USD",
-    "NaturalGas": "NG",
+    "FOREX": "EUR/USD",
+    "GOLD": "XAU/USD",
+
+    # 🔥 CRITICAL FIX (THIS IS THE BIG ONE)
+    "NATURALGAS": "XNG/USD",
+
     "NASDAQ": "NDX",
-    "DowJones": "DJI",
-    "Futures": "ES"
+    "DOWJONES": "DJI",
+
+    # Optional (keep if you want futures)
+    "FUTURES": "ES"
 }
 
 
