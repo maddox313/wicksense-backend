@@ -44,27 +44,12 @@ NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
-    "FOREX": "EUR/USD",
-    "EURUSD": "EUR/USD",
-    "EUR/USD": "EUR/USD",
-
     "NASDAQ": "NDX",
-    "QQQ": "NDX",
-
     "DOWJONES": "DIA",
-    "DOWJONES30": "DIA",
-    "DOW": "DIA",
-    "DJI": "DIA",
-
     "GOLD": "XAU/USD",
-    "XAUUSD": "XAU/USD",
-
-    "NATURALGAS": "NG",
-    "NATURAL_GAS": "NG",
-    "NG": "NG",
-
-    "FUTURES": "ES",
-    "SPY": "SPY"
+    "NATURALGAS": "UNG",
+    "FOREX": "EUR/USD",
+    "FUTURES": "ES"
 }
 
 
