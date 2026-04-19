@@ -44,13 +44,14 @@ NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
+    "Forex": "EUR/USD",
+    "Gold": "XAU/USD",
+    "NaturalGas": "NG",
     "NASDAQ": "NDX",
-    "DOWJONES": "DIA",
-    "GOLD": "XAU/USD",
-    "NATURALGAS": "UNG",
-    "FOREX": "EUR/USD",
-    "FUTURES": "SPY"
+    "DowJones": "DJI",
+    "Futures": "ES"
 }
+
 
 INTERVAL_MAP = {
     "1m": "1min",
