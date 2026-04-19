@@ -5030,17 +5030,35 @@ def build_trade_levels(signal_data, last_row):
     }
 
 
-@app.route("/signal", methods=["POST", "GET"])
+@app.route("/signal", methods=["GET", "POST"])
 def signal():
     try:
+        import pandas as pd
+        from datetime import datetime
+
+        # -----------------------------
+        # GET MARKET / TIMEFRAME
+        # -----------------------------
         market = get_market_from_request()
-        timeframe = request.args.get("timeframe") or request.json.get("timeframe", "1h")
+
+        timeframe = None
+        if request.method == "GET":
+            timeframe = request.args.get("timeframe", "1h")
+        else:
+            if request.is_json:
+                body = request.get_json(silent=True) or {}
+                timeframe = body.get("timeframe", "1h")
+            else:
+                timeframe = request.form.get("timeframe", "1h")
 
         if not market:
             return jsonify({"error": "No market provided"}), 400
 
         print(f"📡 FULL SIGNAL ROUTE | market={market} timeframe={timeframe}", flush=True)
 
+        # -----------------------------
+        # FETCH MARKET DATA
+        # -----------------------------
         df = fetch_live_market_data(
             market,
             interval=timeframe,
@@ -5048,78 +5066,21 @@ def signal():
         )
 
         if df is None or df.empty:
-            return jsonify({"error": "No market data available"}), 500
+            print(f"❌ No data returned for {market}", flush=True)
+            return jsonify({
+                "error": f"No market data available for {market}"
+            }), 500
 
-        # 🔥 THIS IS THE REAL ENGINE
-        signal_data = evaluate_signal(df)
+        print(f"📊 Raw DF columns for {market}: {list(df.columns)}", flush=True)
 
-        # Optional extras (if functions exist)
-        try:
-            ai_text = build_ai_explanation(signal_data)
-        except:
-            ai_text = {}
+        # -----------------------------
+        # FORCE CLEAN NUMERIC CONVERSION
+        # -----------------------------
+        required_cols = ["Open", "High", "Low", "Close"]
 
-        try:
-            mtf_data = get_multi_timeframe_confirmation(market, timeframe)
-        except:
-            mtf_data = {}
-
-        last_row = df.iloc[-1]
-
-        response = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "market": market,
-            "timeframe": timeframe,
-
-            # CORE SIGNAL
-            "signal": signal_data.get("signal"),
-            "confidence": signal_data.get("confidence"),
-            "pattern": signal_data.get("pattern"),
-
-            # PRICE DATA
-            "open": float(last_row["Open"]),
-            "high": float(last_row["High"]),
-            "low": float(last_row["Low"]),
-            "close": float(last_row["Close"]),
-
-            # INDICATORS
-            "ma20": signal_data.get("ma20"),
-            "ma50": signal_data.get("ma50"),
-            "vwap": signal_data.get("vwap"),
-            "support": signal_data.get("support"),
-            "resistance": signal_data.get("resistance"),
-
-            # STRATEGY INTEL
-            "strategy_breakdown": signal_data.get("strategy_breakdown"),
-            "bullish_points": signal_data.get("bullish_points"),
-            "bearish_points": signal_data.get("bearish_points"),
-            "confluence_bonus": signal_data.get("confluence_bonus"),
-
-            # MULTI-TIMEFRAME
-            "multi_timeframe": mtf_data.get("multi_timeframe"),
-            "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
-
-            # AI
-            "ai_summary": ai_text.get("ai_summary"),
-            "trade_thesis": ai_text.get("trade_thesis"),
-            "risk_note": ai_text.get("risk_note"),
-
-            "status": "ok"
-        }
-
-        print(f"🔥 FULL SIGNAL GENERATED for {market}", flush=True)
-
-        return jsonify(response)
-
-    except Exception as e:
-        import traceback
-        print("\n❌ SIGNAL ERROR:", str(e), flush=True)
-        traceback.print_exc()
-
-        return jsonify({
-            "error": "Signal generation failed",
-            "details": str(e)
-        }), 500
+        for col in required_cols:
+            if col not in df.columns:
+                print(f"❌ Missing column: {
 
 
 # -----------------------------
