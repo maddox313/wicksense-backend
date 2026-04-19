@@ -1723,17 +1723,25 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
             return None
 
         # -----------------------------
-        # INTERVAL MAPPING (CRITICAL FIX)
+        # INTERVAL HANDLING (FIXED)
         # -----------------------------
-        mapped_interval = INTERVAL_MAP.get(interval)
+        VALID_TWELVEDATA_INTERVALS = {
+            "1min", "5min", "15min", "30min", "45min",
+            "1h", "2h", "4h", "8h",
+            "1day", "1week"
+        }
+
+        if interval in VALID_TWELVEDATA_INTERVALS:
+            mapped_interval = interval
+        else:
+            mapped_interval = INTERVAL_MAP.get(interval)
 
         if not mapped_interval:
             print(f"❌ Invalid interval mapping: {interval}", flush=True)
             return None
 
         print(
-            f"📨 Requesting TwelveData: "
-            f"symbol={symbol}, interval={mapped_interval}, outputsize={outputsize}",
+            f"📊 Requesting TwelveData: symbol={symbol}, interval={mapped_interval}, outputsize={outputsize}",
             flush=True
         )
 
@@ -1773,7 +1781,7 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
         }, inplace=True)
 
         # -----------------------------
-        # FORCE CLEAN NUMERIC DATA
+        # CLEAN NUMERIC DATA
         # -----------------------------
         required_cols = ["Open", "High", "Low", "Close"]
 
@@ -1792,7 +1800,7 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
             return None
 
         # -----------------------------
-        # SORT DATA (IMPORTANT)
+        # SORT DATA
         # -----------------------------
         df = df.sort_values("Datetime").reset_index(drop=True)
 
@@ -1803,6 +1811,7 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
     except Exception as e:
         print(f"❌ fetch_live_market_data ERROR: {e}", flush=True)
         return None
+
 
 
 # -----------------------------
