@@ -5333,24 +5333,34 @@ def backtest():
     try:
         market = get_market_from_request()
 
-        # --- MARKET ALIASES ---
-        market_aliases = {
-            "EURUSD": "Forex",
-            "EUR/USD": "Forex",
-            "FOREX": "Forex",
-            "QQQ": "NASDAQ",
-            "NASDAQ": "NASDAQ",
-            "DIA": "DowJones",
-            "DOWJONES": "DowJones",
-            "DOWJONES30": "DowJones",
-            "XAUUSD": "Gold",
-            "XAU/USD": "Gold",
-            "GOLD": "Gold",
-            "NG": "NaturalGas",
-            "NATURALGAS": "NaturalGas",
-            "SPY": "Futures",
-            "FUTURES": "Futures"
+          market_aliases = {
+        # Forex
+        "EURUSD": "Forex",
+        "EUR/USD": "Forex",
+        "FOREX": "Forex",
+
+        # NASDAQ
+        "NASDAQ": "NASDAQ",
+        "NDX": "NASDAQ",
+
+        # Dow
+        "DOWJONES": "DowJones",
+        "DJI": "DowJones",
+
+        # Gold
+        "GOLD": "Gold",
+        "XAUUSD": "Gold",
+        "XAU/USD": "Gold",
+
+        # Natural Gas
+        "NATURALGAS": "NaturalGas",
+        "NG": "NaturalGas",
+
+        # Futures
+        "FUTURES": "Futures",
+        "ES": "Futures"
         }
+
 
         requested_market = str(market).strip().upper() if market else ""
         if market:
