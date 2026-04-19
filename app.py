@@ -5933,8 +5933,10 @@ def live_candles():
 
         print(f"📡 LIVE CANDLES request | market={market} timeframe={timeframe}", flush=True)
 
+        # ✅ Fix timeframe mapping
         interval = INTERVAL_MAP.get(timeframe, "1h")
 
+        # ✅ Fetch data
         df = fetch_live_market_data(
             market,
             interval=interval,
@@ -5950,58 +5952,25 @@ def live_candles():
             })
 
         print(f"✅ Data fetched: {len(df)} rows", flush=True)
-        print(f"📊 Raw DF columns for {market}: {list(df.columns)}", flush=True)
+        print(f"📊 Columns: {list(df.columns)}", flush=True)
 
-        required_cols = ["Open", "High", "Low", "Close"]
-        for col in required_cols:
-            if col not in df.columns:
-                print(f"❌ Missing column in live-candles: {col}", flush=True)
-                return jsonify({
-                    "candles": [],
-                    "count": 0,
-                    "market": market
-                })
-
-        for col in required_cols:
-            df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        df = df.dropna(subset=required_cols).copy()
-
-        if df.empty:
-            print(f"❌ No valid numeric rows remain for {market}", flush=True)
-            return jsonify({
-                "candles": [],
-                "count": 0,
-                "market": market
-            })
-
-        if "Datetime" in df.columns:
-            time_col = "Datetime"
-        elif "datetime" in df.columns:
-            time_col = "datetime"
-        else:
-            print(f"❌ No datetime column found for {market}", flush=True)
-            return jsonify({
-                "candles": [],
-                "count": 0,
-                "market": market
-            })
-
-        df[time_col] = df[time_col].astype(str)
-        df = df.sort_values(by=time_col).reset_index(drop=True)
-
+        # ✅ Build candles safely
         candles = []
-        for _, row in df.iterrows():
-            candles.append({
-                "time": row[time_col],
-                "open": float(row["Open"]),
-                "high": float(row["High"]),
-                "low": float(row["Low"]),
-                "close": float(row["Close"])
-            })
 
-        print(f"✅ Returning {len(candles)} candles for {market}", flush=True)
+        for _, row in df.iterrows():
+            try:
+                candles.append({
+                    "time": str(row.get("Datetime") or row.get("datetime")),
+                    "open": float(str(row["Open"]).replace(",", "").strip()),
+                    "high": float(str(row["High"]).replace(",", "").strip()),
+                    "low": float(str(row["Low"]).replace(",", "").strip()),
+                    "close": float(str(row["Close"]).replace(",", "").strip())
+                })
+            except Exception as e:
+                print(f"⚠️ Skipping row: {e}", flush=True)
+                continue
+
+        print(f"🚀 Returning {len(candles)} candles", flush=True)
 
         return jsonify({
             "candles": candles,
@@ -6011,10 +5980,8 @@ def live_candles():
 
     except Exception as e:
         import traceback
-        print("\n========== LIVE CANDLES ROUTE ERROR ==========", flush=True)
-        print("ERROR:", str(e), flush=True)
+        print("❌ LIVE CANDLES ERROR:", str(e), flush=True)
         traceback.print_exc()
-        print("========== END LIVE CANDLES ROUTE ERROR ==========\n", flush=True)
 
         return jsonify({
             "candles": [],
