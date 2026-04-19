@@ -47,7 +47,7 @@ MARKET_SYMBOLS = {
     "NASDAQ": "NDX",
     "DOWJONES": "DIA",
     "GOLD": "XAU/USD",
-    "NATURALGAS": "UNG",
+    "NATURALGAS": "NG",
     "FOREX": "EUR/USD",
     "FUTURES": "SPY"
 }
