@@ -51,10 +51,10 @@ MARKET_SYMBOLS = {
     "NASDAQ": "NDX",
     "QQQ": "NDX",
 
-    "DOWJONES": "DJI",
-    "DOWJONES30": "DJI",
-    "DOW": "DJI",
-    "DJI": "DJI",
+    "DOWJONES": "DIA",
+    "DOWJONES30": "DIA",
+    "DOW": "DIA",
+    "DJI": "DIA",
 
     "GOLD": "XAU/USD",
     "XAUUSD": "XAU/USD",
