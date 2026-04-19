@@ -49,7 +49,21 @@ MARKET_SYMBOLS = {
     "GOLD": "XAU/USD",
     "NATURALGAS": "UNG",
     "FOREX": "EUR/USD",
-    "FUTURES": "ES"
+    "FUTURES": "SPY"
+}
+
+INTERVAL_MAP = {
+    "1m": "1min",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "45m": "45min",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "8h": "8h",
+    "1d": "1day",
+    "1w": "1week"
 }
 
 
@@ -1686,44 +1700,109 @@ def validate_market_df(df: pd.DataFrame):
     return missing
 
 
-def fetch_live_market_data(market, interval="1min", outputsize=100):
-    symbol = MARKET_SYMBOLS.get(market)
+def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 50):
+    try:
+        import pandas as pd
+        import requests
 
-    # 🚨 DEBUG LINE (THIS IS WHAT WE NEED)
-    print(f"🚨 FETCH SYMBOL: {market} → {symbol}", flush=True)
+        # -----------------------------
+        # NORMALIZE INPUTS
+        # -----------------------------
+        market = str(market).strip().upper().replace(" ", "")
+        interval = str(interval).strip().lower()
 
-    if not symbol:
-        print(f"❌ No symbol mapping for market: {market}", flush=True)
-        return pd.DataFrame()
+        # -----------------------------
+        # SYMBOL MAPPING
+        # -----------------------------
+        symbol = MARKET_SYMBOLS.get(market)
 
-    url = "https://api.twelvedata.com/time_series"
-    
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "outputsize": outputsize,
-        "apikey": TWELVE_DATA_API_KEY
-    }
+        print(f"📡 FETCH SYMBOL: {market} -> {symbol}", flush=True)
 
-    print(f"📡 Requesting TwelveData: {params}", flush=True)
+        if not symbol:
+            print(f"❌ No symbol mapping for market: {market}", flush=True)
+            return None
 
-    response = requests.get(url, params=params)
-    data = response.json()
+        # -----------------------------
+        # INTERVAL MAPPING (CRITICAL FIX)
+        # -----------------------------
+        mapped_interval = INTERVAL_MAP.get(interval)
 
-    if "values" not in data:
-        print(f"❌ TwelveData ERROR: {data}", flush=True)
-        return pd.DataFrame()
+        if not mapped_interval:
+            print(f"❌ Invalid interval mapping: {interval}", flush=True)
+            return None
 
-    df = pd.DataFrame(data["values"])
-    df.rename(columns={
-        "datetime": "Datetime",
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close"
-    }, inplace=True)
+        print(
+            f"📨 Requesting TwelveData: "
+            f"symbol={symbol}, interval={mapped_interval}, outputsize={outputsize}",
+            flush=True
+        )
 
-    return df
+        # -----------------------------
+        # API REQUEST
+        # -----------------------------
+        url = "https://api.twelvedata.com/time_series"
+
+        params = {
+            "symbol": symbol,
+            "interval": mapped_interval,
+            "outputsize": outputsize,
+            "apikey": TWELVE_DATA_API_KEY
+        }
+
+        response = requests.get(url, params=params)
+        data = response.json()
+
+        # -----------------------------
+        # ERROR HANDLING
+        # -----------------------------
+        if "values" not in data:
+            print(f"❌ TwelveData ERROR: {data}", flush=True)
+            return None
+
+        # -----------------------------
+        # DATAFRAME CREATION
+        # -----------------------------
+        df = pd.DataFrame(data["values"])
+
+        df.rename(columns={
+            "datetime": "Datetime",
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close"
+        }, inplace=True)
+
+        # -----------------------------
+        # FORCE CLEAN NUMERIC DATA
+        # -----------------------------
+        required_cols = ["Open", "High", "Low", "Close"]
+
+        for col in required_cols:
+            if col not in df.columns:
+                print(f"❌ Missing column: {col}", flush=True)
+                return None
+
+            df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=required_cols).copy()
+
+        if df.empty:
+            print("❌ No valid numeric rows after cleaning", flush=True)
+            return None
+
+        # -----------------------------
+        # SORT DATA (IMPORTANT)
+        # -----------------------------
+        df = df.sort_values("Datetime").reset_index(drop=True)
+
+        print(f"✅ Data fetched: {len(df)} rows", flush=True)
+
+        return df
+
+    except Exception as e:
+        print(f"❌ fetch_live_market_data ERROR: {e}", flush=True)
+        return None
 
 
 # -----------------------------
@@ -5074,8 +5153,6 @@ def signal():
         # -----------------------------
         market = get_market_from_request()
 
-        market = market.upper().replace(" ", "")
-
         if request.method == "GET":
             timeframe = request.args.get("timeframe", "1h")
         else:
@@ -5085,10 +5162,18 @@ def signal():
             else:
                 timeframe = request.form.get("timeframe", "1h")
 
-                timeframe = timeframe.lower()
-
         if not market:
             return jsonify({"error": "No market provided"}), 400
+
+        market = str(market).strip().upper().replace(" ", "")
+        timeframe = str(timeframe).strip().lower()
+
+        VALID_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"]
+        if timeframe not in VALID_TIMEFRAMES:
+            return jsonify({
+                "error": f"Invalid timeframe: {timeframe}",
+                "valid_options": VALID_TIMEFRAMES
+            }), 400
 
         print(f"📡 FULL SIGNAL ROUTE | market={market} timeframe={timeframe}", flush=True)
 
@@ -5096,7 +5181,7 @@ def signal():
         # FETCH MARKET DATA
         # -----------------------------
         df = fetch_live_market_data(
-            market,
+            market=market,
             interval=timeframe,
             outputsize=50
         )
@@ -5124,7 +5209,7 @@ def signal():
 
         df = df.dropna(subset=required_cols).copy()
 
-        print("📊 CLEANED DATA TYPES:", flush=True)
+        print("🧼 CLEANED DATA TYPES:", flush=True)
         print(df[required_cols].dtypes, flush=True)
 
         if df.empty:
@@ -5150,6 +5235,18 @@ def signal():
             print(f"⚠️ get_multi_timeframe_confirmation failed: {mtf_error}", flush=True)
             mtf_data = {}
 
+        try:
+            session_data = get_market_session()
+        except Exception as session_error:
+            print(f"⚠️ get_market_session failed: {session_error}", flush=True)
+            session_data = {}
+
+        try:
+            setup_type = get_setup_type(signal_data)
+        except Exception as setup_error:
+            print(f"⚠️ get_setup_type failed: {setup_error}", flush=True)
+            setup_type = None
+
         last_row = df.iloc[-1]
 
         response = {
@@ -5160,11 +5257,13 @@ def signal():
             "signal": signal_data.get("signal"),
             "confidence": signal_data.get("confidence"),
             "pattern": signal_data.get("pattern"),
+            "setup_type": setup_type,
 
             "open": float(last_row["Open"]),
             "high": float(last_row["High"]),
             "low": float(last_row["Low"]),
             "close": float(last_row["Close"]),
+            "entry": float(last_row["Close"]),
 
             "ma20": signal_data.get("ma20"),
             "ma50": signal_data.get("ma50"),
@@ -5177,6 +5276,7 @@ def signal():
             "breakout": signal_data.get("breakout"),
             "liquidity_event": signal_data.get("liquidity_event"),
             "trendline": signal_data.get("trendline"),
+
             "strategy_breakdown": signal_data.get("strategy_breakdown"),
             "bullish_points": signal_data.get("bullish_points"),
             "bearish_points": signal_data.get("bearish_points"),
@@ -5190,6 +5290,11 @@ def signal():
             "ai_summary": ai_text.get("ai_summary"),
             "trade_thesis": ai_text.get("trade_thesis"),
             "risk_note": ai_text.get("risk_note"),
+
+            "session_label": session_data.get("session_label"),
+            "active_sessions": session_data.get("active_sessions"),
+            "liquidity_profile": session_data.get("liquidity_profile"),
+            "utc_hour": session_data.get("utc_hour"),
 
             "status": "ok"
         }
@@ -5208,6 +5313,7 @@ def signal():
             "error": "Signal generation failed",
             "details": str(e)
         }), 500
+
 
 # -----------------------------
 # BACKTEST
