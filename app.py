@@ -5014,7 +5014,7 @@ def build_trade_levels(signal_data, last_row):
     }
 
 
-@app.route("/signal", methods=["POST"])
+@app.route("/signal", methods=["GET", "POST"])
 def signal():
     try:
         import pandas as pd
