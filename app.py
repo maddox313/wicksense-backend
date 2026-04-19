@@ -5333,38 +5333,41 @@ def backtest():
     try:
         market = get_market_from_request()
 
-          market_aliases = {
-        # Forex
-        "EURUSD": "Forex",
-        "EUR/USD": "Forex",
-        "FOREX": "Forex",
+        # --- MARKET ALIASES ---
+        market_aliases = {
+            # Forex
+            "EURUSD": "FOREX",
+            "EUR/USD": "FOREX",
+            "FOREX": "FOREX",
 
-        # NASDAQ
-        "NASDAQ": "NASDAQ",
-        "NDX": "NASDAQ",
+            # NASDAQ
+            "NASDAQ": "NASDAQ",
+            "NDX": "NASDAQ",
+            "US100": "NASDAQ",
 
-        # Dow
-        "DOWJONES": "DowJones",
-        "DJI": "DowJones",
+            # Dow Jones
+            "DOWJONES": "DOWJONES",
+            "DOWJONES30": "DOWJONES",
+            "DJI": "DOWJONES",
+            "US30": "DOWJONES",
 
-        # Gold
-        "GOLD": "Gold",
-        "XAUUSD": "Gold",
-        "XAU/USD": "Gold",
+            # Gold
+            "XAUUSD": "GOLD",
+            "XAU/USD": "GOLD",
+            "GOLD": "GOLD",
 
-        # Natural Gas
-        "NATURALGAS": "NaturalGas",
-        "NG": "NaturalGas",
+            # Natural Gas
+            "NG": "NATURALGAS",
+            "NATURALGAS": "NATURALGAS",
 
-        # Futures
-        "FUTURES": "Futures",
-        "ES": "Futures"
+            # Futures
+            "FUTURES": "FUTURES",
+            "ES": "FUTURES"
         }
-
 
         requested_market = str(market).strip().upper() if market else ""
         if market:
-            market = market_aliases.get(requested_market, market)
+            market = market_aliases.get(requested_market, requested_market)
 
         timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
         _ = get_string_from_request("start_date", "")
@@ -5378,6 +5381,29 @@ def backtest():
         if df is None or df.empty:
             return jsonify({
                 "error": "No market data returned",
+                "details": {
+                    "requested_market": requested_market,
+                    "mapped_market": market,
+                    "timeframe": timeframe
+                }
+            }), 400
+
+        # Ensure numeric OHLC data
+        required_cols = ["Open", "High", "Low", "Close"]
+        for col in required_cols:
+            if col not in df.columns:
+                return jsonify({
+                    "error": f"Missing required column: {col}"
+                }), 500
+
+            df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=required_cols).copy()
+
+        if df.empty:
+            return jsonify({
+                "error": "No valid numeric market data after cleaning",
                 "details": {
                     "requested_market": requested_market,
                     "mapped_market": market,
@@ -5509,6 +5535,8 @@ def backtest():
 
         # --- RAW CANDLE DATA FOR FRONTEND / ROCKET COMPATIBILITY ---
         candles = []
+        time_col = "Datetime" if "Datetime" in df.columns else None
+
         for i, row in df.iterrows():
             if (
                 pd.isna(row.get("Open")) or
@@ -5518,7 +5546,9 @@ def backtest():
             ):
                 continue
 
-            if isinstance(i, pd.Timestamp):
+            if time_col and pd.notna(row.get(time_col)):
+                time_value = str(row.get(time_col))
+            elif isinstance(i, pd.Timestamp):
                 time_value = i.isoformat()
             else:
                 time_value = str(i)
