@@ -5028,6 +5028,7 @@ def build_trade_levels(signal_data, last_row):
         "reward_per_unit": round(reward_per_unit, 6) if reward_per_unit is not None else None,
         "risk_reward": risk_reward
     }
+    
 
 @app.route("/signal", methods=["GET", "POST"])
 def signal():
