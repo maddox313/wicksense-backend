@@ -638,8 +638,24 @@ def get_request_body():
 
 
 def get_market_from_request():
-    body = get_request_body()
-    return body.get("market")
+    try:
+        # 1. Try JSON body (POST)
+        if request.is_json:
+            data = request.get_json()
+            if data and "market" in data:
+                return data.get("market")
+
+        # 2. Try query params (GET)
+        market = request.args.get("market")
+        if market:
+            return market
+
+        # 3. Try form data (fallback)
+        return request.form.get("market")
+
+    except Exception as e:
+        print(f"❌ get_market_from_request error: {e}", flush=True)
+        return None
 
 
 def normalize_interval(interval: str) -> str:
