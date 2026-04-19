@@ -51,7 +51,7 @@ MARKET_SYMBOLS = {
     "NATURALGAS": "NG",
 
     "NASDAQ": "NDX",
-    "DOWJONES": "DJI",
+    "DOWJONES": "DIA",
 
     # Optional (keep if you want futures)
     "FUTURES": "ES"
