@@ -1791,6 +1791,7 @@ def run_polling_fallback():
                     # -----------------------------
                     try:
                         update_live_signal(market)
+                        update_trade_ranking(market)
                     except Exception as signal_error:
                         print(f"❌ update_live_signal error for {market}: {signal_error}", flush=True)
 
