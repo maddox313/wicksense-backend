@@ -1406,7 +1406,7 @@ def update_live_signal(market):
         candles = completed_candles + [current_candle]
 
         # Need enough candles for the live signal engine
-        if len(candles) < 20:
+        if len(candles) < 5:
             wick_data = calculate_live_wicks(current_candle)
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
             state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
