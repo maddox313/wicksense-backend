@@ -979,6 +979,131 @@ def get_current_live_top_trade():
 
     return best_trade or {}
 
+# ============================
+# CHART SYMBOL MAPPING
+# ============================
+def get_chart_symbol(market):
+    mapping = {
+        "Gold": "OANDA:XAUUSD",
+        "NASDAQ": "OANDA:NAS100USD",
+        "Forex": "OANDA:EURUSD",
+        "DowJones": "OANDA:US30USD",
+        "Futures": "CME_MINI:ES1!"
+    }
+    return mapping.get(market, "OANDA:EURUSD")
+
+
+# ============================
+# GET ALL LIVE RANKED TRADES
+# ============================
+def get_all_live_ranked_trades():
+    ranked = []
+
+    for market_name, data in LIVE_MARKET_STATE.items():
+        try:
+            raw_signal = data.get("signal")
+            signal = str(raw_signal).upper() if raw_signal else ""
+
+            # Normalize signals
+            if signal == "BULLISH":
+                signal = "BUY"
+            elif signal == "BEARISH":
+                signal = "SELL"
+
+            if signal not in ["BUY", "SELL"]:
+                continue
+
+            confidence = safe_float(data.get("confidence"), 0.0)
+            readiness = safe_float(data.get("trade_readiness_score"), 0.0)
+            entry_timing = str(data.get("entry_timing", "")).strip().upper()
+
+            # -----------------------------
+            # SCORING ENGINE (same as top trade)
+            # -----------------------------
+            score = confidence
+
+            if entry_timing == "ENTER NOW":
+                score += 25
+            elif entry_timing == "WAIT":
+                score += 10
+            elif entry_timing == "AVOID":
+                score -= 10
+
+            score += readiness * 0.2
+
+            candle = data.get("current_candle", {})
+
+            ranked.append({
+                "market": market_name,
+                "signal": signal,
+                "confidence": confidence,
+                "trade_readiness_score": readiness,
+                "entry_timing": data.get("entry_timing"),
+                "setup_type": data.get("setup_type"),
+                "pattern": data.get("pattern"),
+                "breakout": data.get("breakout"),
+                "liquidity_event": data.get("liquidity_event"),
+                "trendline": data.get("trendline"),
+
+                "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
+                "risk_note": data.get("risk_note"),
+
+                "strategy_recommendation": data.get("strategy_recommendation"),
+                "strategy_reason": data.get("strategy_reason"),
+                "execution_guidance": data.get("execution_guidance"),
+
+                "support_levels": data.get("support_levels"),
+                "resistance_levels": data.get("resistance_levels"),
+                "entry_zone": data.get("entry_zone"),
+                "breakout_zone": data.get("breakout_zone"),
+
+                "session_label": data.get("session_label"),
+                "active_sessions": data.get("active_sessions"),
+
+                "open": candle.get("Open", data.get("open")),
+                "high": candle.get("High", data.get("high")),
+                "low": candle.get("Low", data.get("low")),
+                "close": candle.get("Close", data.get("close")),
+
+                "chart_symbol": get_chart_symbol(market_name),
+                "last_updated": data.get("last_updated"),
+
+                "top_trade_score": round(score, 2)
+            })
+
+        except Exception as e:
+            print(f"❌ ranking error for {market_name}: {e}", flush=True)
+            continue
+
+    # Sort best → worst
+    ranked.sort(key=lambda x: x["top_trade_score"], reverse=True)
+
+    return ranked
+
+
+# ============================
+# API ROUTE: LIVE BEST TRADES
+# ============================
+@app.route("/live-best-trades", methods=["GET"])
+def live_best_trades():
+    try:
+        ensure_live_engine_started()
+
+        trades = get_all_live_ranked_trades()
+
+        return jsonify({
+            "top_trade": trades[0] if len(trades) > 0 else None,
+            "next_best": trades[1:5] if len(trades) > 1 else [],
+            "total_markets": len(trades)
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load live ranked trades",
+            "details": str(e)
+        }), 500
+
 
 
 def get_current_setup_forming_trade():
@@ -1049,6 +1174,102 @@ def get_current_setup_forming_trade():
             }
 
     return best_trade
+
+def get_all_live_ranked_trades():
+    ranked = []
+
+    for market_name, data in LIVE_MARKET_STATE.items():
+        try:
+            raw_signal = data.get("signal")
+            signal = str(raw_signal).upper() if raw_signal else ""
+
+            if signal == "BULLISH":
+                signal = "BUY"
+            elif signal == "BEARISH":
+                signal = "SELL"
+
+            if signal not in ["BUY", "SELL"]:
+                continue
+
+            confidence = safe_float(data.get("confidence"), 0.0)
+            readiness = safe_float(data.get("trade_readiness_score"), 0.0)
+            entry_timing = str(data.get("entry_timing", "")).strip().upper()
+
+            score = confidence
+
+            if entry_timing == "ENTER NOW":
+                score += 25
+            elif entry_timing == "WAIT":
+                score += 10
+            elif entry_timing == "AVOID":
+                score -= 10
+
+            score += readiness * 0.2
+
+            candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
+
+            trade = {
+                "market": market_name,
+                "signal": signal,
+                "confidence": confidence,
+                "setup_type": data.get("setup_type"),
+                "entry_timing": data.get("entry_timing"),
+                "trade_readiness_score": readiness,
+                "top_trade_score": round(score, 2),
+
+                # 🔥 Chart symbol (for mini charts in UI)
+                "chart_symbol": get_chart_symbol(market_name),
+
+                # AI + Strategy
+                "ai_summary": data.get("ai_summary"),
+                "trade_thesis": data.get("trade_thesis"),
+                "risk_note": data.get("risk_note"),
+                "strategy_recommendation": data.get("strategy_recommendation"),
+                "strategy_reason": data.get("strategy_reason"),
+                "execution_guidance": data.get("execution_guidance"),
+
+                # Context
+                "session_label": data.get("session_label"),
+                "active_sessions": data.get("active_sessions"),
+                "liquidity_profile": data.get("liquidity_profile"),
+                "utc_hour": data.get("utc_hour"),
+
+                # Structure
+                "breakout": data.get("breakout"),
+                "liquidity_event": data.get("liquidity_event"),
+                "trendline": data.get("trendline"),
+                "pattern": data.get("pattern"),
+
+                # Levels
+                "breakout_zone": data.get("breakout_zone"),
+                "entry_zone": data.get("entry_zone"),
+                "support_levels": data.get("support_levels"),
+                "resistance_levels": data.get("resistance_levels"),
+                "trendline_points": data.get("trendline_points"),
+                "strategy_visual_bias": data.get("strategy_visual_bias"),
+                "confirmation_state": data.get("confirmation_state"),
+
+                # Price
+                "open": candle.get("Open", data.get("open")),
+                "high": candle.get("High", data.get("high")),
+                "low": candle.get("Low", data.get("low")),
+                "close": candle.get("Close", data.get("close")),
+                "upper_wick": data.get("upper_wick"),
+                "lower_wick": data.get("lower_wick"),
+
+                "last_updated": data.get("last_updated")
+            }
+
+            ranked.append(trade)
+
+        except Exception as e:
+            print(f"⚠️ Skipping {market_name}: {e}", flush=True)
+            continue
+
+    ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
+
+    return ranked
+
 
 def detect_auto_trigger_candidates():
     triggered_trades = []
