@@ -1184,8 +1184,8 @@ def update_live_signal(market):
 
         candles = completed_candles + [current_candle]
 
-        # Lower requirement so live signals can form
-        if len(candles) < 5:
+        # Need enough candles for the live signal engine
+        if len(candles) < 20:
             wick_data = calculate_live_wicks(current_candle)
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
             state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
@@ -1213,20 +1213,43 @@ def update_live_signal(market):
             print(f"❌ update_live_signal empty dataframe after cleanup for {market}", flush=True)
             return
 
-        # Core signal engine
+        # -----------------------------
+        # CORE SIGNAL ENGINE
+        # -----------------------------
         try:
-            signal_data = evaluate_signal(df)
-            if not isinstance(signal_data, dict):
-                signal_data = {}
+            raw_signal = evaluate_signal(df)
+            if not isinstance(raw_signal, dict):
+                raw_signal = {}
         except Exception as e:
             print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
-            signal_data = {}
+            raw_signal = {}
 
-        print("DEBUG SIGNAL DATA:", market, signal_data, flush=True)
+        # Lock signal data immediately so it cannot drift
+        signal_data = {
+            "signal": raw_signal.get("signal"),
+            "confidence": safe_float(raw_signal.get("confidence"), 0),
+            "pattern": raw_signal.get("pattern"),
+            "breakout": raw_signal.get("breakout"),
+            "liquidity_event": raw_signal.get("liquidity_event"),
+            "trendline": raw_signal.get("trendline"),
+            "strategy_breakdown": raw_signal.get("strategy_breakdown"),
+            "confluence_bonus": safe_float(raw_signal.get("confluence_bonus"), 0),
+            "upper_wick": safe_float(raw_signal.get("upper_wick"), 0),
+            "lower_wick": safe_float(raw_signal.get("lower_wick"), 0),
+            "ma20": raw_signal.get("ma20"),
+            "ma50": raw_signal.get("ma50"),
+            "vwap": raw_signal.get("vwap"),
+            "support": raw_signal.get("support"),
+            "resistance": raw_signal.get("resistance"),
+        }
 
-        # Force signal if engine is silent or invalid
-        raw_signal = signal_data.get("signal")
-        signal = str(raw_signal).upper() if raw_signal else ""
+        print(f"DEBUG SIGNAL DATA: {market} {signal_data}", flush=True)
+
+        # -----------------------------
+        # FORCE SIGNAL IF EMPTY/INVALID
+        # -----------------------------
+        raw_signal_value = signal_data.get("signal")
+        signal = str(raw_signal_value).upper() if raw_signal_value else ""
 
         if signal not in ["BUY", "SELL", "BULLISH", "BEARISH"]:
             close_price = df["Close"].iloc[-1]
@@ -1238,26 +1261,46 @@ def update_live_signal(market):
                 signal = "SELL"
 
             signal_data["signal"] = signal
-            signal_data["confidence"] = 65
-            signal_data["entry_timing"] = "ENTER NOW"
 
-        # Force minimum useful values
+        # Normalize direction labels
+        if signal == "BULLISH":
+            signal = "BUY"
+        elif signal == "BEARISH":
+            signal = "SELL"
+
+        signal_data["signal"] = signal
+
+        # -----------------------------
+        # FORCE MINIMUM USEFUL VALUES
+        # -----------------------------
         confidence = safe_float(signal_data.get("confidence"), 0)
         if confidence < 50:
             confidence = 65
-            signal_data["confidence"] = confidence
+        signal_data["confidence"] = confidence
 
-        trade_readiness = safe_float(get_trade_readiness(signal_data), 0)
+        try:
+            trade_readiness = safe_float(get_trade_readiness(signal_data), 0)
+        except Exception as e:
+            print(f"⚠️ get_trade_readiness failed for {market}: {e}", flush=True)
+            trade_readiness = 0
+
         if trade_readiness < 20:
             trade_readiness = 30
         signal_data["trade_readiness_score"] = trade_readiness
 
-        entry_timing = signal_data.get("entry_timing")
+        try:
+            entry_timing = get_entry_timing(signal_data)
+        except Exception as e:
+            print(f"⚠️ get_entry_timing failed for {market}: {e}", flush=True)
+            entry_timing = None
+
         if not entry_timing or entry_timing == "WAIT":
             entry_timing = "ENTER NOW"
         signal_data["entry_timing"] = entry_timing
 
-        # AI and strategy blocks
+        # -----------------------------
+        # AI + STRATEGY BLOCKS
+        # -----------------------------
         try:
             ai_text = build_ai_explanation(signal_data)
             if not isinstance(ai_text, dict):
@@ -1308,11 +1351,11 @@ def update_live_signal(market):
             print(f"⚠️ get_setup_type failed for {market}: {e}", flush=True)
             setup_type = None
 
-        # Align setup type with final signal
+        # Align setup type with signal
         if isinstance(setup_type, str):
-            if signal in ["SELL", "BEARISH"] and "Bullish" in setup_type:
+            if signal == "SELL" and "Bullish" in setup_type:
                 setup_type = setup_type.replace("Bullish", "Bearish")
-            elif signal in ["BUY", "BULLISH"] and "Bearish" in setup_type:
+            elif signal == "BUY" and "Bearish" in setup_type:
                 setup_type = setup_type.replace("Bearish", "Bullish")
 
         wick_data = calculate_live_wicks(current_candle)
@@ -1329,6 +1372,12 @@ def update_live_signal(market):
         except Exception as e:
             print(f"⚠️ get_execution_guidance failed for {market}: {e}", flush=True)
             execution_guidance = None
+
+        print(
+            f"FINAL SIGNAL: {market} signal={signal} confidence={confidence} "
+            f"entry_timing={entry_timing} readiness={trade_readiness}",
+            flush=True
+        )
 
         new_payload = {
             "market": market,
@@ -1392,6 +1441,7 @@ def update_live_signal(market):
         print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
         import traceback
         traceback.print_exc()
+
 
 
 def run_polling_fallback():
