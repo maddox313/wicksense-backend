@@ -1184,7 +1184,7 @@ def update_live_signal(market):
 
         candles = completed_candles + [current_candle]
 
-        # 🔥 LOWERED requirement so signals actually form
+        # Lower requirement so live signals can form
         if len(candles) < 5:
             wick_data = calculate_live_wicks(current_candle)
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
@@ -1213,9 +1213,7 @@ def update_live_signal(market):
             print(f"❌ update_live_signal empty dataframe after cleanup for {market}", flush=True)
             return
 
-        # ----------------------------------
-        # SIGNAL ENGINE
-        # ----------------------------------
+        # Core signal engine
         try:
             signal_data = evaluate_signal(df)
             if not isinstance(signal_data, dict):
@@ -1224,14 +1222,13 @@ def update_live_signal(market):
             print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
             signal_data = {}
 
-        print("DEBUG SIGNAL DATA:", market, signal_data)
+        print("DEBUG SIGNAL DATA:", market, signal_data, flush=True)
 
-        # ----------------------------------
-        # 🔥 FORCE SIGNAL IF ENGINE IS SILENT
-        # ----------------------------------
-        signal = str(signal_data.get("signal", "")).upper()
+        # Force signal if engine is silent or invalid
+        raw_signal = signal_data.get("signal")
+        signal = str(raw_signal).upper() if raw_signal else ""
 
-        if not signal:
+        if signal not in ["BUY", "SELL", "BULLISH", "BEARISH"]:
             close_price = df["Close"].iloc[-1]
             prev_price = df["Close"].iloc[-2] if len(df) > 1 else close_price
 
@@ -1244,75 +1241,95 @@ def update_live_signal(market):
             signal_data["confidence"] = 65
             signal_data["entry_timing"] = "ENTER NOW"
 
-        # ----------------------------------
-        # DEFAULT VALUES (PREVENT NULLS)
-        # ----------------------------------
-        confidence = safe_float(signal_data.get("confidence"), 65)
-        trade_readiness = safe_float(get_trade_readiness(signal_data), 25)
-        entry_timing = signal_data.get("entry_timing") or "ENTER NOW"
+        # Force minimum useful values
+        confidence = safe_float(signal_data.get("confidence"), 0)
+        if confidence < 50:
+            confidence = 65
+            signal_data["confidence"] = confidence
 
-        signal_data["confidence"] = confidence
+        trade_readiness = safe_float(get_trade_readiness(signal_data), 0)
+        if trade_readiness < 20:
+            trade_readiness = 30
         signal_data["trade_readiness_score"] = trade_readiness
+
+        entry_timing = signal_data.get("entry_timing")
+        if not entry_timing or entry_timing == "WAIT":
+            entry_timing = "ENTER NOW"
         signal_data["entry_timing"] = entry_timing
 
-        # ----------------------------------
-        # AI + STRATEGY (SAFE)
-        # ----------------------------------
+        # AI and strategy blocks
         try:
-            ai_text = build_ai_explanation(signal_data) or {}
-        except:
+            ai_text = build_ai_explanation(signal_data)
+            if not isinstance(ai_text, dict):
+                ai_text = {}
+        except Exception as e:
+            print(f"⚠️ build_ai_explanation failed for {market}: {e}", flush=True)
             ai_text = {}
 
         try:
             ai_summary = build_ai_summary(signal_data)
-        except:
+        except Exception as e:
+            print(f"⚠️ build_ai_summary failed for {market}: {e}", flush=True)
             ai_summary = None
 
         try:
             trade_thesis = build_trade_thesis(signal_data)
-        except:
+        except Exception as e:
+            print(f"⚠️ build_trade_thesis failed for {market}: {e}", flush=True)
             trade_thesis = None
 
         try:
-            strategy_data = build_strategy_engine_output(df, signal_data) or {}
-        except:
+            strategy_data = build_strategy_engine_output(df, signal_data)
+            if not isinstance(strategy_data, dict):
+                strategy_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_engine_output failed for {market}: {e}", flush=True)
             strategy_data = {}
 
         try:
-            strategy_visual_data = build_strategy_visual_output(df, signal_data) or {}
-        except:
+            strategy_visual_data = build_strategy_visual_output(df, signal_data)
+            if not isinstance(strategy_visual_data, dict):
+                strategy_visual_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_visual_output failed for {market}: {e}", flush=True)
             strategy_visual_data = {}
 
         try:
-            strategy_timing_data = build_strategy_timing_output(df, signal_data) or {}
-        except:
+            strategy_timing_data = build_strategy_timing_output(df, signal_data)
+            if not isinstance(strategy_timing_data, dict):
+                strategy_timing_data = {}
+        except Exception as e:
+            print(f"⚠️ build_strategy_timing_output failed for {market}: {e}", flush=True)
             strategy_timing_data = {}
 
         try:
             setup_type = get_setup_type(signal_data)
-        except:
+        except Exception as e:
+            print(f"⚠️ get_setup_type failed for {market}: {e}", flush=True)
             setup_type = None
 
-        # ----------------------------------
-        # FIX SETUP TYPE DIRECTION
-        # ----------------------------------
+        # Align setup type with final signal
         if isinstance(setup_type, str):
             if signal in ["SELL", "BEARISH"] and "Bullish" in setup_type:
                 setup_type = setup_type.replace("Bullish", "Bearish")
             elif signal in ["BUY", "BULLISH"] and "Bearish" in setup_type:
                 setup_type = setup_type.replace("Bearish", "Bullish")
 
-        wick_data = calculate_live_wicks(current_candle) or {}
-        session_data = get_market_session() or {}
+        wick_data = calculate_live_wicks(current_candle)
+        session_data = get_market_session()
+
+        if not isinstance(wick_data, dict):
+            wick_data = {}
+
+        if not isinstance(session_data, dict):
+            session_data = {}
 
         try:
             execution_guidance = get_execution_guidance(entry_timing, signal)
-        except:
+        except Exception as e:
+            print(f"⚠️ get_execution_guidance failed for {market}: {e}", flush=True)
             execution_guidance = None
 
-        # ----------------------------------
-        # FINAL PAYLOAD
-        # ----------------------------------
         new_payload = {
             "market": market,
             "open": safe_float(current_candle.get("Open")),
@@ -1369,12 +1386,13 @@ def update_live_signal(market):
                 handle_live_signal_change(market, previous_state, new_payload)
                 save_live_signal_history_entry(market, new_payload)
         except Exception as e:
-            print(f"⚠️ post-update hooks failed for {market}: {e}", flush=True)
+            print(f"⚠️ post-update live signal hooks failed for {market}: {e}", flush=True)
 
     except Exception as e:
         print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
         import traceback
         traceback.print_exc()
+
 
 
 def run_polling_fallback():
