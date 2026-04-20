@@ -1405,12 +1405,57 @@ def update_live_signal(market):
 
         candles = completed_candles + [current_candle]
 
-        # Need enough candles for the live signal engine
-        if len(candles) < 5:
+        # -----------------------------------
+        # EARLY SIGNAL FORMATION
+        # -----------------------------------
+        if len(candles) < 2:
             wick_data = calculate_live_wicks(current_candle)
-            state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
-            state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
-            state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+            if not isinstance(wick_data, dict):
+                wick_data = {}
+
+            state.update({
+                "market": market,
+                "open": safe_float(current_candle.get("Open")),
+                "high": safe_float(current_candle.get("High")),
+                "low": safe_float(current_candle.get("Low")),
+                "close": safe_float(current_candle.get("Close")),
+                "upper_wick": safe_float(wick_data.get("upper_wick")),
+                "lower_wick": safe_float(wick_data.get("lower_wick")),
+
+                # Early fallback values so ranking/UI are not empty
+                "signal": "NEUTRAL",
+                "confidence": 25.0,
+                "entry_timing": "WAIT",
+                "trade_readiness_score": 10.0,
+
+                "setup_type": None,
+                "ai_summary": None,
+                "trade_thesis": None,
+                "risk_note": None,
+                "strategy_recommendation": None,
+                "strategy_reason": None,
+                "execution_guidance": None,
+                "session_label": None,
+                "active_sessions": None,
+                "liquidity_profile": None,
+                "utc_hour": None,
+
+                "breakout": None,
+                "liquidity_event": None,
+                "trendline": None,
+                "pattern": None,
+
+                "breakout_zone": None,
+                "entry_zone": None,
+                "support_levels": None,
+                "resistance_levels": None,
+                "trendline_points": [],
+                "strategy_visual_bias": None,
+                "confirmation_state": None,
+
+                "last_updated": datetime.utcnow().isoformat() + "Z"
+            })
+
             LIVE_MARKET_STATE[market] = state
             return
 
@@ -1434,9 +1479,9 @@ def update_live_signal(market):
             print(f"❌ update_live_signal empty dataframe after cleanup for {market}", flush=True)
             return
 
-        # -----------------------------
+        # -----------------------------------
         # CORE SIGNAL ENGINE
-        # -----------------------------
+        # -----------------------------------
         try:
             raw_signal = evaluate_signal(df)
             if not isinstance(raw_signal, dict):
@@ -1445,7 +1490,6 @@ def update_live_signal(market):
             print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
             raw_signal = {}
 
-        # Lock signal data immediately so it cannot drift
         signal_data = {
             "signal": raw_signal.get("signal"),
             "confidence": safe_float(raw_signal.get("confidence"), 0),
@@ -1466,9 +1510,9 @@ def update_live_signal(market):
 
         print(f"DEBUG SIGNAL DATA: {market} {signal_data}", flush=True)
 
-        # -----------------------------
-        # FORCE SIGNAL IF EMPTY/INVALID
-        # -----------------------------
+        # -----------------------------------
+        # FORCE SIGNAL IF EMPTY OR INVALID
+        # -----------------------------------
         raw_signal_value = signal_data.get("signal")
         signal = str(raw_signal_value).upper() if raw_signal_value else ""
 
@@ -1483,7 +1527,6 @@ def update_live_signal(market):
 
             signal_data["signal"] = signal
 
-        # Normalize direction labels
         if signal == "BULLISH":
             signal = "BUY"
         elif signal == "BEARISH":
@@ -1491,9 +1534,9 @@ def update_live_signal(market):
 
         signal_data["signal"] = signal
 
-        # -----------------------------
+        # -----------------------------------
         # FORCE MINIMUM USEFUL VALUES
-        # -----------------------------
+        # -----------------------------------
         confidence = safe_float(signal_data.get("confidence"), 0)
         if confidence < 50:
             confidence = 65
@@ -1519,9 +1562,9 @@ def update_live_signal(market):
             entry_timing = "ENTER NOW"
         signal_data["entry_timing"] = entry_timing
 
-        # -----------------------------
+        # -----------------------------------
         # AI + STRATEGY BLOCKS
-        # -----------------------------
+        # -----------------------------------
         try:
             ai_text = build_ai_explanation(signal_data)
             if not isinstance(ai_text, dict):
@@ -1572,7 +1615,6 @@ def update_live_signal(market):
             print(f"⚠️ get_setup_type failed for {market}: {e}", flush=True)
             setup_type = None
 
-        # Align setup type with signal
         if isinstance(setup_type, str):
             if signal == "SELL" and "Bullish" in setup_type:
                 setup_type = setup_type.replace("Bullish", "Bearish")
@@ -1662,7 +1704,6 @@ def update_live_signal(market):
         print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
         import traceback
         traceback.print_exc()
-
 
 
 def run_polling_fallback():
