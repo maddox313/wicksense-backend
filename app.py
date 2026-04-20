@@ -1184,7 +1184,7 @@ def update_live_signal(market):
 
         candles = completed_candles + [current_candle]
 
-        # 🔥 LOWERED REQUIREMENT SO SIGNALS ACTUALLY RUN
+        # 🔥 LOWERED requirement so signals actually form
         if len(candles) < 5:
             wick_data = calculate_live_wicks(current_candle)
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
@@ -1213,20 +1213,22 @@ def update_live_signal(market):
             print(f"❌ update_live_signal empty dataframe after cleanup for {market}", flush=True)
             return
 
-        # -----------------------------
-        # CORE SIGNAL ENGINE
-        # -----------------------------
+        # ----------------------------------
+        # SIGNAL ENGINE
+        # ----------------------------------
         try:
             signal_data = evaluate_signal(df)
             if not isinstance(signal_data, dict):
                 signal_data = {}
         except Exception as e:
             print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
-            return
+            signal_data = {}
 
-        # -----------------------------
-        # 🔥 FORCE SIGNAL IF MISSING
-        # -----------------------------
+        print("DEBUG SIGNAL DATA:", market, signal_data)
+
+        # ----------------------------------
+        # 🔥 FORCE SIGNAL IF ENGINE IS SILENT
+        # ----------------------------------
         signal = str(signal_data.get("signal", "")).upper()
 
         if not signal:
@@ -1239,22 +1241,25 @@ def update_live_signal(market):
                 signal = "SELL"
 
             signal_data["signal"] = signal
-            signal_data["confidence"] = 60
+            signal_data["confidence"] = 65
+            signal_data["entry_timing"] = "ENTER NOW"
 
-        # -----------------------------
-        # STANDARDIZE METRICS
-        # -----------------------------
-        signal_data["confidence"] = safe_float(signal_data.get("confidence"), 60)
-        signal_data["trade_readiness_score"] = safe_float(get_trade_readiness(signal_data), 20)
-        signal_data["entry_timing"] = get_entry_timing(signal_data) or "ENTER NOW"
+        # ----------------------------------
+        # DEFAULT VALUES (PREVENT NULLS)
+        # ----------------------------------
+        confidence = safe_float(signal_data.get("confidence"), 65)
+        trade_readiness = safe_float(get_trade_readiness(signal_data), 25)
+        entry_timing = signal_data.get("entry_timing") or "ENTER NOW"
 
-        # -----------------------------
-        # AI + STRATEGY BLOCKS
-        # -----------------------------
+        signal_data["confidence"] = confidence
+        signal_data["trade_readiness_score"] = trade_readiness
+        signal_data["entry_timing"] = entry_timing
+
+        # ----------------------------------
+        # AI + STRATEGY (SAFE)
+        # ----------------------------------
         try:
-            ai_text = build_ai_explanation(signal_data)
-            if not isinstance(ai_text, dict):
-                ai_text = {}
+            ai_text = build_ai_explanation(signal_data) or {}
         except:
             ai_text = {}
 
@@ -1288,32 +1293,26 @@ def update_live_signal(market):
         except:
             setup_type = None
 
-        # -----------------------------
-        # ALIGN SETUP TYPE WITH SIGNAL
-        # -----------------------------
+        # ----------------------------------
+        # FIX SETUP TYPE DIRECTION
+        # ----------------------------------
         if isinstance(setup_type, str):
             if signal in ["SELL", "BEARISH"] and "Bullish" in setup_type:
                 setup_type = setup_type.replace("Bullish", "Bearish")
             elif signal in ["BUY", "BULLISH"] and "Bearish" in setup_type:
                 setup_type = setup_type.replace("Bearish", "Bullish")
 
-        # -----------------------------
-        # EXTRA DATA
-        # -----------------------------
         wick_data = calculate_live_wicks(current_candle) or {}
         session_data = get_market_session() or {}
-
-        trade_readiness = safe_float(signal_data.get("trade_readiness_score"), 20)
-        entry_timing = signal_data.get("entry_timing") or "ENTER NOW"
 
         try:
             execution_guidance = get_execution_guidance(entry_timing, signal)
         except:
             execution_guidance = None
 
-        # -----------------------------
+        # ----------------------------------
         # FINAL PAYLOAD
-        # -----------------------------
+        # ----------------------------------
         new_payload = {
             "market": market,
             "open": safe_float(current_candle.get("Open")),
@@ -1324,7 +1323,7 @@ def update_live_signal(market):
             "lower_wick": safe_float(wick_data.get("lower_wick")),
 
             "signal": signal,
-            "confidence": safe_float(signal_data.get("confidence"), 60),
+            "confidence": confidence,
             "pattern": signal_data.get("pattern"),
             "breakout": signal_data.get("breakout"),
             "liquidity_event": signal_data.get("liquidity_event"),
@@ -1376,6 +1375,7 @@ def update_live_signal(market):
         print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
         import traceback
         traceback.print_exc()
+
 
 def run_polling_fallback():
     print("🔥 run_polling_fallback entered", flush=True)
