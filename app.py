@@ -1406,9 +1406,8 @@ def run_polling_fallback():
                     # -----------------------------
                     # SCALE VALIDATION GUARD (FIXED)
                     # -----------------------------
-                  # NaturalGas validation disabled (supports all price ranges)
-
-
+                    # NaturalGas validation disabled
+                     
                     if market == "Forex" and (close_p <= 0 or close_p > 5):
                         print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
                         continue
