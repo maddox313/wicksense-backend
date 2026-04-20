@@ -911,9 +911,7 @@ def get_current_live_top_trade():
             signal_raw = "BUY"
 
         confidence = safe_float(data.get("confidence"), 0.0)
-        if confidence == 0:
-           continue
-
+        
         entry_timing = str(data.get("entry_timing", "")).strip().upper()
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
 
