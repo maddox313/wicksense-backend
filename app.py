@@ -1394,7 +1394,6 @@ def update_live_signal(market):
         traceback.print_exc()
 
 
-
 def run_polling_fallback():
     print("🔥 run_polling_fallback entered", flush=True)
 
@@ -1436,10 +1435,10 @@ def run_polling_fallback():
                         continue
 
                     # -----------------------------
-                    # SCALE VALIDATION GUARD (FIXED)
+                    # SCALE VALIDATION GUARDS
                     # -----------------------------
                     # NaturalGas validation disabled
-                     
+
                     if market == "Forex" and (close_p <= 0 or close_p > 5):
                         print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
                         continue
@@ -1448,22 +1447,31 @@ def run_polling_fallback():
                         print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
                         continue
 
-                    # Build updated state
-                    state = LIVE_MARKET_STATE.get(market, {})
+                    # -----------------------------
+                    # MERGE INTO EXISTING STATE
+                    # -----------------------------
+                    existing = LIVE_MARKET_STATE.get(market, {}).copy()
 
-                    state["current_candle"] = {
-                        "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
-                        "Open": open_p,
-                        "High": high_p,
-                        "Low": low_p,
-                        "Close": close_p
-                    }
+                    existing.update({
+                        "current_candle": {
+                            "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                            "Open": open_p,
+                            "High": high_p,
+                            "Low": low_p,
+                            "Close": close_p
+                        },
+                        "open": open_p,
+                        "high": high_p,
+                        "low": low_p,
+                        "close": close_p,
+                        "last_updated": datetime.utcnow().isoformat() + "Z"
+                    })
 
-                    state["last_updated"] = datetime.utcnow().isoformat() + "Z"
+                    LIVE_MARKET_STATE[market] = existing
 
-                    LIVE_MARKET_STATE[market] = state
-
-                    # Update signals
+                    # -----------------------------
+                    # UPDATE SIGNALS
+                    # -----------------------------
                     try:
                         update_live_signal(market)
                     except Exception as signal_error:
