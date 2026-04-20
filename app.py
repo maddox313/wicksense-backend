@@ -907,7 +907,13 @@ def get_current_live_top_trade():
 
     for market_name, data in LIVE_MARKET_STATE.items():
         signal_raw = str(data.get("signal", "")).strip().upper()
+        if not signal_raw:
+            signal_raw = "BUY"
+
         confidence = safe_float(data.get("confidence"), 0.0)
+        if confidence == 0:
+           continue
+
         entry_timing = str(data.get("entry_timing", "")).strip().upper()
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
 
@@ -933,13 +939,14 @@ def get_current_live_top_trade():
 
         if score > best_score:
             best_score = score
+            candle = data.get("current_candle", {})
             best_trade = {
                 "market": market_name,
                 "last_updated": data.get("last_updated"),
-                "open": data.get("open"),
-                "high": data.get("high"),
-                "low": data.get("low"),
-                "close": data.get("close"),
+                "open": candle.get("Open"),
+                "high": candle.get("High"),
+                "low": candle.get("Low"),
+                "close": candle.get("Close"),
                 "upper_wick": data.get("upper_wick"),
                 "lower_wick": data.get("lower_wick"),
                 "signal": normalized_signal,
