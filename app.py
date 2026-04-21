@@ -1096,14 +1096,15 @@ def get_all_live_ranked_trades():
 # CHART SYMBOL MAPPING
 # ============================
 def get_chart_symbol(market):
-    mapping = {
-        "Gold": "OANDA:XAUUSD",
+    chart_map = {
         "NASDAQ": "OANDA:NAS100USD",
+        "Gold": "OANDA:XAUUSD",
         "Forex": "OANDA:EURUSD",
+        "NaturalGas": "TVC:NATGAS",
         "DowJones": "OANDA:US30USD",
         "Futures": "CME_MINI:ES1!"
     }
-    return mapping.get(market, "OANDA:EURUSD")
+    return chart_map.get(market, "")
 
 
 # ============================
