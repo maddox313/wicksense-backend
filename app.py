@@ -3206,15 +3206,21 @@ def evaluate_signal(df):
     # -----------------------------
     total_points = bullish + bearish
 
-    if bullish > bearish:
+    signal_gap = 2
+    min_points_required = 3
+
+    if bullish >= bearish + signal_gap and bullish >= min_points_required:
         signal = "Bullish"
         confidence = round((bullish / total_points) * 100, 2) if total_points > 0 else 0.0
-    elif bearish > bullish:
+
+    elif bearish >= bullish + signal_gap and bearish >= min_points_required:
         signal = "Bearish"
         confidence = round((bearish / total_points) * 100, 2) if total_points > 0 else 0.0
+
     else:
         signal = "Neutral"
         confidence = 50.0
+
 
     return {
         "signal": signal,
