@@ -1087,7 +1087,7 @@ def get_all_live_ranked_trades():
             continue
 
     # Sort best → worst
-    ranked.sort(key=lambda x: x.get("trade_quality_score", 0), reverse=True)
+    ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
 
     return ranked
 
