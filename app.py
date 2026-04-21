@@ -3088,6 +3088,7 @@ def trendline_strategy(df: pd.DataFrame):
         "trendline": trendline_label
     }
 
+
 def evaluate_signal(df):
     df = add_indicators(df)
     latest = df.iloc[-1]
