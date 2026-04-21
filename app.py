@@ -3117,10 +3117,10 @@ def evaluate_signal(df):
     pattern = pattern_result[0] if isinstance(pattern_result, tuple) else pattern_result
 
     # -----------------------------
-    # STRATEGY EXECUTION (FIXED)
+    # STRATEGY EXECUTION
     # -----------------------------
     strategy_functions = [
-        ("wick_strategy", wick_strategy, (latest, pattern)),   # ✅ FIXED
+        ("wick_strategy", wick_strategy, (latest, pattern)),
         ("ma_trend_strategy", ma_trend_strategy, latest),
         ("vwap_strategy", vwap_strategy, latest),
         ("support_resistance_strategy", support_resistance_strategy, latest),
@@ -3202,7 +3202,7 @@ def evaluate_signal(df):
         reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
-    # FINAL SIGNAL
+    # FINAL SIGNAL (UPGRADED)
     # -----------------------------
     total_points = bullish + bearish
 
@@ -3220,7 +3220,6 @@ def evaluate_signal(df):
     else:
         signal = "Neutral"
         confidence = 50.0
-
 
     return {
         "signal": signal,
@@ -3242,7 +3241,6 @@ def evaluate_signal(df):
         "bearish_points": bearish,
         "reasons": reasons
     }
-
 
 
 def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30, user_id: str = None):
