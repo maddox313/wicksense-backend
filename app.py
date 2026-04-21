@@ -3093,8 +3093,8 @@ def evaluate_signal(df):
     df = add_indicators(df)
     latest = df.iloc[-1]
 
-    bullish = 0
-    bearish = 0
+    bullish = 0.0
+    bearish = 0.0
     reasons = []
 
     breakout_label = None
@@ -3139,8 +3139,8 @@ def evaluate_signal(df):
             if not isinstance(result, dict):
                 result = {}
 
-            bullish_points = int(result.get("bullish", 0) or 0)
-            bearish_points = int(result.get("bearish", 0) or 0)
+            bullish_points = float(result.get("bullish", 0) or 0)
+            bearish_points = float(result.get("bearish", 0) or 0)
 
             strategy_reasons = result.get("reasons", [])
             if not isinstance(strategy_reasons, list):
@@ -3177,14 +3177,22 @@ def evaluate_signal(df):
             }
 
     # -----------------------------
+    # DOJI / INDECISION PENALTY
+    # -----------------------------
+    if pattern == "Doji":
+        bullish *= 0.6
+        bearish *= 0.6
+        reasons.append("Doji detected - reduced confidence due to market indecision")
+
+    # -----------------------------
     # CONFLUENCE BONUS
     # -----------------------------
     bullish_agreement = 0
     bearish_agreement = 0
 
     for breakdown in strategy_breakdown.values():
-        b = int(breakdown.get("bullish", 0) or 0)
-        s = int(breakdown.get("bearish", 0) or 0)
+        b = float(breakdown.get("bullish", 0) or 0)
+        s = float(breakdown.get("bearish", 0) or 0)
 
         if b > s and b > 0:
             bullish_agreement += 1
@@ -3202,20 +3210,27 @@ def evaluate_signal(df):
         reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
+    # SCORE CAP
+    # -----------------------------
+    bullish = min(bullish, 100)
+    bearish = min(bearish, 100)
+
+    # -----------------------------
     # FINAL SIGNAL (UPGRADED)
     # -----------------------------
     total_points = bullish + bearish
+    difference = abs(bullish - bearish)
 
-    signal_gap = 2
-    min_points_required = 3
+    MIN_DIFFERENCE = 3
+    MIN_CONFIDENCE = 60
 
-    if bullish >= bearish + signal_gap and bullish >= min_points_required:
-        signal = "Bullish"
+    if bullish > bearish and difference >= MIN_DIFFERENCE:
         confidence = round((bullish / total_points) * 100, 2) if total_points > 0 else 0.0
+        signal = "Bullish" if confidence >= MIN_CONFIDENCE else "Neutral"
 
-    elif bearish >= bullish + signal_gap and bearish >= min_points_required:
-        signal = "Bearish"
+    elif bearish > bullish and difference >= MIN_DIFFERENCE:
         confidence = round((bearish / total_points) * 100, 2) if total_points > 0 else 0.0
+        signal = "Bearish" if confidence >= MIN_CONFIDENCE else "Neutral"
 
     else:
         signal = "Neutral"
@@ -3241,6 +3256,7 @@ def evaluate_signal(df):
         "bearish_points": bearish,
         "reasons": reasons
     }
+
 
 
 def evaluate_signal_from_market(market: str, timeframe: str, outputsize: int = 30, user_id: str = None):
