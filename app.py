@@ -933,14 +933,7 @@ def get_current_live_top_trade():
         else:
             continue
 
-        score = confidence
-
-        if entry_timing == "ENTER NOW":
-            score += 25
-        elif entry_timing == "WAIT":
-            score += 10
-        elif entry_timing == "AVOID":
-            score -= 10
+        score = compute_trade_score(data)
 
         score += readiness * 0.2
 
@@ -985,7 +978,7 @@ def get_current_live_top_trade():
                 "active_sessions": data.get("active_sessions"),
                 "liquidity_profile": data.get("liquidity_profile"),
                 "utc_hour": data.get("utc_hour"),
-                "top_trade_score": round(score, 2)
+                "trade_quality_score": round(score, 2)
             }
 
     return best_trade or {}
@@ -1104,6 +1097,98 @@ def get_current_setup_forming_trade():
 
     return best_trade
 
+def compute_trade_score(state):
+    try:
+        confidence = safe_float(state.get("confidence"), 0)
+        readiness = safe_float(state.get("trade_readiness_score"), 0)
+        entry_timing = str(state.get("entry_timing", "")).upper()
+
+        breakout = str(state.get("breakout", "")).lower()
+        liquidity = str(state.get("liquidity_event", "")).lower()
+        trendline = str(state.get("trendline", "")).lower()
+        pattern = str(state.get("pattern", "")).lower()
+        session = str(state.get("session_label", "")).upper()
+
+        high = safe_float(state.get("high"), 0)
+        low = safe_float(state.get("low"), 0)
+
+        # -----------------------------
+        # BASE SCORE
+        # -----------------------------
+        score = confidence
+
+        # -----------------------------
+        # ENTRY TIMING (VERY IMPORTANT)
+        # -----------------------------
+        if entry_timing == "ENTER NOW":
+            score += 30
+        elif entry_timing == "WAIT":
+            score += 10
+        elif entry_timing == "AVOID":
+            score -= 20
+
+        # -----------------------------
+        # READINESS
+        # -----------------------------
+        score += readiness * 0.25
+
+        # -----------------------------
+        # BREAKOUT LOGIC
+        # -----------------------------
+        if "failed" in breakout:
+            score += 15   # failed breakout = reversal opportunity
+        elif "breakout" in breakout:
+            score += 10
+
+        # -----------------------------
+        # LIQUIDITY EVENTS (BIG EDGE)
+        # -----------------------------
+        if "liquidity sweep" in liquidity:
+            score += 20
+        elif "liquidity grab" in liquidity:
+            score += 15
+
+        # -----------------------------
+        # TRENDLINE CONFLUENCE
+        # -----------------------------
+        if "support" in trendline or "resistance" in trendline:
+            score += 10
+
+        # -----------------------------
+        # PATTERN STRENGTH
+        # -----------------------------
+        if "engulfing" in pattern:
+            score += 12
+        elif "pin bar" in pattern:
+            score += 10
+        elif "doji" in pattern:
+            score -= 5   # indecision
+
+        # -----------------------------
+        # SESSION POWER
+        # -----------------------------
+        if session == "NYSE":
+            score += 10
+        elif session == "LONDON":
+            score += 7
+        elif session == "ASIA":
+            score += 3
+
+        # -----------------------------
+        # VOLATILITY BOOST
+        # -----------------------------
+        volatility = abs(high - low)
+
+        if volatility > 0:
+            score += min(volatility * 10, 15)  # cap boost
+
+        return round(score, 2)
+
+    except Exception as e:
+        print(f"❌ compute_trade_score error: {e}", flush=True)
+        return 0
+
+
 def get_all_live_ranked_trades():
     ranked = []
 
@@ -1124,14 +1209,7 @@ def get_all_live_ranked_trades():
             readiness = safe_float(data.get("trade_readiness_score"), 0.0)
             entry_timing = str(data.get("entry_timing", "")).strip().upper()
 
-            score = confidence
-
-            if entry_timing == "ENTER NOW":
-                score += 25
-            elif entry_timing == "WAIT":
-                score += 10
-            elif entry_timing == "AVOID":
-                score -= 10
+            score = compute_trade_score(data)
 
             score += readiness * 0.2
 
@@ -1144,7 +1222,7 @@ def get_all_live_ranked_trades():
                 "setup_type": data.get("setup_type"),
                 "entry_timing": data.get("entry_timing"),
                 "trade_readiness_score": readiness,
-                "top_trade_score": round(score, 2),
+                "trade_quality_score": round(score, 2),
 
                 "chart_symbol": get_chart_symbol(market_name),
 
@@ -1190,7 +1268,7 @@ def get_all_live_ranked_trades():
             continue
 
     ranked.sort(
-        key=lambda x: x.get("top_trade_score", 0),
+        key=lambda x: x.get("trade_quality_score", 0),
         reverse=True
     )
 
