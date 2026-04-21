@@ -1676,6 +1676,7 @@ def update_live_signal(market):
 
             # 🔥 NEW MASTER SYSTEM
             "trade_quality_score": trade_quality_score,
+            "top_trade_score": trade_quality_score,
             "trade_status": trade_status,
             "entry_timing": entry_timing,
             "execution_guidance": execution_guidance,
@@ -1723,47 +1724,50 @@ def update_live_signal(market):
 
 
 def update_trade_ranking(market):
+    global TRADE_RANKINGS
+
     try:
         state = LIVE_MARKET_STATE.get(market, {})
 
         if not state:
             return
 
-        # Must have signal + score
-        signal = state.get("signal")
-        score = state.get("top_trade_score", 0)
+        signal = str(state.get("signal", "")).upper()
+        score = safe_float(state.get("top_trade_score"), 0)
 
-        if signal not in ["BUY", "SELL"]:
+        # Only rank real directional trades with a usable score
+        if signal not in ["BUY", "SELL", "BULLISH", "BEARISH"]:
             return
 
-        # Build trade object
+        if score <= 0:
+            return
+
         trade = dict(state)
         trade["market"] = market
 
-        # Remove old version of this market
-        LIVE_TRADE_RANKINGS["all_ranked"] = [
-            t for t in LIVE_TRADE_RANKINGS["all_ranked"]
-            if t["market"] != market
+        # Remove existing copy of this market
+        TRADE_RANKINGS["all_ranked"] = [
+            t for t in TRADE_RANKINGS["all_ranked"]
+            if t.get("market") != market
         ]
 
-        # Add updated trade
-        LIVE_TRADE_RANKINGS["all_ranked"].append(trade)
+        # Add updated version
+        TRADE_RANKINGS["all_ranked"].append(trade)
 
-        # Sort by score
-        LIVE_TRADE_RANKINGS["all_ranked"].sort(
-            key=lambda x: x.get("top_trade_score", 0),
+        # Sort highest score first
+        TRADE_RANKINGS["all_ranked"].sort(
+            key=lambda x: safe_float(x.get("top_trade_score"), 0),
             reverse=True
         )
 
-        # Set top + next best
-        ranked = LIVE_TRADE_RANKINGS["all_ranked"]
+        ranked = TRADE_RANKINGS["all_ranked"]
 
-        LIVE_TRADE_RANKINGS["top_trade"] = ranked[0] if ranked else None
-        LIVE_TRADE_RANKINGS["next_best"] = ranked[1:5]
+        TRADE_RANKINGS["top_trade"] = ranked[0] if ranked else None
+        TRADE_RANKINGS["next_best"] = ranked[1:5] if len(ranked) > 1 else []
+        TRADE_RANKINGS["last_updated"] = datetime.utcnow().isoformat() + "Z"
 
     except Exception as e:
-        print(f"❌ Ranking error for {market}: {e}")
-
+        print(f"❌ Ranking error for {market}: {e}", flush=True)
 
 
 def run_polling_fallback():
@@ -1784,7 +1788,6 @@ def run_polling_fallback():
 
             for market in list(LIVE_MARKET_STATE.keys()):
                 try:
-                    # Fetch market data
                     df = fetch_live_market_data(
                         market,
                         interval="1min",
@@ -1820,6 +1823,26 @@ def run_polling_fallback():
                         continue
 
                     # -----------------------------
+                    # BUILD COMPLETED CANDLES
+                    # -----------------------------
+                    completed_candles = []
+                    if len(df) > 1:
+                        historical_rows = df.iloc[:-1].copy()
+
+                        for _, row in historical_rows.iterrows():
+                            try:
+                                completed_candles.append({
+                                    "minute": str(row.get("Datetime", "")),
+                                    "Open": float(row["Open"]),
+                                    "High": float(row["High"]),
+                                    "Low": float(row["Low"]),
+                                    "Close": float(row["Close"])
+                                })
+                            except Exception as candle_error:
+                                print(f"⚠️ Skipping completed candle for {market}: {candle_error}", flush=True)
+                                continue
+
+                    # -----------------------------
                     # MERGE INTO EXISTING STATE
                     # -----------------------------
                     existing = LIVE_MARKET_STATE.get(market, {}).copy()
@@ -1832,6 +1855,7 @@ def run_polling_fallback():
                             "Low": low_p,
                             "Close": close_p
                         },
+                        "completed_candles": completed_candles,
                         "open": open_p,
                         "high": high_p,
                         "low": low_p,
@@ -1842,7 +1866,7 @@ def run_polling_fallback():
                     LIVE_MARKET_STATE[market] = existing
 
                     # -----------------------------
-                    # UPDATE SIGNALS
+                    # UPDATE SIGNALS + RANKING
                     # -----------------------------
                     try:
                         update_live_signal(market)
@@ -1854,7 +1878,6 @@ def run_polling_fallback():
                     print(f"❌ Market loop error for {market}: {market_error}", flush=True)
                     continue
 
-            # Update stream status
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
             STREAM_STATUS["status"] = "connected"
             STREAM_STATUS["provider"] = "polling"
@@ -1873,6 +1896,7 @@ def run_polling_fallback():
             print(f"❌ polling error: {e}", flush=True)
 
             time.sleep(5)
+
 
 def get_simulated_base_price(market):
     base_prices = {
