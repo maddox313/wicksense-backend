@@ -88,6 +88,17 @@ LIVE_MARKET_STATE = {
     "Futures": {}
 }
 
+# -----------------------------
+# TRADE RANKING SYSTEM
+# -----------------------------
+TRADE_RANKINGS = {
+    "all_ranked": [],
+    "top_trade": None,
+    "next_best": [],
+    "last_updated": None
+}
+
+
 STREAM_STATUS = {
     "status": "disconnected",
     "provider": None,
@@ -1709,6 +1720,50 @@ def update_live_signal(market):
 
     except Exception as e:
         print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
+
+
+def update_trade_ranking(market):
+    try:
+        state = LIVE_MARKET_STATE.get(market, {})
+
+        if not state:
+            return
+
+        # Must have signal + score
+        signal = state.get("signal")
+        score = state.get("top_trade_score", 0)
+
+        if signal not in ["BUY", "SELL"]:
+            return
+
+        # Build trade object
+        trade = dict(state)
+        trade["market"] = market
+
+        # Remove old version of this market
+        LIVE_TRADE_RANKINGS["all_ranked"] = [
+            t for t in LIVE_TRADE_RANKINGS["all_ranked"]
+            if t["market"] != market
+        ]
+
+        # Add updated trade
+        LIVE_TRADE_RANKINGS["all_ranked"].append(trade)
+
+        # Sort by score
+        LIVE_TRADE_RANKINGS["all_ranked"].sort(
+            key=lambda x: x.get("top_trade_score", 0),
+            reverse=True
+        )
+
+        # Set top + next best
+        ranked = LIVE_TRADE_RANKINGS["all_ranked"]
+
+        LIVE_TRADE_RANKINGS["top_trade"] = ranked[0] if ranked else None
+        LIVE_TRADE_RANKINGS["next_best"] = ranked[1:5]
+
+    except Exception as e:
+        print(f"❌ Ranking error for {market}: {e}")
+
 
 
 def run_polling_fallback():
