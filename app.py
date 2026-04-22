@@ -80,13 +80,17 @@ LIVE_SCAN_CACHE = {
 }
 
 LIVE_MARKET_STATE = {
-    "NASDAQ": {},
-    "Gold": {},
-    "Forex": {},
-    "NaturalGas": {},
-    "DowJones": {},
-    "Futures": {}
+    "market_count": 0,
+    "markets": {
+        "NASDAQ": {},
+        "Gold": {},
+        "Forex": {},
+        "NaturalGas": {},
+        "DowJones": {},
+        "Futures": {}
+    }
 }
+
 
 # -----------------------------
 # TRADE RANKING SYSTEM
@@ -998,31 +1002,94 @@ def get_chart_symbol(market):
     }
     return chart_map.get(market, "")
 
+# =========================================================
+# LIVE BEST TRADES LOGIC
+# =========================================================
 
-# ============================
-# API ROUTE: LIVE BEST TRADES
-# ============================
-@app.route("/live-best-trades", methods=["GET"])
+def get_live_best_trades_logic():
+    live_markets = LIVE_MARKET_STATE.get("markets", {})
+    ranked = []
+
+    if not isinstance(live_markets, dict):
+        return {
+            "top_trade": None,
+            "next_best": [],
+            "all_ranked": [],
+            "count": 0
+        }
+
+    for market_name, data in live_markets.items():
+        try:
+            if not isinstance(data, dict):
+                continue
+
+            signal = str(data.get("signal", "NEUTRAL")).upper()
+            confidence = float(data.get("confidence", 0) or 0)
+            readiness = float(data.get("trade_readiness_score", 0) or 0)
+            quality = float(data.get("trade_quality_score", 0) or 0)
+
+            if signal not in ["BULLISH", "BEARISH", "BUY", "SELL"]:
+                continue
+
+            total_score = round((confidence * 0.4) + (readiness * 0.3) + (quality * 0.3), 2)
+
+            enriched = dict(data)
+            enriched["market"] = market_name
+            enriched["top_trade_score"] = total_score
+
+            if signal == "BULLISH":
+                enriched["signal"] = "BUY"
+            elif signal == "BEARISH":
+                enriched["signal"] = "SELL"
+
+            ranked.append(enriched)
+
+        except Exception as e:
+            print(f"Ranking error for {market_name}: {e}")
+
+    ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
+
+    return {
+        "top_trade": ranked[0] if ranked else None,
+        "next_best": ranked[1:3] if len(ranked) > 1 else [],
+        "all_ranked": ranked,
+        "count": len(ranked)
+    }
+
+
+# =========================================================
+# LIVE BEST TRADES ROUTE
+# =========================================================
+
+@app.route('/live-best-trades', methods=['GET'])
 def live_best_trades():
     try:
-        ensure_live_engine_started()
-
-        import time
-        time.sleep(1)
-
-        trades = get_all_live_ranked_trades()
-
+        return jsonify(get_live_best_trades_logic())
+    except Exception as e:
         return jsonify({
-            "count": len(trades),
-            "top_trade": trades[0] if trades else None,
-            "next_best": trades[1:5] if len(trades) > 1 else [],
-            "all_ranked": trades
-        })
+            "error": "Failed to load live best trades",
+            "details": str(e)
+        }), 500
+
+
+# =========================================================
+# LIVE TOP TRADE ROUTE
+# =========================================================
+
+@app.route('/live-top-trade', methods=['GET'])
+def live_top_trade():
+    try:
+        results = get_live_best_trades_logic()
+        top_trade = results.get("top_trade")
+
+        if not top_trade:
+            return jsonify({})
+
+        return jsonify(top_trade)
 
     except Exception as e:
         return jsonify({
-            "error": "Failed to load live ranked trades",
-            "details": str(e)
+            "error": str(e)
         }), 500
 
 
@@ -4937,30 +5004,6 @@ def live_signals():
             "error": "Failed to load live signals",
             "details": str(e)
         }), 500
-
-
-@app.route('/live-top-trade', methods=['GET'])
-def live_top_trade():
-    try:
-        data = get_live_best_trades_logic()  # whatever function builds your trades
-
-        all_trades = data.get("all_ranked", [])
-
-        if not all_trades:
-            return jsonify({})
-
-        # Sort by score (make sure you have a score field)
-        top_trade = sorted(
-            all_trades,
-            key=lambda x: x.get("top_trade_score", 0),
-            reverse=True
-        )[0]
-
-        return jsonify(top_trade)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 
 
 @app.route("/debug-live-state", methods=["GET"])
