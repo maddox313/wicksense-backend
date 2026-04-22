@@ -4939,26 +4939,28 @@ def live_signals():
         }), 500
 
 
-@app.route("/live-top-trade", methods=["GET"])
+@app.route('/live-top-trade', methods=['GET'])
 def live_top_trade():
     try:
-        ensure_live_engine_started()
+        data = get_live_best_trades_logic()  # whatever function builds your trades
 
-        import time
-        time.sleep(1)
+        all_trades = data.get("all_ranked", [])
 
-        best_trade = get_current_setup_forming_trade()
-
-        if not best_trade:
+        if not all_trades:
             return jsonify({})
 
-        return jsonify(best_trade)
+        # Sort by score (make sure you have a score field)
+        top_trade = sorted(
+            all_trades,
+            key=lambda x: x.get("top_trade_score", 0),
+            reverse=True
+        )[0]
+
+        return jsonify(top_trade)
 
     except Exception as e:
-        return jsonify({
-            "error": "Failed to load live top trade",
-            "details": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/debug-live-state", methods=["GET"])
