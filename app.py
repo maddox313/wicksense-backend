@@ -1007,7 +1007,6 @@ def live_best_trades():
     try:
         ensure_live_engine_started()
 
-        # small delay so polling fills data
         import time
         time.sleep(1)
 
@@ -1194,14 +1193,19 @@ def get_all_live_ranked_trades():
 
     for market_name, data in LIVE_MARKET_STATE.items():
         try:
-            raw_signal = data.get("signal")
-            signal = str(raw_signal).upper() if raw_signal else ""
+            if not isinstance(data, dict):
+                continue
 
+            raw_signal = data.get("signal")
+            signal = str(raw_signal).upper().strip() if raw_signal else ""
+
+            # Normalize signals
             if signal == "BULLISH":
                 signal = "BUY"
             elif signal == "BEARISH":
                 signal = "SELL"
 
+            # Skip non-tradeable signals
             if signal not in ["BUY", "SELL"]:
                 continue
 
@@ -1209,9 +1213,11 @@ def get_all_live_ranked_trades():
             readiness = safe_float(data.get("trade_readiness_score"), 0.0)
             entry_timing = str(data.get("entry_timing", "")).strip().upper()
 
-            score = compute_trade_score(data)
+            # Optional threshold filter
+            if confidence < 60:
+                continue
 
-            score += readiness * 0.2
+            score = compute_trade_score(data)
 
             candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
 
@@ -1273,6 +1279,7 @@ def get_all_live_ranked_trades():
     )
 
     return ranked
+
 
 def detect_auto_trigger_candidates():
     triggered_trades = []
@@ -4941,7 +4948,17 @@ def live_signals():
 def live_top_trade():
     try:
         ensure_live_engine_started()
-        return jsonify(get_current_live_top_trade() or {})
+
+        import time
+        time.sleep(1)
+
+        best_trade = get_current_setup_forming_trade()
+
+        if not best_trade:
+            return jsonify({})
+
+        return jsonify(best_trade)
+
     except Exception as e:
         return jsonify({
             "error": "Failed to load live top trade",
