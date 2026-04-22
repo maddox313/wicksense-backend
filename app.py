@@ -1199,31 +1199,26 @@ def get_all_live_ranked_trades():
             raw_signal = data.get("signal")
             signal = str(raw_signal).upper().strip() if raw_signal else ""
 
-            # Normalize signals
             if signal == "BULLISH":
                 signal = "BUY"
             elif signal == "BEARISH":
                 signal = "SELL"
 
-            # Skip non-tradeable signals
-            if signal not in ["BUY", "SELL"]:
-                continue
-
             confidence = safe_float(data.get("confidence"), 0.0)
             readiness = safe_float(data.get("trade_readiness_score"), 0.0)
-            entry_timing = str(data.get("entry_timing", "")).strip().upper()
+            score = safe_float(data.get("trade_quality_score"), 0.0)
 
-            # Optional threshold filter
-            if confidence < 60:
-                continue
-
-            score = compute_trade_score(data)
+            # TEMP TESTING MODE
+            # Allow developing trades through
+            if signal in ["NEUTRAL", ""]:
+                if confidence < 55 and readiness < 35 and score < 35:
+                    continue
 
             candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
 
             trade = {
                 "market": market_name,
-                "signal": signal,
+                "signal": signal if signal else "NEUTRAL",
                 "confidence": confidence,
                 "setup_type": data.get("setup_type"),
                 "entry_timing": data.get("entry_timing"),
