@@ -1891,15 +1891,16 @@ def seed_live_market_state():
 
     print("🌱 Seeding live market state...", flush=True)
 
-    # ✅ FORCE markets to exist FIRST
     LIVE_MARKET_STATE = {
-        "Forex": {},
-        "Gold": {},
-        "NaturalGas": {},
-        "NASDAQ": {},
-        "DowJones": {},
-        "Futures": {}
-    }
+         "markets": {
+           "Forex": {},
+           "Gold": {},
+           "NaturalGas": {},
+           "NASDAQ": {},
+           "DowJones": {},
+           "Futures": {}
+        }
+    } 
 
     for market in LIVE_MARKET_STATE.keys():
         try:
