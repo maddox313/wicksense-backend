@@ -1758,7 +1758,7 @@ def update_trade_ranking(market):
 def run_polling_fallback():
     print("🔥 run_polling_fallback entered", flush=True)
 
-    global POLLING_ACTIVE, STREAM_STATUS
+    global POLLING_ACTIVE, STREAM_STATUS, LIVE_MARKET_STATE
 
     POLLING_ACTIVE = True
     STREAM_STATUS["status"] = "connected"
@@ -1771,7 +1771,14 @@ def run_polling_fallback():
         try:
             print("🔄 polling loop tick", flush=True)
 
-            for market in list(LIVE_MARKET_STATE.keys()):
+            live_markets = LIVE_MARKET_STATE.get("markets", {})
+
+            if not isinstance(live_markets, dict):
+                print("❌ LIVE_MARKET_STATE['markets'] is missing or invalid", flush=True)
+                time.sleep(10)
+                continue
+
+            for market in list(live_markets.keys()):
                 try:
                     df = fetch_live_market_data(
                         market,
@@ -1794,11 +1801,6 @@ def run_polling_fallback():
                         print(f"❌ Parse error for {market}: {parse_error}", flush=True)
                         continue
 
-                    # -----------------------------
-                    # SCALE VALIDATION GUARDS
-                    # -----------------------------
-                    # NaturalGas validation disabled
-
                     if market == "Forex" and (close_p <= 0 or close_p > 5):
                         print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
                         continue
@@ -1807,10 +1809,8 @@ def run_polling_fallback():
                         print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
                         continue
 
-                    # -----------------------------
-                    # BUILD COMPLETED CANDLES
-                    # -----------------------------
                     completed_candles = []
+
                     if len(df) > 1:
                         historical_rows = df.iloc[:-1].copy()
 
@@ -1827,12 +1827,10 @@ def run_polling_fallback():
                                 print(f"⚠️ Skipping completed candle for {market}: {candle_error}", flush=True)
                                 continue
 
-                    # -----------------------------
-                    # MERGE INTO EXISTING STATE
-                    # -----------------------------
-                    existing = LIVE_MARKET_STATE.get(market, {}).copy()
+                    existing = live_markets.get(market, {}).copy()
 
                     existing.update({
+                        "market": market,
                         "current_candle": {
                             "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
                             "Open": open_p,
@@ -1848,11 +1846,8 @@ def run_polling_fallback():
                         "last_updated": datetime.utcnow().isoformat() + "Z"
                     })
 
-                    LIVE_MARKET_STATE[market] = existing
+                    LIVE_MARKET_STATE["markets"][market] = existing
 
-                    # -----------------------------
-                    # UPDATE SIGNALS + RANKING
-                    # -----------------------------
                     try:
                         update_live_signal(market)
                         update_trade_ranking(market)
@@ -1879,7 +1874,6 @@ def run_polling_fallback():
             STREAM_STATUS["websocket_active"] = False
 
             print(f"❌ polling error: {e}", flush=True)
-
             time.sleep(5)
 
 
