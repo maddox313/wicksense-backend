@@ -801,7 +801,17 @@ def safe_float(value, default=0.0):
 def update_live_candle(market, price):
     global LIVE_MARKET_STATE
 
-    state = LIVE_MARKET_STATE.get(market, {})
+    # Ensure markets structure exists
+    if "markets" not in LIVE_MARKET_STATE:
+        return
+
+    markets = LIVE_MARKET_STATE["markets"]
+
+    # Ensure this specific market exists
+    if market not in markets:
+        return
+
+    state = markets.get(market, {})
     now = datetime.utcnow()
     minute_key = now.strftime("%Y-%m-%d %H:%M")
 
@@ -828,7 +838,9 @@ def update_live_candle(market, price):
     state["current_candle"] = current_candle
     state["last_updated"] = now.isoformat() + "Z"
 
-    LIVE_MARKET_STATE[market] = state
+    # 🔥 CRITICAL FIX: write back into markets layer
+    LIVE_MARKET_STATE["markets"][market] = state
+
 
 def calculate_live_wicks(candle):
     open_price = safe_float(candle.get("Open"))
