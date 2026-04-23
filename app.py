@@ -1891,18 +1891,20 @@ def seed_live_market_state():
 
     print("🌱 Seeding live market state...", flush=True)
 
-    LIVE_MARKET_STATE = {
-         "markets": {
-           "Forex": {},
-           "Gold": {},
-           "NaturalGas": {},
-           "NASDAQ": {},
-           "DowJones": {},
-           "Futures": {}
-        }
-    } 
+    # Ensure correct structure
+    if not isinstance(LIVE_MARKET_STATE, dict):
+        LIVE_MARKET_STATE = {}
 
-    for market in LIVE_MARKET_STATE.keys():
+    LIVE_MARKET_STATE["markets"] = {
+        "Forex": {},
+        "Gold": {},
+        "NaturalGas": {},
+        "NASDAQ": {},
+        "DowJones": {},
+        "Futures": {}
+    }
+
+    for market in LIVE_MARKET_STATE["markets"].keys():
         try:
             print(f"🌱 Seeding {market}", flush=True)
 
@@ -1939,9 +1941,21 @@ def seed_live_market_state():
 
                 base_price = close_price
 
-            LIVE_MARKET_STATE[market] = {
+            current_candle = completed_candles[-1].copy()
+
+            LIVE_MARKET_STATE["markets"][market] = {
+                "market": market,
                 "completed_candles": completed_candles,
-                "current_candle": completed_candles[-1].copy(),
+                "current_candle": current_candle,
+                "open": current_candle.get("Open"),
+                "high": current_candle.get("High"),
+                "low": current_candle.get("Low"),
+                "close": current_candle.get("Close"),
+                "signal": "NEUTRAL",
+                "confidence": 0,
+                "trade_quality_score": 0,
+                "trade_readiness_score": 0,
+                "top_trade_score": 0,
                 "last_updated": datetime.utcnow().isoformat() + "Z"
             }
 
@@ -1959,12 +1973,15 @@ def run_live_signal_engine():
 
     while True:
         try:
-            for market in LIVE_MARKET_STATE.keys():
-                state = LIVE_MARKET_STATE.get(market, {})
+            for market in LIVE_MARKET_STATE["markets"].keys():
+                state = LIVE_MARKET_STATE["markets"].get(market, {})
                 current_candle = state.get("current_candle")
 
                 if current_candle:
-                    base_price = safe_float(current_candle.get("Close"), get_simulated_base_price(market))
+                    base_price = safe_float(
+                        current_candle.get("Close"),
+                        get_simulated_base_price(market)
+                    )
                 else:
                     base_price = get_simulated_base_price(market)
 
@@ -1984,13 +2001,11 @@ def run_live_signal_engine():
                 check_for_live_top_trade_change()
                 process_auto_triggers()
 
-            STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
-            time.sleep(2)
+            time.sleep(10)
 
         except Exception as e:
-            STREAM_STATUS["status"] = "error"
-            STREAM_STATUS["last_error"] = str(e)
-            time.sleep(5)
+            print(f"❌ Live signal engine error: {e}", flush=True)
+            time.sleep(10)
 
 
 def start_twelvedata_stream():
