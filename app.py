@@ -2080,7 +2080,7 @@ def start_twelvedata_stream_with_reconnect():
 
 
 def ensure_live_engine_started():
-    global LIVE_ENGINE_STARTED
+    global LIVE_ENGINE_STARTED, LIVE_MARKET_STATE
 
     if LIVE_ENGINE_STARTED:
         return
@@ -2089,9 +2089,14 @@ def ensure_live_engine_started():
         if LIVE_ENGINE_STARTED:
             return
 
-        print("🚀 Starting live engine with EMPTY market state only")
+        print("🚀 Starting live engine with EMPTY market state only", flush=True)
 
-        # Ensure structure exists
+        # -------------------------------------------------
+        # ENSURE BASE STRUCTURE EXISTS
+        # -------------------------------------------------
+        if not isinstance(LIVE_MARKET_STATE, dict):
+            LIVE_MARKET_STATE = {}
+
         if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
             LIVE_MARKET_STATE["markets"] = {
                 "Forex": {},
@@ -2102,22 +2107,39 @@ def ensure_live_engine_started():
                 "Futures": {}
             }
 
-        # Properly initialize each market
+        # -------------------------------------------------
+        # INITIALIZE EACH MARKET CLEANLY
+        # -------------------------------------------------
         for market in LIVE_MARKET_STATE["markets"].keys():
             LIVE_MARKET_STATE["markets"][market] = {
                 "completed_candles": [],
                 "current_candle": None,
+                "signal": "NEUTRAL",
+                "confidence": 0,
+                "trade_quality_score": 0,
+                "trade_readiness_score": 0,
+                "top_trade_score": 0,
                 "last_updated": datetime.utcnow().isoformat() + "Z"
             }
 
+        # -------------------------------------------------
+        # START ENGINE THREAD
+        # -------------------------------------------------
         def start_engine():
-            if TWELVE_DATA_API_KEY and websocket is not None:
-                start_twelvedata_stream_with_reconnect()
-            else:
-                run_polling_fallback()
+            try:
+                if TWELVE_DATA_API_KEY and websocket is not None:
+                    print("📡 Using TwelveData WebSocket stream", flush=True)
+                    start_twelvedata_stream_with_reconnect()
+                else:
+                    print("🛰️ Falling back to polling engine", flush=True)
+                    run_polling_fallback()
+            except Exception as e:
+                print(f"❌ Engine start error: {e}", flush=True)
 
         threading.Thread(target=start_engine, daemon=True).start()
+
         LIVE_ENGINE_STARTED = True
+
 
 
 def get_string_from_request(key, default_value):
