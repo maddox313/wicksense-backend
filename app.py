@@ -3279,6 +3279,14 @@ def evaluate_signal(df):
         reasons.append("Bearish confluence bonus applied")
 
     # -----------------------------
+    # MOMENTUM PUSH (ANTI-NEUTRAL BOOST)
+    # -----------------------------
+    if bullish > bearish:
+        bullish += 0.5
+    elif bearish > bullish:
+        bearish += 0.5
+
+    # -----------------------------
     # SCORE CAP
     # -----------------------------
     bullish = min(bullish, 100)
@@ -3290,8 +3298,8 @@ def evaluate_signal(df):
     total_points = bullish + bearish
     difference = abs(bullish - bearish)
 
-    MIN_DIFFERENCE = 3
-    MIN_CONFIDENCE = 60
+    MIN_DIFFERENCE = 1.5
+    MIN_CONFIDENCE = 52
 
     if bullish > bearish and difference >= MIN_DIFFERENCE:
         confidence = round((bullish / total_points) * 100, 2) if total_points > 0 else 0.0
