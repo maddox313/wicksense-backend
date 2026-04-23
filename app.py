@@ -2091,8 +2091,20 @@ def ensure_live_engine_started():
 
         print("🚀 Starting live engine with EMPTY market state only")
 
+        # Ensure structure exists
+        if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
+            LIVE_MARKET_STATE["markets"] = {
+                "Forex": {},
+                "Gold": {},
+                "NaturalGas": {},
+                "NASDAQ": {},
+                "DowJones": {},
+                "Futures": {}
+            }
+
+        # Properly initialize each market
         for market in LIVE_MARKET_STATE["markets"].keys():
-            state = LIVE_MARKET_STATE["markets"].get(market, {})
+            LIVE_MARKET_STATE["markets"][market] = {
                 "completed_candles": [],
                 "current_candle": None,
                 "last_updated": datetime.utcnow().isoformat() + "Z"
