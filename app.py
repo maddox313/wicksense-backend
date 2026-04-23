@@ -1003,58 +1003,82 @@ def get_chart_symbol(market):
     return chart_map.get(market, "")
 
 # =========================================================
-# LIVE BEST TRADES LOGIC
+# LIVE BEST TRADES LOGIC (FIXED + STABLE)
 # =========================================================
 
 def get_live_best_trades_logic():
-    live_markets = LIVE_MARKET_STATE.get("markets", {})
-    ranked = []
+    try:
+        live_markets = LIVE_MARKET_STATE.get("markets", {})
 
-    if not isinstance(live_markets, dict):
+        ranked = []
+
+        if not isinstance(live_markets, dict):
+            return {
+                "top_trade": None,
+                "next_best": [],
+                "all_ranked": [],
+                "count": 0
+            }
+
+        for market_name, data in live_markets.items():
+            try:
+                if not isinstance(data, dict):
+                    continue
+
+                # --- SAFE SIGNAL EXTRACTION ---
+                signal = str(data.get("signal", "")).upper()
+
+                if not signal:
+                    continue
+
+                # --- SCORES ---
+                confidence = float(data.get("confidence", 0) or 0)
+                readiness = float(data.get("trade_readiness_score", 0) or 0)
+                quality = float(data.get("trade_quality_score", 0) or 0)
+
+                # --- FINAL SCORE ---
+                total_score = round(
+                    (confidence * 0.4) +
+                    (readiness * 0.3) +
+                    (quality * 0.3),
+                    2
+                )
+
+                enriched = dict(data)
+                enriched["market"] = market_name
+                enriched["top_trade_score"] = total_score
+
+                # --- NORMALIZE SIGNAL ---
+                if signal in ["BULLISH", "BUY"]:
+                    enriched["signal"] = "BUY"
+                elif signal in ["BEARISH", "SELL"]:
+                    enriched["signal"] = "SELL"
+                else:
+                    enriched["signal"] = "NEUTRAL"
+
+                ranked.append(enriched)
+
+            except Exception as e:
+                print(f"Ranking error for {market_name}: {e}")
+
+        # --- SORT BEST TO WORST ---
+        ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
+
+        return {
+            "top_trade": ranked[0] if ranked else None,
+            "next_best": ranked[1:3] if len(ranked) > 1 else [],
+            "all_ranked": ranked,
+            "count": len(ranked)
+        }
+
+    except Exception as e:
+        print(f"CRITICAL ranking error: {e}")
         return {
             "top_trade": None,
             "next_best": [],
             "all_ranked": [],
             "count": 0
         }
-
-    for market_name, data in live_markets.items():
-        try:
-            if not isinstance(data, dict):
-                continue
-
-            signal = str(data.get("signal", "NEUTRAL")).upper()
-            confidence = float(data.get("confidence", 0) or 0)
-            readiness = float(data.get("trade_readiness_score", 0) or 0)
-            quality = float(data.get("trade_quality_score", 0) or 0)
-
-            if signal not in ["BULLISH", "BEARISH", "BUY", "SELL"]:
-                continue
-
-            total_score = round((confidence * 0.4) + (readiness * 0.3) + (quality * 0.3), 2)
-
-            enriched = dict(data)
-            enriched["market"] = market_name
-            enriched["top_trade_score"] = total_score
-
-            if signal == "BULLISH":
-                enriched["signal"] = "BUY"
-            elif signal == "BEARISH":
-                enriched["signal"] = "SELL"
-
-            ranked.append(enriched)
-
-        except Exception as e:
-            print(f"Ranking error for {market_name}: {e}")
-
-    ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
-
-    return {
-        "top_trade": ranked[0] if ranked else None,
-        "next_best": ranked[1:3] if len(ranked) > 1 else [],
-        "all_ranked": ranked,
-        "count": len(ranked)
-    }
 
 
 # =========================================================
@@ -1091,7 +1115,6 @@ def live_top_trade():
         return jsonify({
             "error": str(e)
         }), 500
-
 
 
 def get_current_setup_forming_trade():
