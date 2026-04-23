@@ -1293,13 +1293,18 @@ def compute_trade_score(state):
 def get_all_live_ranked_trades():
     ranked = []
 
-    for market_name, data in LIVE_MARKET_STATE.items():
+    live_markets = LIVE_MARKET_STATE.get("markets", {})
+
+    if not isinstance(live_markets, dict):
+        return ranked
+
+    for market_name, data in live_markets.items():
         try:
             if not isinstance(data, dict):
                 continue
 
             raw_signal = data.get("signal")
-            signal = str(raw_signal).upper().strip() if raw_signal else ""
+            signal = str(raw_signal).upper().strip() if raw_signal else "NEUTRAL"
 
             if signal == "BULLISH":
                 signal = "BUY"
@@ -1320,12 +1325,13 @@ def get_all_live_ranked_trades():
 
             trade = {
                 "market": market_name,
-                "signal": signal if signal else "NEUTRAL",
+                "signal": signal,
                 "confidence": confidence,
                 "setup_type": data.get("setup_type"),
                 "entry_timing": data.get("entry_timing"),
                 "trade_readiness_score": readiness,
                 "trade_quality_score": round(score, 2),
+                "top_trade_score": round(score, 2),
 
                 "chart_symbol": get_chart_symbol(market_name),
 
