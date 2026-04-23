@@ -1542,7 +1542,15 @@ def update_live_signal(market):
     global LIVE_MARKET_STATE
 
     try:
-        state = LIVE_MARKET_STATE.get(market, {})
+        if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
+            return
+
+        markets = LIVE_MARKET_STATE["markets"]
+
+        if market not in markets:
+            return
+
+        state = markets.get(market, {})
         previous_state = dict(state) if isinstance(state, dict) else {}
 
         current_candle = state.get("current_candle")
@@ -1564,7 +1572,7 @@ def update_live_signal(market):
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
             state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
             state["last_updated"] = datetime.utcnow().isoformat() + "Z"
-            LIVE_MARKET_STATE[market] = state
+            LIVE_MARKET_STATE["markets"][market] = state
             return
 
         df = pd.DataFrame(candles)
@@ -1604,9 +1612,6 @@ def update_live_signal(market):
         trade_readiness = safe_float(get_trade_readiness(signal_data), 0)
         confluence_bonus = safe_float(signal_data.get("confluence_bonus"), 0)
 
-        # -----------------------------
-        # 🔥 TRADE QUALITY SCORE (MASTER ENGINE)
-        # -----------------------------
         trade_quality_score = (
             confidence * 0.5 +
             trade_readiness * 0.35 +
@@ -1616,9 +1621,6 @@ def update_live_signal(market):
         trade_quality_score = max(0, min(100, trade_quality_score))
         trade_quality_score = round(trade_quality_score, 2)
 
-        # -----------------------------
-        # ENTRY TIMING LOGIC (FIXED)
-        # -----------------------------
         if trade_quality_score < 40:
             entry_timing = "AVOID"
             trade_status = "WAIT"
@@ -1634,9 +1636,6 @@ def update_live_signal(market):
 
         signal = str(signal_data.get("signal", "")).upper()
 
-        # -----------------------------
-        # SUPPORT DATA
-        # -----------------------------
         wick_data = calculate_live_wicks(current_candle) or {}
         session_data = get_market_session() or {}
 
@@ -1645,11 +1644,10 @@ def update_live_signal(market):
         except Exception:
             execution_guidance = None
 
-        # -----------------------------
-        # FINAL PAYLOAD
-        # -----------------------------
         new_payload = {
             "market": market,
+            "completed_candles": completed_candles,
+            "current_candle": current_candle,
 
             "open": safe_float(current_candle.get("Open")),
             "high": safe_float(current_candle.get("High")),
@@ -1662,8 +1660,6 @@ def update_live_signal(market):
             "signal": signal,
             "confidence": confidence,
             "trade_readiness_score": trade_readiness,
-
-            # 🔥 NEW MASTER SYSTEM
             "trade_quality_score": trade_quality_score,
             "top_trade_score": trade_quality_score,
             "trade_status": trade_status,
@@ -1691,15 +1687,9 @@ def update_live_signal(market):
             "last_updated": datetime.utcnow().isoformat() + "Z"
         }
 
-        # -----------------------------
-        # SAVE STATE
-        # -----------------------------
         state.update(new_payload)
-        LIVE_MARKET_STATE[market] = state
+        LIVE_MARKET_STATE["markets"][market] = state
 
-        # -----------------------------
-        # CHANGE DETECTION
-        # -----------------------------
         try:
             changed = has_live_signal_changed(previous_state, new_payload)
             if changed:
