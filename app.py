@@ -5092,13 +5092,18 @@ def live_signals():
 @app.route("/debug-live-state", methods=["GET"])
 def debug_live_state():
     try:
+        ensure_live_engine_started()
+
+        markets = LIVE_MARKET_STATE.get("markets", {})
+
         return jsonify({
-            "market_count": len(LIVE_MARKET_STATE),
-            "markets": LIVE_MARKET_STATE
+            "market_count": len(markets),
+            "markets": markets
         })
+
     except Exception as e:
         return jsonify({
-            "error": "Failed to inspect live state",
+            "error": "Failed to load debug live state",
             "details": str(e)
         }), 500
 
