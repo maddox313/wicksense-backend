@@ -3688,31 +3688,68 @@ def get_entry_timing(signal_data):
 
 def get_trade_readiness(signal_data):
     try:
+        if not isinstance(signal_data, dict):
+            return 0
+
         score = 0
 
-        if signal_data.get("pattern"):
-            score += 15
+        signal = str(signal_data.get("signal", "")).upper()
+        confidence = safe_float(signal_data.get("confidence"), 0)
 
-        if signal_data.get("breakout"):
+        pattern = signal_data.get("pattern")
+        breakout = signal_data.get("breakout")
+        liquidity_event = signal_data.get("liquidity_event")
+        trendline = signal_data.get("trendline")
+        setup_type = signal_data.get("setup_type")
+
+        support = signal_data.get("support")
+        resistance = signal_data.get("resistance")
+
+        # Directional signal
+        if signal in ["BUY", "SELL", "BULLISH", "BEARISH"]:
             score += 20
 
-        if signal_data.get("liquidity_event"):
+        # Confidence strength
+        if confidence >= 90:
+            score += 25
+        elif confidence >= 80:
             score += 20
-
-        if signal_data.get("trendline"):
+        elif confidence >= 70:
             score += 15
+        elif confidence >= 60:
+            score += 10
+        elif confidence >= 50:
+            score += 5
 
-        if signal_data.get("setup_type"):
+        # Strategy confirmations
+        if pattern:
             score += 10
 
-        confidence = safe_float(signal_data.get("confidence"), 0)
-        score += confidence * 0.20
+        if breakout:
+            score += 15
+
+        if liquidity_event:
+            score += 15
+
+        if trendline:
+            score += 10
+
+        if setup_type:
+            score += 10
+
+        # Market structure
+        if support:
+            score += 5
+
+        if resistance:
+            score += 5
 
         return round(max(0, min(score, 100)), 2)
 
     except Exception as e:
         print(f"❌ get_trade_readiness error: {e}", flush=True)
         return 0
+
 
 
 def get_execution_guidance(entry_timing, signal):
