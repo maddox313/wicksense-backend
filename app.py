@@ -1709,19 +1709,26 @@ def update_live_signal(market):
 
 
 def update_trade_ranking(market):
-    global TRADE_RANKINGS
+    global TRADE_RANKINGS, LIVE_MARKET_STATE
 
     try:
-        state = LIVE_MARKET_STATE.get(market, {})
+        if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
+            return
 
-        if not state:
+        state = LIVE_MARKET_STATE["markets"].get(market, {})
+
+        if not isinstance(state, dict) or not state:
             return
 
         signal = str(state.get("signal", "")).upper()
         score = safe_float(state.get("trade_quality_score"), 0)
 
-        # Only rank real directional trades with a usable score
-        if signal not in ["BUY", "SELL", "BULLISH", "BEARISH"]:
+        if signal == "BULLISH":
+            signal = "BUY"
+        elif signal == "BEARISH":
+            signal = "SELL"
+
+        if signal not in ["BUY", "SELL"]:
             return
 
         if score <= 0:
@@ -1729,17 +1736,19 @@ def update_trade_ranking(market):
 
         trade = dict(state)
         trade["market"] = market
+        trade["signal"] = signal
+        trade["chart_symbol"] = get_chart_symbol(market)
 
-        # Remove existing copy of this market
+        if "all_ranked" not in TRADE_RANKINGS or not isinstance(TRADE_RANKINGS["all_ranked"], list):
+            TRADE_RANKINGS["all_ranked"] = []
+
         TRADE_RANKINGS["all_ranked"] = [
             t for t in TRADE_RANKINGS["all_ranked"]
             if t.get("market") != market
         ]
 
-        # Add updated version
         TRADE_RANKINGS["all_ranked"].append(trade)
 
-        # Sort highest score first
         TRADE_RANKINGS["all_ranked"].sort(
             key=lambda x: safe_float(x.get("trade_quality_score"), 0),
             reverse=True
