@@ -1780,14 +1780,10 @@ def run_polling_fallback():
         try:
             print("🔄 polling loop tick", flush=True)
 
-            live_markets = LIVE_MARKET_STATE.get("markets", {})
+            if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
+                LIVE_MARKET_STATE["markets"] = {}
 
-            if not isinstance(live_markets, dict):
-                print("❌ LIVE_MARKET_STATE['markets'] is missing or invalid", flush=True)
-                time.sleep(10)
-                continue
-
-            for market in list(live_markets.keys()):
+            for market in list(LIVE_MARKET_STATE["markets"].keys()):
                 try:
                     df = fetch_live_market_data(
                         market,
@@ -1818,28 +1814,39 @@ def run_polling_fallback():
                         print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
                         continue
 
-                    completed_candles = []
+                    existing = LIVE_MARKET_STATE["markets"].get(market, {})
+                    if not isinstance(existing, dict):
+                        existing = {}
+
+                    existing_completed = existing.get("completed_candles", [])
+                    if not isinstance(existing_completed, list):
+                        existing_completed = []
+
+                    completed_candles = existing_completed.copy()
 
                     if len(df) > 1:
                         historical_rows = df.iloc[:-1].copy()
 
                         for _, row in historical_rows.iterrows():
                             try:
-                                completed_candles.append({
+                                new_candle = {
                                     "minute": str(row.get("Datetime", "")),
                                     "Open": float(row["Open"]),
                                     "High": float(row["High"]),
                                     "Low": float(row["Low"]),
                                     "Close": float(row["Close"])
-                                })
+                                }
+
+                                if not any(c.get("minute") == new_candle["minute"] for c in completed_candles):
+                                    completed_candles.append(new_candle)
+
                             except Exception as candle_error:
                                 print(f"⚠️ Skipping completed candle for {market}: {candle_error}", flush=True)
                                 continue
 
-                    existing = live_markets.get(market, {}).copy()
+                    completed_candles = completed_candles[-50:]
 
                     existing.update({
-                        "market": market,
                         "current_candle": {
                             "minute": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
                             "Open": open_p,
