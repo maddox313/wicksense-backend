@@ -1057,7 +1057,12 @@ def get_live_best_trades_logic():
                 )
 
                 enriched = dict(data)
+
+                # ✅ FORCE THESE FIELDS TO EXIST (THIS FIXES YOUR ISSUE)
                 enriched["market"] = market_name
+                enriched["confidence"] = confidence
+                enriched["trade_readiness_score"] = readiness
+                enriched["trade_quality_score"] = quality
                 enriched["top_trade_score"] = total_score
 
                 # --- NORMALIZE SIGNAL ---
@@ -1071,7 +1076,7 @@ def get_live_best_trades_logic():
                 ranked.append(enriched)
 
             except Exception as e:
-                print(f"Ranking error for {market_name}: {e}")
+                print(f"Ranking error for {market_name}: {e}", flush=True)
 
         # --- SORT BEST TO WORST ---
         ranked.sort(key=lambda x: x.get("top_trade_score", 0), reverse=True)
@@ -1084,7 +1089,7 @@ def get_live_best_trades_logic():
         }
 
     except Exception as e:
-        print(f"CRITICAL ranking error: {e}")
+        print(f"CRITICAL ranking error: {e}", flush=True)
         return {
             "top_trade": None,
             "next_best": [],
