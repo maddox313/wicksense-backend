@@ -1627,18 +1627,25 @@ def update_live_signal(market):
         trade_quality_score = max(0, min(100, trade_quality_score))
         trade_quality_score = round(trade_quality_score, 2)
 
+        # -----------------------------
+        # ENTRY LOGIC (FIXED + OPTIMIZED)
+        # -----------------------------
         if trade_quality_score < 30:
             entry_timing = "AVOID"
             trade_status = "WAIT"
+
         elif trade_quality_score < 50:
             entry_timing = "WAIT"
             trade_status = "DEVELOPING"
+
         elif trade_quality_score < 70:
             entry_timing = "EARLY ENTRY"
             trade_status = "FORMING"
+
         elif trade_quality_score < 85:
-            entry timing = "ENTER NOW"
+            entry_timing = "ENTER NOW"
             trade_status = "READY"
+
         else:
             entry_timing = "ENTER NOW"
             trade_status = "HOT"
