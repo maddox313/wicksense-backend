@@ -1573,7 +1573,7 @@ def update_live_signal(market):
         # -----------------------------
         # MINIMUM DATA CHECK
         # -----------------------------
-        if len(candles) < 5:
+        if len(candles) < 3:
             wick_data = calculate_live_wicks(current_candle)
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
             state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
@@ -1627,14 +1627,17 @@ def update_live_signal(market):
         trade_quality_score = max(0, min(100, trade_quality_score))
         trade_quality_score = round(trade_quality_score, 2)
 
-        if trade_quality_score < 40:
+        if trade_quality_score < 30:
             entry_timing = "AVOID"
             trade_status = "WAIT"
-        elif trade_quality_score < 65:
+        elif trade_quality_score < 50:
             entry_timing = "WAIT"
             trade_status = "DEVELOPING"
+        elif trade_quality_score < 70:
+            entry_timing = "EARLY ENTRY"
+            trade_status = "FORMING"
         elif trade_quality_score < 85:
-            entry_timing = "ENTER NOW"
+            entry timing = "ENTER NOW"
             trade_status = "READY"
         else:
             entry_timing = "ENTER NOW"
