@@ -1045,7 +1045,7 @@ def get_live_best_trades_logic():
 
                 # --- SCORES ---
                 confidence = float(data.get("confidence", 0) or 0)
-                readiness = float(data.get("trade_readiness_score", 0) or 0)
+                readiness = float(get_trade_readiness(data))
                 quality = float(data.get("trade_quality_score", 0) or 0)
 
                 # --- FINAL SCORE ---
