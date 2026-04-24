@@ -2074,26 +2074,14 @@ def start_twelvedata_stream():
     ws.run_forever()
 
 def start_twelvedata_stream_with_reconnect():
-    global POLLING_THREAD_STARTED
-
     while True:
         try:
             start_twelvedata_stream()
         except Exception as e:
             STREAM_STATUS["status"] = "disconnected"
             STREAM_STATUS["last_error"] = str(e)
-
-        if not POLLING_ACTIVE and not POLLING_THREAD_STARTED:
-            POLLING_THREAD_STARTED = True
-
-            def polling_runner():
-                global POLLING_THREAD_STARTED
-                run_polling_fallback()
-                POLLING_THREAD_STARTED = False
-
-            threading.Thread(target=polling_runner, daemon=True).start()
-
-        time.sleep(30)
+            print(f"❌ TwelveData websocket error: {e}", flush=True)
+            time.sleep(30)
 
 
 def ensure_live_engine_started():
