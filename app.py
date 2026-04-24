@@ -1770,18 +1770,28 @@ def run_polling_fallback():
     global POLLING_ACTIVE, STREAM_STATUS, LIVE_MARKET_STATE
 
     POLLING_ACTIVE = True
+
     STREAM_STATUS["status"] = "connected"
     STREAM_STATUS["provider"] = "polling"
     STREAM_STATUS["last_error"] = None
     STREAM_STATUS["polling_active"] = True
     STREAM_STATUS["websocket_active"] = False
 
+    # 🧠 ENSURE MARKETS EXIST (CRITICAL FIX)
+    if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
+        LIVE_MARKET_STATE["markets"] = {}
+
+    DEFAULT_MARKETS = ["Forex", "Gold", "NASDAQ", "DowJones", "NaturalGas", "Futures"]
+
+    for m in DEFAULT_MARKETS:
+        if m not in LIVE_MARKET_STATE["markets"]:
+            LIVE_MARKET_STATE["markets"][m] = {}
+
+    print(f"✅ Markets initialized: {list(LIVE_MARKET_STATE['markets'].keys())}", flush=True)
+
     while POLLING_ACTIVE:
         try:
             print("🔄 polling loop tick", flush=True)
-
-            if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
-                LIVE_MARKET_STATE["markets"] = {}
 
             for market in list(LIVE_MARKET_STATE["markets"].keys()):
                 try:
@@ -1806,6 +1816,7 @@ def run_polling_fallback():
                         print(f"❌ Parse error for {market}: {parse_error}", flush=True)
                         continue
 
+                    # SCALE GUARDS
                     if market == "Forex" and (close_p <= 0 or close_p > 5):
                         print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
                         continue
@@ -1824,6 +1835,7 @@ def run_polling_fallback():
 
                     completed_candles = existing_completed.copy()
 
+                    # 🧠 BUILD HISTORY WITHOUT RESETTING
                     if len(df) > 1:
                         historical_rows = df.iloc[:-1].copy()
 
@@ -1841,7 +1853,7 @@ def run_polling_fallback():
                                     completed_candles.append(new_candle)
 
                             except Exception as candle_error:
-                                print(f"⚠️ Skipping completed candle for {market}: {candle_error}", flush=True)
+                                print(f"⚠️ Skipping candle for {market}: {candle_error}", flush=True)
                                 continue
 
                     completed_candles = completed_candles[-50:]
@@ -1864,32 +1876,27 @@ def run_polling_fallback():
 
                     LIVE_MARKET_STATE["markets"][market] = existing
 
+                    # 🚀 SIGNAL ENGINE
                     try:
                         update_live_signal(market)
                         update_trade_ranking(market)
                     except Exception as signal_error:
-                        print(f"❌ update_live_signal error for {market}: {signal_error}", flush=True)
+                        print(f"❌ Signal error for {market}: {signal_error}", flush=True)
 
                 except Exception as market_error:
                     print(f"❌ Market loop error for {market}: {market_error}", flush=True)
                     continue
 
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
-            STREAM_STATUS["status"] = "connected"
-            STREAM_STATUS["provider"] = "polling"
-            STREAM_STATUS["polling_active"] = True
-            STREAM_STATUS["websocket_active"] = False
 
             time.sleep(10)
 
         except Exception as e:
             STREAM_STATUS["last_error"] = str(e)
             STREAM_STATUS["status"] = "disconnected"
-            STREAM_STATUS["provider"] = "polling"
-            STREAM_STATUS["polling_active"] = False
-            STREAM_STATUS["websocket_active"] = False
 
             print(f"❌ polling error: {e}", flush=True)
+
             time.sleep(5)
 
 
