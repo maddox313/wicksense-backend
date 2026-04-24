@@ -3681,34 +3681,32 @@ def get_entry_timing(signal_data):
 
 
 def get_trade_readiness(signal_data):
-    score = 0
+    try:
+        score = 0
 
-    if signal_data.get("pattern"):
-        score += 20
-    if signal_data.get("breakout"):
-        score += 20
-    if signal_data.get("liquidity_event"):
-        score += 20
-    if signal_data.get("trendline"):
-        score += 15
+        if signal_data.get("pattern"):
+            score += 15
 
-    confidence = safe_float(signal_data.get("confidence"), 0)
-    score += int(confidence * 0.25)
+        if signal_data.get("breakout"):
+            score += 20
 
-    return min(score, 100)
+        if signal_data.get("liquidity_event"):
+            score += 20
 
+        if signal_data.get("trendline"):
+            score += 15
 
-    # -----------------------------
-    # Timing logic
-    # -----------------------------
-    if readiness >= 70:
-        return "ENTER NOW"
+        if signal_data.get("setup_type"):
+            score += 10
 
-    elif readiness >= 40:
-        return "WAIT"
+        confidence = safe_float(signal_data.get("confidence"), 0)
+        score += confidence * 0.20
 
-    else:
-        return "AVOID"
+        return round(max(0, min(score, 100)), 2)
+
+    except Exception as e:
+        print(f"❌ get_trade_readiness error: {e}", flush=True)
+        return 0
 
 
 def get_execution_guidance(entry_timing, signal):
