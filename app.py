@@ -1574,7 +1574,7 @@ def update_live_signal(market):
         # MINIMUM DATA CHECK
         # -----------------------------
         if len(candles) < 3:
-            wick_data = calculate_live_wicks(current_candle)
+            wick_data = calculate_live_wicks(current_candle) or {}
             state["upper_wick"] = safe_float(wick_data.get("upper_wick"))
             state["lower_wick"] = safe_float(wick_data.get("lower_wick"))
             state["last_updated"] = datetime.utcnow().isoformat() + "Z"
@@ -1628,37 +1628,57 @@ def update_live_signal(market):
         trade_quality_score = round(trade_quality_score, 2)
 
         # -----------------------------
-        # ENTRY LOGIC (FIXED + OPTIMIZED)
+        # ENTRY LOGIC
         # -----------------------------
         if trade_quality_score < 30:
             entry_timing = "AVOID"
             trade_status = "WAIT"
-
         elif trade_quality_score < 50:
             entry_timing = "WAIT"
             trade_status = "DEVELOPING"
-
         elif trade_quality_score < 70:
             entry_timing = "EARLY ENTRY"
             trade_status = "FORMING"
-
         elif trade_quality_score < 85:
             entry_timing = "ENTER NOW"
             trade_status = "READY"
-
         else:
             entry_timing = "ENTER NOW"
             trade_status = "HOT"
 
         signal = str(signal_data.get("signal", "")).upper()
 
+        if signal == "BULLISH":
+            display_signal = "BUY"
+        elif signal == "BEARISH":
+            display_signal = "SELL"
+        elif signal in ["BUY", "SELL", "NEUTRAL"]:
+            display_signal = signal
+        else:
+            display_signal = "NEUTRAL"
+
         wick_data = calculate_live_wicks(current_candle) or {}
         session_data = get_market_session() or {}
 
         try:
-            execution_guidance = get_execution_guidance(entry_timing, signal)
+            execution_guidance = get_execution_guidance(entry_timing, display_signal)
         except Exception:
             execution_guidance = None
+
+        ai_summary = signal_data.get("ai_summary") or (
+            f"{display_signal} setup detected on {market}. "
+            f"Confidence is {round(confidence, 2)}% with a trade quality score of {round(trade_quality_score, 2)}."
+        )
+
+        trade_thesis = signal_data.get("trade_thesis") or (
+            f"WickSense is reading {market} as {display_signal}. "
+            f"The system is comparing wick behavior, candle structure, support, resistance, trendline behavior, "
+            f"and current session conditions before confirming the setup."
+        )
+
+        risk_note = signal_data.get("risk_note") or (
+            "Use paper trading only while testing. Confirm entry, stop loss, target, and market direction before taking any real trade."
+        )
 
         new_payload = {
             "market": market,
@@ -1673,7 +1693,7 @@ def update_live_signal(market):
             "upper_wick": safe_float(wick_data.get("upper_wick")),
             "lower_wick": safe_float(wick_data.get("lower_wick")),
 
-            "signal": signal,
+            "signal": display_signal,
             "confidence": confidence,
             "trade_readiness_score": trade_readiness,
             "trade_quality_score": trade_quality_score,
@@ -1688,9 +1708,9 @@ def update_live_signal(market):
             "trendline": signal_data.get("trendline"),
 
             "setup_type": signal_data.get("setup_type"),
-            "ai_summary": signal_data.get("ai_summary"),
-            "trade_thesis": signal_data.get("trade_thesis"),
-            "risk_note": signal_data.get("risk_note"),
+            "ai_summary": ai_summary,
+            "trade_thesis": trade_thesis,
+            "risk_note": risk_note,
 
             "support_levels": signal_data.get("support"),
             "resistance_levels": signal_data.get("resistance"),
