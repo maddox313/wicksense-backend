@@ -1616,6 +1616,7 @@ def update_live_signal(market):
         # -----------------------------
         confidence = safe_float(signal_data.get("confidence"), 50)
         trade_readiness = safe_float(get_trade_readiness(signal_data), 0)
+        print("DEBUG READINESS:", trade_readiness, flush=True)
         confluence_bonus = safe_float(signal_data.get("confluence_bonus"), 0)
 
         trade_quality_score = (
