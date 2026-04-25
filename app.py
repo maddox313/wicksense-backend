@@ -6340,7 +6340,7 @@ def execute_paper_trade():
         market = data.get('market', "")
 
         entry = safe_float(data.get('entry'), None)
-        stop = safe_float(data.get('stop'), None)
+        stop_loss = safe_float(data.get('stop'), None)
         target = safe_float(data.get('target'), None)
         risk_percent = safe_float(data.get('risk_percent'), 1.0)
 
