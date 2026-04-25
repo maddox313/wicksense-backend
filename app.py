@@ -158,26 +158,65 @@ import time
 
 @app.route("/resolve-outcomes", methods=["POST"])
 def resolve_outcomes():
-    data = request.json
+    data = request.get_json(silent=True) or {}
     signals = data.get("signals", [])
 
     results = []
 
     for signal in signals:
         try:
-            # -----------------------------
-            # EXTRACT SIGNAL DATA
-            # -----------------------------
-            market = signal["market"]
-            entry = float(signal["entry"])
-            sl = float(signal["stop_loss"])
-            tp = float(signal["take_profit"])
-            direction = signal["direction"]
-            created_at = signal["created_at"]
+            market = signal.get("market")
+            entry = signal.get("entry")
+            sl = signal.get("stop_loss") or signal.get("sl")
+            tp = signal.get("take_profit") or signal.get("tp")
+            direction = signal.get("direction") or signal.get("signal")
+            created_at = signal.get("created_at")
 
-            # -----------------------------
-            # FETCH MARKET DATA
-            # -----------------------------
+            if not market:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "Missing market"
+                })
+                continue
+
+            if entry is None:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "Missing entry"
+                })
+                continue
+
+            if sl is None:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "Missing stop_loss"
+                })
+                continue
+
+            if tp is None:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "Missing take_profit"
+                })
+                continue
+
+            if not direction:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "Missing direction"
+                })
+                continue
+
+            entry = float(entry)
+            sl = float(sl)
+            tp = float(tp)
+            direction = str(direction).upper()
+
             df = fetch_live_market_data(
                 market,
                 interval="1min",
@@ -190,9 +229,6 @@ def resolve_outcomes():
             pnl = 0
             last_close = None
 
-            # -----------------------------
-            # WALK THROUGH CANDLES
-            # -----------------------------
             for _, row in df.iterrows():
                 high = float(row["High"])
                 low = float(row["Low"])
@@ -200,7 +236,7 @@ def resolve_outcomes():
 
                 last_close = close
 
-                if direction == "BUY":
+                if direction in ["BUY", "BULLISH"]:
                     if high >= tp:
                         outcome = "win"
                         exit_reason = "tp_hit"
@@ -213,7 +249,7 @@ def resolve_outcomes():
                         exit_price = sl
                         break
 
-                elif direction == "SELL":
+                elif direction in ["SELL", "BEARISH"]:
                     if low <= tp:
                         outcome = "win"
                         exit_reason = "tp_hit"
@@ -226,29 +262,15 @@ def resolve_outcomes():
                         exit_price = sl
                         break
 
-            # -----------------------------
-            # HANDLE EXPIRED TRADES
-            # -----------------------------
             if exit_price is None and last_close is not None:
                 exit_price = last_close
 
-                if direction == "BUY":
+            if exit_price is not None:
+                if direction in ["BUY", "BULLISH"]:
                     pnl = exit_price - entry
                 else:
                     pnl = entry - exit_price
 
-            # -----------------------------
-            # HANDLE TP/SL PNL
-            # -----------------------------
-            elif exit_price is not None:
-                if direction == "BUY":
-                    pnl = exit_price - entry
-                else:
-                    pnl = entry - exit_price
-
-            # -----------------------------
-            # SAVE RESULT
-            # -----------------------------
             results.append({
                 "id": signal.get("id"),
                 "status": "resolved",
@@ -258,17 +280,23 @@ def resolve_outcomes():
                 "pnl_pts": pnl
             })
 
-            # Avoid API rate limits
             time.sleep(0.2)
 
         except Exception as e:
             results.append({
-                "id": signal.get("id"),
+                "id": signal.get("id") if isinstance(signal, dict) else None,
                 "status": "error",
                 "error": str(e)
             })
 
-    return jsonify({"results": results})
+    return jsonify({
+        "status": "success",
+        "processed": len(results),
+        "resolved": len([r for r in results if r.get("status") == "resolved"]),
+        "errors": len([r for r in results if r.get("status") == "error"]),
+        "results": results
+    })
+
 
 @app.route("/run-outcome-engine", methods=["POST"])
 def run_outcome_engine():
