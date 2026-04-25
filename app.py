@@ -164,7 +164,8 @@ def resolve_outcomes():
     results = []
 
     for signal in signals:
-        try:
+    try:
+        print("SIGNAL RECEIVED:", signal)   # 👈 ADD THIS LINE
             market = signal.get("market")
             entry = signal.get("entry")
             sl = signal.get("stop_loss") or signal.get("sl")
