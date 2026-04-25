@@ -6349,15 +6349,32 @@ def execute_paper_trade():
     try:
         data = request.get_json(silent=True) or {}
 
-        # --- SAFE INPUT PARSING ---
+        # -----------------------------
+        # SAFE INPUT PARSING (UNIFIED)
+        # -----------------------------
         market = data.get('market', "")
 
         entry = safe_float(data.get('entry'), None)
-        stop = safe_float(data.get('stop'), None)
-        target = safe_float(data.get('target'), None)
+
+        stop = safe_float(
+            data.get('stop_loss') or
+            data.get('stop') or
+            data.get('sl'),
+            None
+        )
+
+        target = safe_float(
+            data.get('take_profit') or
+            data.get('target') or
+            data.get('tp'),
+            None
+        )
+
         risk_percent = safe_float(data.get('risk_percent'), 1.0)
 
-        # --- VALIDATION (PREVENT 500 ERRORS) ---
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
         if not market:
             return jsonify({"error": "Missing market"}), 400
 
@@ -6366,13 +6383,15 @@ def execute_paper_trade():
                 "error": "Missing required trade values",
                 "details": {
                     "entry": data.get("entry"),
-                    "stop": data.get("stop"),
-                    "target": data.get("target"),
+                    "stop_loss": data.get("stop_loss") or data.get("stop"),
+                    "take_profit": data.get("take_profit") or data.get("target"),
                     "risk_percent": data.get("risk_percent")
                 }
             }), 400
 
-        # --- RISK MODEL ---
+        # -----------------------------
+        # RISK MODEL
+        # -----------------------------
         account_size = 10000  # placeholder (upgrade later)
         risk_amount = account_size * (risk_percent / 100)
 
@@ -6383,13 +6402,15 @@ def execute_paper_trade():
 
         position_size = risk_amount / risk_per_unit
 
-        # --- BUILD TRADE ---
+        # -----------------------------
+        # BUILD TRADE (STANDARDIZED FIELDS)
+        # -----------------------------
         trade = {
             "trade_id": str(uuid.uuid4()),
             "market": market,
             "entry": round(entry, 4),
-            "stop": round(stop, 4),
-            "target": round(target, 4),
+            "stop_loss": round(stop, 4),
+            "take_profit": round(target, 4),
             "risk_percent": risk_percent,
             "risk_amount": round(risk_amount, 2),
             "position_size": round(position_size, 2),
