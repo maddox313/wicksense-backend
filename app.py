@@ -164,8 +164,12 @@ def resolve_outcomes():
     results = []
 
     for signal in signals:
-    try:
-        print("SIGNAL RECEIVED:", signal)   # 👈 ADD THIS LINE
+        try:
+            print("SIGNAL RECEIVED:", signal)
+
+            # -----------------------------
+            # EXTRACT SIGNAL DATA
+            # -----------------------------
             market = signal.get("market")
             entry = signal.get("entry")
             sl = signal.get("stop_loss") or signal.get("sl")
@@ -173,6 +177,9 @@ def resolve_outcomes():
             direction = signal.get("direction") or signal.get("signal")
             created_at = signal.get("created_at")
 
+            # -----------------------------
+            # VALIDATION
+            # -----------------------------
             if not market:
                 results.append({
                     "id": signal.get("id"),
@@ -213,11 +220,15 @@ def resolve_outcomes():
                 })
                 continue
 
+            # Convert values
             entry = float(entry)
             sl = float(sl)
             tp = float(tp)
             direction = str(direction).upper()
 
+            # -----------------------------
+            # FETCH MARKET DATA
+            # -----------------------------
             df = fetch_live_market_data(
                 market,
                 interval="1min",
@@ -229,6 +240,17 @@ def resolve_outcomes():
             exit_price = None
             pnl = 0
             last_close = None
+
+            # -----------------------------
+            # PROCESS CANDLES
+            # -----------------------------
+            if df is None or df.empty:
+                results.append({
+                    "id": signal.get("id"),
+                    "status": "error",
+                    "error": "No market data returned"
+                })
+                continue
 
             for _, row in df.iterrows():
                 high = float(row["High"])
@@ -263,6 +285,9 @@ def resolve_outcomes():
                         exit_price = sl
                         break
 
+            # -----------------------------
+            # FINAL CALCULATION
+            # -----------------------------
             if exit_price is None and last_close is not None:
                 exit_price = last_close
 
@@ -272,6 +297,9 @@ def resolve_outcomes():
                 else:
                     pnl = entry - exit_price
 
+            # -----------------------------
+            # SAVE RESULT
+            # -----------------------------
             results.append({
                 "id": signal.get("id"),
                 "status": "resolved",
@@ -297,6 +325,7 @@ def resolve_outcomes():
         "errors": len([r for r in results if r.get("status") == "error"]),
         "results": results
     })
+
 
 
 @app.route("/run-outcome-engine", methods=["POST"])
