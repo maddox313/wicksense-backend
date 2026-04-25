@@ -270,6 +270,23 @@ def resolve_outcomes():
 
     return jsonify({"results": results})
 
+@app.route("/run-outcome-engine", methods=["POST"])
+def run_outcome_engine():
+    try:
+        print("🔥 Outcome Engine Triggered")
+
+        # For now just return success (we will connect it next)
+        return jsonify({
+            "status": "success",
+            "message": "Outcome Engine trigger endpoint working"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 
 # -----------------------------
 # OPENAPI
