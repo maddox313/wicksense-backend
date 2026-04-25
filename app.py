@@ -171,9 +171,23 @@ def resolve_outcomes():
             # EXTRACT SIGNAL DATA
             # -----------------------------
             market = signal.get("market")
+
             entry = signal.get("entry")
-            sl = signal.get("stop_loss") or signal.get("sl") or signal.get("stop")
-            tp = signal.get("take_profit") or signal.get("tp")
+
+            # 🔥 FIXED: Accept ALL possible stop loss keys
+            sl = (
+                signal.get("stop_loss") or
+                signal.get("sl") or
+                signal.get("stop")
+            )
+
+            # 🔥 FIXED: Accept ALL possible take profit keys
+            tp = (
+                signal.get("take_profit") or
+                signal.get("tp") or
+                signal.get("target")
+            )
+
             direction = signal.get("direction") or signal.get("signal")
             created_at = signal.get("created_at")
 
@@ -220,7 +234,9 @@ def resolve_outcomes():
                 })
                 continue
 
-            # Convert values
+            # -----------------------------
+            # TYPE CONVERSION
+            # -----------------------------
             entry = float(entry)
             sl = float(sl)
             tp = float(tp)
@@ -235,15 +251,6 @@ def resolve_outcomes():
                 outputsize=500
             )
 
-            outcome = "expired"
-            exit_reason = "timeout"
-            exit_price = None
-            pnl = 0
-            last_close = None
-
-            # -----------------------------
-            # PROCESS CANDLES
-            # -----------------------------
             if df is None or df.empty:
                 results.append({
                     "id": signal.get("id"),
@@ -251,6 +258,15 @@ def resolve_outcomes():
                     "error": "No market data returned"
                 })
                 continue
+
+            # -----------------------------
+            # OUTCOME LOGIC
+            # -----------------------------
+            outcome = "expired"
+            exit_reason = "timeout"
+            exit_price = None
+            pnl = 0
+            last_close = None
 
             for _, row in df.iterrows():
                 high = float(row["High"])
@@ -286,7 +302,7 @@ def resolve_outcomes():
                         break
 
             # -----------------------------
-            # FINAL CALCULATION
+            # FINALIZE EXIT
             # -----------------------------
             if exit_price is None and last_close is not None:
                 exit_price = last_close
@@ -297,9 +313,6 @@ def resolve_outcomes():
                 else:
                     pnl = entry - exit_price
 
-            # -----------------------------
-            # SAVE RESULT
-            # -----------------------------
             results.append({
                 "id": signal.get("id"),
                 "status": "resolved",
@@ -309,6 +322,7 @@ def resolve_outcomes():
                 "pnl_pts": pnl
             })
 
+            # 🔥 Prevent rate limiting
             time.sleep(0.2)
 
         except Exception as e:
@@ -325,7 +339,6 @@ def resolve_outcomes():
         "errors": len([r for r in results if r.get("status") == "error"]),
         "results": results
     })
-
 
 
 @app.route("/run-outcome-engine", methods=["POST"])
