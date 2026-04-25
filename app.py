@@ -172,7 +172,7 @@ def resolve_outcomes():
             # -----------------------------
             market = signal.get("market")
             entry = signal.get("entry")
-            sl = signal.get("stop_loss") or signal.get("sl")
+            sl = signal.get("stop_loss") or signal.get("sl") or signal.get("stop")
             tp = signal.get("take_profit") or signal.get("tp")
             direction = signal.get("direction") or signal.get("signal")
             created_at = signal.get("created_at")
@@ -6340,7 +6340,7 @@ def execute_paper_trade():
         market = data.get('market', "")
 
         entry = safe_float(data.get('entry'), None)
-        stop_loss = safe_float(data.get('stop'), None)
+        stop = safe_float(data.get('stop'), None)
         target = safe_float(data.get('target'), None)
         risk_percent = safe_float(data.get('risk_percent'), 1.0)
 
