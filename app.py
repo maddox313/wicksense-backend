@@ -6448,7 +6448,6 @@ def close_paper_trade():
             "outcome": outcome,
             "exit_price": exit_price,
             "pnl_pts": pnl_pts,
-            "user_id": "demo-user"  # replace later with real auth
         }
 
         # --- SEND TO SUPABASE ---
