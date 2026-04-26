@@ -6425,6 +6425,53 @@ def execute_paper_trade():
             "details": str(e)
         }), 500
 
+@app.route('/close-paper-trade', methods=['POST'])
+def close_paper_trade():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        trade_id = data.get('trade_id')
+        outcome = data.get('outcome')
+        exit_price = data.get('exit_price')
+        pnl = data.get('pnl')
+
+        if not trade_id:
+            return jsonify({"error": "Missing trade_id"}), 400
+
+        # 🔥 Update trade in Supabase (or your DB)
+        update_payload = {
+            "status": "CLOSED",
+            "outcome": outcome,
+            "exit_price": exit_price,
+            "pnl": pnl,
+            "closed_at": datetime.utcnow().isoformat()
+        }
+
+        # Example (adjust to your DB logic)
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/paper_trades?id=eq.{trade_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
+            json=update_payload
+        )
+
+        return jsonify({
+            "status": "success",
+            "trade_id": trade_id,
+            "updated": True
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to close trade",
+            "details": str(e)
+        }), 500
+
+
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
     try:
