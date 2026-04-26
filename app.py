@@ -6430,39 +6430,44 @@ def close_paper_trade():
     try:
         data = request.get_json(silent=True) or {}
 
-        trade_id = data.get('trade_id')
-        outcome = data.get('outcome')
-        exit_price = data.get('exit_price')
-        pnl = data.get('pnl')
+        trade_id = data.get("trade_id")
+        outcome = data.get("outcome")
+        exit_price = data.get("exit_price")
+        pnl_pts = data.get("pnl_pts")
 
         if not trade_id:
             return jsonify({"error": "Missing trade_id"}), 400
 
-        # 🔥 Update trade in Supabase (or your DB)
-        update_payload = {
-            "status": "CLOSED",
+        # --- BUILD PAYLOAD ---
+        payload = {
+            "trade_id": trade_id,
             "outcome": outcome,
             "exit_price": exit_price,
-            "pnl": pnl,
-            "closed_at": datetime.utcnow().isoformat()
+            "pnl_pts": pnl_pts,
+            "user_id": "demo-user"  # replace later with real auth
         }
 
-        # Example (adjust to your DB logic)
+        # --- SEND TO SUPABASE ---
         response = requests.post(
-            f"{SUPABASE_URL}/rest/v1/paper_trades?id=eq.{trade_id}",
+            f"{SUPABASE_URL}/rest/v1/closed_trades",
             headers={
                 "apikey": SUPABASE_KEY,
                 "Authorization": f"Bearer {SUPABASE_KEY}",
                 "Content-Type": "application/json",
-                "Prefer": "return=representation"
+                "Prefer": "return=minimal"
             },
-            json=update_payload
+            json=payload
         )
 
+        if response.status_code not in [200, 201]:
+            return jsonify({
+                "error": "Supabase insert failed",
+                "details": response.text
+            }), 500
+
         return jsonify({
-            "status": "success",
-            "trade_id": trade_id,
-            "updated": True
+            "message": "Trade closed and saved",
+            "trade": payload
         })
 
     except Exception as e:
