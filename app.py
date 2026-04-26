@@ -6431,6 +6431,8 @@ def close_paper_trade():
         data = request.get_json(silent=True) or {}
 
         trade_id = data.get("trade_id")
+        market = data.get("market")
+        direction = data.get("direction")
         outcome = data.get("outcome")
         exit_price = data.get("exit_price")
         pnl_pts = data.get("pnl_pts")
@@ -6441,6 +6443,8 @@ def close_paper_trade():
         # --- BUILD PAYLOAD ---
         payload = {
             "trade_id": trade_id,
+            "market": market,
+            "direction": direction,
             "outcome": outcome,
             "exit_price": exit_price,
             "pnl_pts": pnl_pts,
@@ -6459,10 +6463,11 @@ def close_paper_trade():
             json=payload
         )
 
-        if response.status_code not in [200, 201]:
+        if response.status_code not in [200, 201, 204]:
             return jsonify({
                 "error": "Supabase insert failed",
-                "details": response.text
+                "details": response.text,
+                "payload": payload
             }), 500
 
         return jsonify({
