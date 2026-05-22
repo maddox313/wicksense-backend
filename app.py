@@ -5722,6 +5722,8 @@ def scan_markets_route():
         results = scan_markets()
         return jsonify({
             "status": "scan completed",
+            "signals": results["signals"],
+            "approved_trades": results["approved_trades"],
             "top_overall": results["top_overall"],
             "top_bullish": results["top_bullish"],
             "top_bearish": results["top_bearish"],
@@ -5735,6 +5737,8 @@ def scan_markets_route():
             "error": "Market scan failed",
             "details": str(e)
         }), 500
+
+
 
 
 # -----------------------------
