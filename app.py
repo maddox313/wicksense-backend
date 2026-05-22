@@ -4336,29 +4336,18 @@ def scan_markets():
 
             reason_text = ", ".join(signal_data.get("reasons", []))
             entry_price = float(last_row["Close"])
+            signal_direction = signal_data.get("signal", "Neutral")
 
-            signal = signal_data.get("signal")
-            direction = "BUY" if signal == "Bullish" else "SELL" if signal == "Bearish" else "WAIT"
-
-            opportunity_score = (
-                float(signal_data.get("confidence", 0))
-                + float(signal_data.get("confluence_bonus", 0)) * 5
-                + (10 if signal_data.get("breakout") else 0)
-                + (5 if signal_data.get("trendline") else 0)
-                + (5 if signal_data.get("liquidity_event") else 0)
-            )
-
-            # Temporary broker-safe risk levels.
-            # Later replace this with ATR / structure-based SL and TP.
-            risk_distance = entry_price * 0.005
-
-            if direction == "BUY":
-                stop_loss = round(entry_price - risk_distance, 5)
-                take_profit = round(entry_price + (risk_distance * 2), 5)
-            elif direction == "SELL":
-                stop_loss = round(entry_price + risk_distance, 5)
-                take_profit = round(entry_price - (risk_distance * 2), 5)
+            if signal_direction == "Bullish":
+                direction = "BUY"
+                stop_loss = round(entry_price * 0.9975, 5)
+                take_profit = round(entry_price * 1.0050, 5)
+            elif signal_direction == "Bearish":
+                direction = "SELL"
+                stop_loss = round(entry_price * 1.0025, 5)
+                take_profit = round(entry_price * 0.9950, 5)
             else:
+                direction = "WAIT"
                 stop_loss = None
                 take_profit = None
 
@@ -4369,9 +4358,17 @@ def scan_markets():
                 and take_profit is not None
             )
 
+            opportunity_score = (
+                float(signal_data.get("confidence", 0))
+                + float(signal_data.get("confluence_bonus", 0)) * 5
+                + (10 if signal_data.get("breakout") else 0)
+                + (5 if signal_data.get("trendline") else 0)
+                + (5 if signal_data.get("liquidity_event") else 0)
+            )
+
             result = {
                 "market": market,
-                "signal": signal,
+                "signal": signal_direction,
                 "direction": direction,
                 "setup_type": setup_type,
                 "confidence": float(signal_data.get("confidence", 0)),
@@ -4382,13 +4379,14 @@ def scan_markets():
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
 
+                "approved": approved,
+                "trade_status": "READY" if approved else "SIGNAL_ONLY",
+                "block_reason": None if approved else "MISSING_RISK_LEVELS",
+
                 "strategy_id": "backend_original_v1",
                 "strategy_name": "Backend Original Strategy",
                 "strategy_version": "1.0.0",
                 "timeframe": "15min",
-                "approved": approved,
-                "trade_status": "READY" if approved else "SIGNAL_ONLY",
-                "block_reason": None if approved else "MISSING_RISK_LEVELS",
 
                 "reason": reason_text,
                 "entry_reason": reason_text,
@@ -4397,9 +4395,11 @@ def scan_markets():
                 "liquidity_event": signal_data.get("liquidity_event"),
                 "trendline": signal_data.get("trendline"),
                 "strategy_breakdown": signal_data.get("strategy_breakdown"),
+
                 "ai_summary": ai_text.get("ai_summary"),
                 "trade_thesis": ai_text.get("trade_thesis"),
                 "risk_note": ai_text.get("risk_note"),
+
                 "session_label": session_data.get("session_label"),
                 "active_sessions": session_data.get("active_sessions"),
                 "liquidity_profile": session_data.get("liquidity_profile")
@@ -4417,6 +4417,7 @@ def scan_markets():
             minimum_confidence_threshold = float(
                 risk_settings.get("min_confidence_threshold", 70.0)
             )
+
             block_low_quality_setups = bool(
                 risk_settings.get("block_low_quality_setups", False)
             )
@@ -4445,7 +4446,7 @@ def scan_markets():
                 try:
                     send_signal_email(
                         market=market,
-                        signal=signal,
+                        signal=signal_direction,
                         confidence=result.get("confidence"),
                         reason=reason_text,
                         entry=entry_price,
@@ -4455,7 +4456,9 @@ def scan_markets():
                         trade_thesis=result.get("trade_thesis"),
                         risk_note=result.get("risk_note")
                     )
+
                     record_alert_sent(rule, result)
+
                     create_notification({
                         "type": "alert_triggered",
                         "market": result.get("market"),
@@ -4464,11 +4467,12 @@ def scan_markets():
                         "confidence": result.get("confidence"),
                         "rule_name": rule.get("name")
                     })
+
                 except Exception as email_error:
                     print(f"Email error for {market}: {email_error}")
 
         except Exception as e:
-            print(f"Scan error: {e}")
+            print(f"Scan error for {market}: {e}")
             scan_results.append({
                 "market": market,
                 "error": str(e)
@@ -4481,11 +4485,35 @@ def scan_markets():
     breakout_results = [r for r in valid_results if r.get("breakout") is not None]
     trendline_results = [r for r in valid_results if r.get("trendline") is not None]
 
-    bullish_results = sorted(bullish_results, key=lambda x: x["opportunity_score"], reverse=True)
-    bearish_results = sorted(bearish_results, key=lambda x: x["opportunity_score"], reverse=True)
-    breakout_results = sorted(breakout_results, key=lambda x: x["opportunity_score"], reverse=True)
-    trendline_results = sorted(trendline_results, key=lambda x: x["opportunity_score"], reverse=True)
-    all_results_sorted = sorted(valid_results, key=lambda x: x["opportunity_score"], reverse=True)
+    bullish_results = sorted(
+        bullish_results,
+        key=lambda x: x.get("opportunity_score", 0),
+        reverse=True
+    )
+
+    bearish_results = sorted(
+        bearish_results,
+        key=lambda x: x.get("opportunity_score", 0),
+        reverse=True
+    )
+
+    breakout_results = sorted(
+        breakout_results,
+        key=lambda x: x.get("opportunity_score", 0),
+        reverse=True
+    )
+
+    trendline_results = sorted(
+        trendline_results,
+        key=lambda x: x.get("opportunity_score", 0),
+        reverse=True
+    )
+
+    all_results_sorted = sorted(
+        valid_results,
+        key=lambda x: x.get("opportunity_score", 0),
+        reverse=True
+    )
 
     return {
         "status": "scan completed",
