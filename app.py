@@ -6565,24 +6565,47 @@ def close_paper_trade():
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
     try:
+
+        def safe_float(value, default=0.0):
+            try:
+                if value is None:
+                    return default
+                return float(value)
+            except Exception:
+                return default
+
         market = get_market_from_request()
-        timeframe = normalize_interval(get_string_from_request("timeframe", "1day"))
+        timeframe = normalize_interval(
+            get_string_from_request("timeframe", "1day")
+        )
 
         settings = load_risk_settings()
+
         risk_percent = get_float_from_request(
             "risk_percent",
             settings.get("max_risk_percent_per_trade", 1.0)
         )
-        account_size = get_float_from_request("account_size", 10000.0)
 
-        max_allowed_risk = float(settings.get("max_risk_percent_per_trade", 2.0))
+        account_size = get_float_from_request(
+            "account_size",
+            10000.0
+        )
+
+        max_allowed_risk = safe_float(
+            settings.get("max_risk_percent_per_trade"),
+            2.0
+        )
+
         if risk_percent > max_allowed_risk:
             risk_percent = max_allowed_risk
 
         if not market:
-            return jsonify({"error": "No market was provided"}), 400
+            return jsonify({
+                "error": "No market was provided"
+            }), 400
 
         daily_loss = get_daily_loss_status()
+
         if daily_loss["blocked"]:
             return jsonify({
                 "error": "Daily loss limit reached",
@@ -6590,7 +6613,11 @@ def tradeplan():
                 "daily_loss_status": daily_loss
             }), 403
 
-        df = fetch_live_market_data(market, interval=timeframe, outputsize=30)
+        df = fetch_live_market_data(
+            market,
+            interval=timeframe,
+            outputsize=30
+        )
 
         if df is None or df.empty:
             return jsonify({
@@ -6599,40 +6626,75 @@ def tradeplan():
             }), 500
 
         signal_data = evaluate_signal(df)
+
+        if not signal_data:
+            return jsonify({
+                "error": "Signal evaluation failed"
+            }), 500
+
         ai_text = build_ai_explanation(signal_data)
-        mtf_data = get_multi_timeframe_confirmation(market, timeframe)
+        mtf_data = get_multi_timeframe_confirmation(
+            market,
+            timeframe
+        )
         session_data = get_market_session()
 
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
-        close_price = float(last_row["Close"])
 
-        # --- SAFE SUPPORT / RESISTANCE ---
-        support_price = signal_data.get("support")
-        resistance_price = signal_data.get("resistance")
+        close_price = safe_float(
+            last_row.get("Close"),
+            0
+        )
 
-        support_price = float(support_price) if support_price is not None else close_price
-        resistance_price = float(resistance_price) if resistance_price is not None else close_price
+        if close_price <= 0:
+            return jsonify({
+                "error": "Invalid close price"
+            }), 400
 
-        # --- SAFE ATR CALCULATION ---
+        # -----------------------------
+        # SUPPORT / RESISTANCE
+        # -----------------------------
+        support_price = safe_float(
+            signal_data.get("support"),
+            close_price
+        )
+
+        resistance_price = safe_float(
+            signal_data.get("resistance"),
+            close_price
+        )
+
+        # -----------------------------
+        # ATR
+        # -----------------------------
         try:
             atr_series = recent_rows["High"] - recent_rows["Low"]
-            atr = float(atr_series.mean())
+            atr = safe_float(
+                atr_series.mean(),
+                close_price * 0.01
+            )
         except Exception:
             atr = close_price * 0.01
 
-        if atr is None or atr <= 0:
+        if atr <= 0:
             atr = close_price * 0.01
 
-        # --- SIGNAL NORMALIZATION ---
-        raw_signal = str(signal_data.get("signal", "")).strip().upper()
+        # -----------------------------
+        # SIGNAL NORMALIZATION
+        # -----------------------------
+        raw_signal = str(
+            signal_data.get("signal", "")
+        ).strip().upper()
 
         if raw_signal in ["BUY", "BULLISH"]:
             normalized_signal = "BULLISH"
             trade_side = "Buy"
+
         elif raw_signal in ["SELL", "BEARISH"]:
             normalized_signal = "BEARISH"
             trade_side = "Sell"
+
         else:
             return jsonify({
                 "error": "No strong trade setup found",
@@ -6643,7 +6705,9 @@ def tradeplan():
         trendline = signal_data.get("trendline")
         pattern = signal_data.get("pattern")
 
-        # --- ENTRY LOGIC ---
+        # -----------------------------
+        # ENTRY
+        # -----------------------------
         entry = close_price
 
         if normalized_signal == "BULLISH":
@@ -6654,56 +6718,107 @@ def tradeplan():
             if breakout == "Bearish Breakdown":
                 entry = min(close_price, support_price)
 
-        # --- STOP LOSS & TARGETS ---
+        # -----------------------------
+        # STOP LOSS / TARGETS
+        # -----------------------------
         if normalized_signal == "BULLISH":
-            stop_loss = min(support_price, entry - atr * 1.5)
-            take_profit_1 = entry + (entry - stop_loss) * 1.5
-            take_profit_2 = entry + (entry - stop_loss) * 3.0
+
+            stop_loss = min(
+                support_price,
+                entry - atr * 1.5
+            )
+
+            take_profit_1 = entry + (
+                (entry - stop_loss) * 1.5
+            )
+
+            take_profit_2 = entry + (
+                (entry - stop_loss) * 3.0
+            )
 
             if breakout == "Bullish Breakout":
                 setup_type = "Bullish Breakout Continuation"
+
             elif trendline == "Rising Trendline Support":
                 setup_type = "Bullish Trendline Bounce"
+
             elif pattern == "Hammer":
                 setup_type = "Bullish Hammer Reversal"
+
             elif pattern == "Pin Bar":
                 setup_type = "Bullish Pin Bar Setup"
+
             else:
                 setup_type = "Bullish Confluence Setup"
 
-        else:  # BEARISH
-            stop_loss = max(resistance_price, entry + atr * 1.5)
-            take_profit_1 = entry - (stop_loss - entry) * 1.5
-            take_profit_2 = entry - (stop_loss - entry) * 3.0
+        else:
+
+            stop_loss = max(
+                resistance_price,
+                entry + atr * 1.5
+            )
+
+            take_profit_1 = entry - (
+                (stop_loss - entry) * 1.5
+            )
+
+            take_profit_2 = entry - (
+                (stop_loss - entry) * 3.0
+            )
 
             if breakout == "Bearish Breakdown":
                 setup_type = "Bearish Breakdown Continuation"
+
             elif trendline == "Falling Trendline Resistance":
                 setup_type = "Bearish Trendline Rejection"
+
             elif pattern == "Shooting Star":
                 setup_type = "Bearish Shooting Star Reversal"
+
             elif pattern == "Pin Bar":
                 setup_type = "Bearish Pin Bar Setup"
+
             else:
                 setup_type = "Bearish Confluence Setup"
 
-        # --- RISK CALC ---
-        risk_amount = account_size * (risk_percent / 100.0)
+        # -----------------------------
+        # RISK CALC
+        # -----------------------------
+        risk_amount = account_size * (
+            risk_percent / 100.0
+        )
+
         stop_distance = abs(entry - stop_loss)
 
-        if stop_distance == 0:
-            return jsonify({"error": "Stop distance was zero"}), 400
+        if stop_distance <= 0:
+            return jsonify({
+                "error": "Stop distance was zero"
+            }), 400
 
         position_size = risk_amount / stop_distance
-        expected_rr = abs(take_profit_2 - entry) / abs(entry - stop_loss)
 
-        confidence = float(signal_data.get("confidence", 0))
-        confluence = float(signal_data.get("confluence_bonus", 0))
+        expected_rr = abs(
+            take_profit_2 - entry
+        ) / abs(
+            entry - stop_loss
+        )
+
+        confidence = safe_float(
+            signal_data.get("confidence"),
+            0
+        )
+
+        confluence = safe_float(
+            signal_data.get("confluence_bonus"),
+            0
+        )
 
         if confidence >= 85 and confluence >= 4:
             setup_quality = "A"
+
         elif confidence >= 75 and confluence >= 2:
             setup_quality = "B"
+
         else:
             setup_quality = "C"
 
@@ -6736,7 +6851,9 @@ def tradeplan():
             "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
             "timeframe_alignment": mtf_data.get("timeframe_alignment"),
             "multi_timeframe": mtf_data.get("multi_timeframe"),
-            "reason": ", ".join(signal_data.get("reasons", [])),
+            "reason": ", ".join(
+                signal_data.get("reasons") or []
+            ),
             "ai_summary": ai_text.get("ai_summary"),
             "trade_thesis": ai_text.get("trade_thesis"),
             "risk_note": ai_text.get("risk_note"),
@@ -6747,11 +6864,27 @@ def tradeplan():
             "daily_loss_status": daily_loss
         }
 
-        append_history(TRADEPLAN_HISTORY_FILE, response_data, max_items=200)
+        print("[TRADEPLAN_SUCCESS]", {
+            "market": market,
+            "timeframe": timeframe,
+            "signal": trade_side,
+            "entry_price": entry,
+            "stop_loss": stop_loss,
+            "take_profit_1": take_profit_1,
+            "take_profit_2": take_profit_2,
+            "setup_type": setup_type
+        })
+
+        append_history(
+            TRADEPLAN_HISTORY_FILE,
+            response_data,
+            max_items=200
+        )
 
         return jsonify(response_data)
 
     except Exception as e:
+
         import traceback
 
         print("\n========== TRADEPLAN ROUTE ERROR ==========")
