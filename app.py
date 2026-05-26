@@ -6565,7 +6565,6 @@ def close_paper_trade():
 @app.route("/tradeplan", methods=["POST"])
 def tradeplan():
     try:
-
         def safe_float(value, default=0.0):
             try:
                 if value is None:
@@ -6573,6 +6572,8 @@ def tradeplan():
                 return float(value)
             except Exception:
                 return default
+
+        body = request.get_json(silent=True) or {}
 
         market = get_market_from_request()
         timeframe = normalize_interval(
@@ -6616,7 +6617,7 @@ def tradeplan():
         df = fetch_live_market_data(
             market,
             interval=timeframe,
-            outputsize=30
+            outputsize=100
         )
 
         if df is None or df.empty:
@@ -6625,7 +6626,29 @@ def tradeplan():
                 "details": "Failed to fetch market data"
             }), 500
 
-        signal_data = evaluate_signal(df)
+        incoming_signal = (
+            body.get("signalPayload")
+            or body.get("signal_payload")
+            or body.get("signal_data")
+        )
+
+        if isinstance(incoming_signal, dict) and incoming_signal.get("signal"):
+            signal_data = incoming_signal
+            print("[TRADEPLAN_USING_FORWARDED_SIGNAL]", {
+                "market": market,
+                "timeframe": timeframe,
+                "signal": signal_data.get("signal"),
+                "confidence": signal_data.get("confidence"),
+                "entry": signal_data.get("entry")
+            })
+        else:
+            signal_data = evaluate_signal(df)
+            print("[TRADEPLAN_USING_LOCAL_EVALUATION]", {
+                "market": market,
+                "timeframe": timeframe,
+                "signal": signal_data.get("signal") if signal_data else None,
+                "confidence": signal_data.get("confidence") if signal_data else None
+            })
 
         if not signal_data:
             return jsonify({
@@ -6633,28 +6656,19 @@ def tradeplan():
             }), 500
 
         ai_text = build_ai_explanation(signal_data)
-        mtf_data = get_multi_timeframe_confirmation(
-            market,
-            timeframe
-        )
+        mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         session_data = get_market_session()
 
         last_row = df.iloc[-1]
         recent_rows = df.tail(14)
 
-        close_price = safe_float(
-            last_row.get("Close"),
-            0
-        )
+        close_price = safe_float(last_row.get("Close"), 0)
 
         if close_price <= 0:
             return jsonify({
                 "error": "Invalid close price"
             }), 400
 
-        # -----------------------------
-        # SUPPORT / RESISTANCE
-        # -----------------------------
         support_price = safe_float(
             signal_data.get("support"),
             close_price
@@ -6665,9 +6679,6 @@ def tradeplan():
             close_price
         )
 
-        # -----------------------------
-        # ATR
-        # -----------------------------
         try:
             atr_series = recent_rows["High"] - recent_rows["Low"]
             atr = safe_float(
@@ -6680,9 +6691,6 @@ def tradeplan():
         if atr <= 0:
             atr = close_price * 0.01
 
-        # -----------------------------
-        # SIGNAL NORMALIZATION
-        # -----------------------------
         raw_signal = str(
             signal_data.get("signal", "")
         ).strip().upper()
@@ -6690,104 +6698,75 @@ def tradeplan():
         if raw_signal in ["BUY", "BULLISH"]:
             normalized_signal = "BULLISH"
             trade_side = "Buy"
-
         elif raw_signal in ["SELL", "BEARISH"]:
             normalized_signal = "BEARISH"
             trade_side = "Sell"
-
         else:
             return jsonify({
                 "error": "No strong trade setup found",
-                "details": "Signal is neutral"
+                "details": "Signal is neutral",
+                "raw_signal": raw_signal
             }), 400
 
         breakout = signal_data.get("breakout")
         trendline = signal_data.get("trendline")
         pattern = signal_data.get("pattern")
 
-        # -----------------------------
-        # ENTRY
-        # -----------------------------
-        entry = close_price
+        entry = safe_float(
+            signal_data.get("entry") or signal_data.get("entry_price"),
+            close_price
+        )
+
+        if entry <= 0:
+            entry = close_price
 
         if normalized_signal == "BULLISH":
             if breakout == "Bullish Breakout":
-                entry = max(close_price, resistance_price)
-
-        elif normalized_signal == "BEARISH":
-            if breakout == "Bearish Breakdown":
-                entry = min(close_price, support_price)
-
-        # -----------------------------
-        # STOP LOSS / TARGETS
-        # -----------------------------
-        if normalized_signal == "BULLISH":
+                entry = max(entry, close_price, resistance_price)
 
             stop_loss = min(
                 support_price,
                 entry - atr * 1.5
             )
 
-            take_profit_1 = entry + (
-                (entry - stop_loss) * 1.5
-            )
-
-            take_profit_2 = entry + (
-                (entry - stop_loss) * 3.0
-            )
+            take_profit_1 = entry + ((entry - stop_loss) * 1.5)
+            take_profit_2 = entry + ((entry - stop_loss) * 3.0)
 
             if breakout == "Bullish Breakout":
                 setup_type = "Bullish Breakout Continuation"
-
             elif trendline == "Rising Trendline Support":
                 setup_type = "Bullish Trendline Bounce"
-
             elif pattern == "Hammer":
                 setup_type = "Bullish Hammer Reversal"
-
             elif pattern == "Pin Bar":
                 setup_type = "Bullish Pin Bar Setup"
-
             else:
                 setup_type = "Bullish Confluence Setup"
 
         else:
+            if breakout == "Bearish Breakdown":
+                entry = min(entry, close_price, support_price)
 
             stop_loss = max(
                 resistance_price,
                 entry + atr * 1.5
             )
 
-            take_profit_1 = entry - (
-                (stop_loss - entry) * 1.5
-            )
-
-            take_profit_2 = entry - (
-                (stop_loss - entry) * 3.0
-            )
+            take_profit_1 = entry - ((stop_loss - entry) * 1.5)
+            take_profit_2 = entry - ((stop_loss - entry) * 3.0)
 
             if breakout == "Bearish Breakdown":
                 setup_type = "Bearish Breakdown Continuation"
-
             elif trendline == "Falling Trendline Resistance":
                 setup_type = "Bearish Trendline Rejection"
-
             elif pattern == "Shooting Star":
                 setup_type = "Bearish Shooting Star Reversal"
-
             elif pattern == "Pin Bar":
                 setup_type = "Bearish Pin Bar Setup"
-
             else:
                 setup_type = "Bearish Confluence Setup"
 
-        # -----------------------------
-        # RISK CALC
-        # -----------------------------
-        risk_amount = account_size * (
-            risk_percent / 100.0
-        )
-
+        risk_amount = account_size * (risk_percent / 100.0)
         stop_distance = abs(entry - stop_loss)
 
         if stop_distance <= 0:
@@ -6803,22 +6782,13 @@ def tradeplan():
             entry - stop_loss
         )
 
-        confidence = safe_float(
-            signal_data.get("confidence"),
-            0
-        )
-
-        confluence = safe_float(
-            signal_data.get("confluence_bonus"),
-            0
-        )
+        confidence = safe_float(signal_data.get("confidence"), 0)
+        confluence = safe_float(signal_data.get("confluence_bonus"), 0)
 
         if confidence >= 85 and confluence >= 4:
             setup_quality = "A"
-
         elif confidence >= 75 and confluence >= 2:
             setup_quality = "B"
-
         else:
             setup_quality = "C"
 
@@ -6851,9 +6821,7 @@ def tradeplan():
             "higher_timeframe_bias": mtf_data.get("higher_timeframe_bias"),
             "timeframe_alignment": mtf_data.get("timeframe_alignment"),
             "multi_timeframe": mtf_data.get("multi_timeframe"),
-            "reason": ", ".join(
-                signal_data.get("reasons") or []
-            ),
+            "reason": ", ".join(signal_data.get("reasons") or []),
             "ai_summary": ai_text.get("ai_summary"),
             "trade_thesis": ai_text.get("trade_thesis"),
             "risk_note": ai_text.get("risk_note"),
@@ -6884,7 +6852,6 @@ def tradeplan():
         return jsonify(response_data)
 
     except Exception as e:
-
         import traceback
 
         print("\n========== TRADEPLAN ROUTE ERROR ==========")
