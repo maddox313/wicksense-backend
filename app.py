@@ -1016,17 +1016,26 @@ def handle_live_signal_change(market, previous_state, new_payload):
             "trendline": new_payload.get("trendline")
         })
 
-def get_current_live_top_trade():
+def get_current_live_top_trade(target_market=None):
     best_trade = None
     best_score = -999
 
+    normalized_target_market = None
+    if target_market:
+        normalized_target_market = str(target_market).strip().upper()
+
     for market_name, data in LIVE_MARKET_STATE.items():
+        normalized_market_name = str(market_name).strip().upper()
+
+        # If a specific market was requested, only rank that market.
+        if normalized_target_market and normalized_market_name != normalized_target_market:
+            continue
+
         signal_raw = str(data.get("signal", "")).strip().upper()
         if not signal_raw:
             signal_raw = "BUY"
 
         confidence = safe_float(data.get("confidence"), 0.0)
-        
         entry_timing = str(data.get("entry_timing", "")).strip().upper()
         readiness = safe_float(data.get("trade_readiness_score"), 0.0)
 
@@ -1038,14 +1047,24 @@ def get_current_live_top_trade():
             continue
 
         score = compute_trade_score(data)
-
         score += readiness * 0.2
 
-        print("TOP TRADE CHECK:", market_name, normalized_signal, confidence, entry_timing, readiness, score)
+        print(
+            "TOP TRADE CHECK:",
+            market_name,
+            normalized_signal,
+            confidence,
+            entry_timing,
+            readiness,
+            score,
+            "TARGET:",
+            normalized_target_market
+        )
 
         if score > best_score:
             best_score = score
             candle = data.get("current_candle", {})
+
             best_trade = {
                 "market": market_name,
                 "last_updated": data.get("last_updated"),
@@ -1085,8 +1104,7 @@ def get_current_live_top_trade():
                 "trade_quality_score": round(score, 2)
             }
 
-    return best_trade or {}
-
+    return best_trade
 
 # ============================
 # CHART SYMBOL MAPPING
