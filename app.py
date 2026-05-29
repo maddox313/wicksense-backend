@@ -1020,15 +1020,27 @@ def get_current_live_top_trade(target_market=None):
     best_trade = None
     best_score = -999
 
+    # Support both possible LIVE_MARKET_STATE shapes
+    if isinstance(LIVE_MARKET_STATE.get("markets"), dict):
+        live_markets = LIVE_MARKET_STATE.get("markets", {})
+    else:
+        live_markets = LIVE_MARKET_STATE
+
     normalized_target_market = None
     if target_market:
         normalized_target_market = str(target_market).strip().upper()
 
-    for market_name, data in LIVE_MARKET_STATE.items():
+    print("LIVE TOP TRADE TARGET:", normalized_target_market)
+    print("LIVE MARKET STATE KEYS:", list(live_markets.keys()))
+
+    for market_name, data in live_markets.items():
+        if not isinstance(data, dict):
+            continue
+
         normalized_market_name = str(market_name).strip().upper()
 
-        # If a specific market was requested, only rank that market.
         if normalized_target_market and normalized_market_name != normalized_target_market:
+            print("TOP TRADE SKIP MARKET:", market_name, "TARGET:", normalized_target_market)
             continue
 
         signal_raw = str(data.get("signal", "")).strip().upper()
@@ -1044,6 +1056,7 @@ def get_current_live_top_trade(target_market=None):
         elif signal_raw in ["BEARISH", "SELL"]:
             normalized_signal = "SELL"
         else:
+            print("TOP TRADE SKIP BAD SIGNAL:", market_name, signal_raw)
             continue
 
         score = compute_trade_score(data)
@@ -1063,15 +1076,15 @@ def get_current_live_top_trade(target_market=None):
 
         if score > best_score:
             best_score = score
-            candle = data.get("current_candle", {})
+            candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
 
             best_trade = {
                 "market": market_name,
                 "last_updated": data.get("last_updated"),
-                "open": candle.get("Open"),
-                "high": candle.get("High"),
-                "low": candle.get("Low"),
-                "close": candle.get("Close"),
+                "open": candle.get("Open", data.get("open")),
+                "high": candle.get("High", data.get("high")),
+                "low": candle.get("Low", data.get("low")),
+                "close": candle.get("Close", data.get("close")),
                 "upper_wick": data.get("upper_wick"),
                 "lower_wick": data.get("lower_wick"),
                 "signal": normalized_signal,
@@ -1104,6 +1117,7 @@ def get_current_live_top_trade(target_market=None):
                 "trade_quality_score": round(score, 2)
             }
 
+    print("FINAL LIVE TOP TRADE:", best_trade)
     return best_trade
 
 # ============================
