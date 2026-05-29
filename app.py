@@ -1208,18 +1208,15 @@ def live_best_trades():
 @app.route('/live-top-trade', methods=['GET'])
 def live_top_trade():
     try:
-        results = get_live_best_trades_logic()
-        top_trade = results.get("top_trade")
+        market = request.args.get("market")
+        top_trade = get_current_live_top_trade(market)
 
         if not top_trade:
             return jsonify({})
 
         return jsonify(top_trade)
-
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 def get_current_setup_forming_trade():
