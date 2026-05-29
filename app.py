@@ -1247,9 +1247,11 @@ def live_top_trade():
             return jsonify({})
 
         return jsonify(top_trade)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 def get_current_setup_forming_trade():
     best_trade = None
