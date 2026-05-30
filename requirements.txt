@@ -9,4 +9,4 @@ sendgrid
 websocket-client
 Twilio
 openai
-yt-dip
+yt-dlp
