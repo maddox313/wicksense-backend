@@ -7785,3 +7785,35 @@ Transcript:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+@app.route("/api/extract-youtube-transcript", methods=["POST"])
+def extract_youtube_transcript():
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "ok": False,
+                "error": "Missing JSON body"
+            }), 400
+
+        youtube_url = data.get("youtube_url")
+
+        if not youtube_url:
+            return jsonify({
+                "ok": False,
+                "error": "Missing youtube_url"
+            }), 400
+
+        return jsonify({
+            "ok": True,
+            "message": "YouTube transcript route is active",
+            "youtube_url": youtube_url
+        })
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
+
