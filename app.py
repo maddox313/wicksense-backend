@@ -7660,94 +7660,95 @@ def video_health():
 @app.route("/api/youtube-ingest", methods=["POST"])
 def youtube_ingest():
     try:
-        import yt_dlp
-        from openai import OpenAI
+        import os
+        import requests
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from urllib.parse import urlparse, parse_qs
 
-        data = request.get_json()
-
+        data = request.get_json(silent=True) or {}
         text = data.get("text")
-        youtube_url = data.get("youtube_url")
+        youtube_url = data.get("youtube_url") or data.get("url")
 
-        extracted_text = None
+        def extract_video_id(url):
+            parsed = urlparse(url)
+            if "youtu.be" in parsed.netloc:
+                return parsed.path.strip("/")
+            if "youtube.com" in parsed.netloc:
+                return parse_qs(parsed.query).get("v", [None])[0]
+            return None
 
-        # -----------------------------
-        # TRANSCRIPT DIRECT INPUT
-        # -----------------------------
         if text:
-            extracted_text = text
-
-        # -----------------------------
-        # YOUTUBE URL INGESTION
-        # -----------------------------
+            transcript_text = text
+            source_type = "manual_text"
         elif youtube_url:
+            video_id = extract_video_id(youtube_url)
+            if not video_id:
+                return jsonify({"ok": False, "error": "Invalid YouTube URL"}), 400
 
-            ydl_opts = {
-                "quiet": True,
-                "skip_download": True,
-                "writesubtitles": True,
-                "writeautomaticsub": True
-            }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=False)
-
-                subtitles = (
-                    info.get("automatic_captions")
-                    or info.get("subtitles")
-                    or {}
-                )
-
-                transcript_lines = []
-
-                for lang in subtitles:
-                    for sub in subtitles[lang]:
-                        if sub.get("ext") == "json3":
-                            transcript_lines.append(
-                                f"Transcript available for language: {lang}"
-                            )
-
-                extracted_text = "\n".join(transcript_lines)
-
-                if not extracted_text:
-                    extracted_text = info.get("description", "")
-
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript_text = " ".join([item.get("text", "") for item in transcript])
+            source_type = "youtube_transcript_api"
         else:
-            return jsonify({
-                "ok": False,
-                "error": "Missing text or youtube_url"
-            }), 400
+            return jsonify({"ok": False, "error": "Missing text or youtube_url"}), 400
 
-        # -----------------------------
-        # OPENAI ANALYSIS
-        # -----------------------------
-        client = OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY")
-        )
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return jsonify({"ok": False, "error": "Missing ANTHROPIC_API_KEY"}), 500
 
-        completion = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a trading strategy analyzer. "
-                        "Extract strategy rules, entries, exits, "
-                        "risk management, and market conditions."
-                    )
-                },
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+
+        payload = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1600,
+            "messages": [
                 {
                     "role": "user",
-                    "content": extracted_text
+                    "content": f"""
+Analyze this trading transcript and extract a structured trading strategy.
+
+Return:
+- strategy name
+- markets
+- direction
+- entry rules
+- exit rules
+- stop loss rules
+- take profit rules
+- risk rules
+- conditions
+- key insights
+- parameter adjustments
+- action items
+
+Transcript:
+{transcript_text}
+"""
                 }
             ]
+        }
+
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=payload,
+            timeout=60
         )
 
-        analysis = completion.choices[0].message.content
+        if r.status_code >= 400:
+            return jsonify({
+                "ok": False,
+                "error": r.text
+            }), r.status_code
 
         return jsonify({
             "ok": True,
-            "analysis": analysis,
-            "source_text_length": len(extracted_text)
+            "source_type": source_type,
+            "transcript_char_count": len(transcript_text),
+            "anthropic_response": r.json()
         })
 
     except Exception as e:
@@ -7755,7 +7756,6 @@ def youtube_ingest():
             "ok": False,
             "error": str(e)
         }), 500
-
 
 
 if __name__ == "__main__":
