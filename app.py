@@ -7666,34 +7666,58 @@ def youtube_ingest():
         from urllib.parse import urlparse, parse_qs
 
         data = request.get_json(silent=True) or {}
+
         text = data.get("text")
         youtube_url = data.get("youtube_url") or data.get("url")
 
         def extract_video_id(url):
             parsed = urlparse(url)
+
             if "youtu.be" in parsed.netloc:
                 return parsed.path.strip("/")
+
             if "youtube.com" in parsed.netloc:
                 return parse_qs(parsed.query).get("v", [None])[0]
+
             return None
 
         if text:
             transcript_text = text
             source_type = "manual_text"
-        elif youtube_url:
-            video_id = extract_video_id(youtube_url)
-            if not video_id:
-                return jsonify({"ok": False, "error": "Invalid YouTube URL"}), 400
 
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            transcript_text = " ".join([item.get("text", "") for item in transcript])
+        elif youtube_url:
+
+            video_id = extract_video_id(youtube_url)
+
+            if not video_id:
+                return jsonify({
+                    "ok": False,
+                    "error": "Invalid YouTube URL"
+                }), 400
+
+            ytt_api = YouTubeTranscriptApi()
+
+            transcript = ytt_api.fetch(video_id)
+
+            transcript_text = " ".join([
+                item.text for item in transcript
+            ])
+
             source_type = "youtube_transcript_api"
+
         else:
-            return jsonify({"ok": False, "error": "Missing text or youtube_url"}), 400
+            return jsonify({
+                "ok": False,
+                "error": "Missing text or youtube_url"
+            }), 400
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
+
         if not api_key:
-            return jsonify({"ok": False, "error": "Missing ANTHROPIC_API_KEY"}), 500
+            return jsonify({
+                "ok": False,
+                "error": "Missing ANTHROPIC_API_KEY"
+            }), 500
 
         headers = {
             "x-api-key": api_key,
