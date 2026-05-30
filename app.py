@@ -7649,6 +7649,14 @@ def trade_thesis():
         print(f"❌ ERROR: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/video-health", methods=["GET"])
+def video_health():
+    return jsonify({
+        "ok": True,
+        "service": "video-backend",
+        "youtube_ingest_route_available": False
+    })
+
 
 
 if __name__ == "__main__":
