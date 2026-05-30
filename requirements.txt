@@ -10,3 +10,4 @@ websocket-client
 Twilio
 openai
 yt-dlp
+youtube-transcript-api
