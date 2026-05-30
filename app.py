@@ -7657,6 +7657,16 @@ def video_health():
         "youtube_ingest_route_available": False
     })
 
+@app.route("/api/youtube-ingest", methods=["POST"])
+def youtube_ingest():
+    data = request.get_json(silent=True) or {}
+
+    return jsonify({
+        "ok": True,
+        "message": "YouTube ingest route working",
+        "received": data
+    })
+
 
 
 if __name__ == "__main__":
