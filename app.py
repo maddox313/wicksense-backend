@@ -7654,7 +7654,7 @@ def video_health():
     return jsonify({
         "ok": True,
         "service": "video-backend",
-        "youtube_ingest_route_available": False
+        "youtube_ingest_route_available": True
     })
 
 @app.route("/api/youtube-ingest", methods=["POST"])
