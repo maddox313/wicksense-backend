@@ -7659,13 +7659,51 @@ def video_health():
 
 @app.route("/api/youtube-ingest", methods=["POST"])
 def youtube_ingest():
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=True) or {}
+        video_text = data.get("text", "")
 
-    return jsonify({
-        "ok": True,
-        "message": "YouTube ingest route working",
-        "received": data
-    })
+        if not video_text:
+            return jsonify({
+                "ok": False,
+                "error": "Missing text field"
+            }), 400
+
+        headers = {
+            "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+
+        payload = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 500,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Analyze this trading video transcript and extract trading strategy rules:\n\n{video_text}"
+                }
+            ]
+        }
+
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+
+        return jsonify({
+            "ok": response.status_code == 200,
+            "status_code": response.status_code,
+            "anthropic_response": response.json()
+        })
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 
 
