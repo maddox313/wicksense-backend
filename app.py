@@ -7660,43 +7660,94 @@ def video_health():
 @app.route("/api/youtube-ingest", methods=["POST"])
 def youtube_ingest():
     try:
-        data = request.get_json(silent=True) or {}
-        video_text = data.get("text", "")
+        import yt_dlp
+        from openai import OpenAI
 
-        if not video_text:
+        data = request.get_json()
+
+        text = data.get("text")
+        youtube_url = data.get("youtube_url")
+
+        extracted_text = None
+
+        # -----------------------------
+        # TRANSCRIPT DIRECT INPUT
+        # -----------------------------
+        if text:
+            extracted_text = text
+
+        # -----------------------------
+        # YOUTUBE URL INGESTION
+        # -----------------------------
+        elif youtube_url:
+
+            ydl_opts = {
+                "quiet": True,
+                "skip_download": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+
+                subtitles = (
+                    info.get("automatic_captions")
+                    or info.get("subtitles")
+                    or {}
+                )
+
+                transcript_lines = []
+
+                for lang in subtitles:
+                    for sub in subtitles[lang]:
+                        if sub.get("ext") == "json3":
+                            transcript_lines.append(
+                                f"Transcript available for language: {lang}"
+                            )
+
+                extracted_text = "\n".join(transcript_lines)
+
+                if not extracted_text:
+                    extracted_text = info.get("description", "")
+
+        else:
             return jsonify({
                 "ok": False,
-                "error": "Missing text field"
+                "error": "Missing text or youtube_url"
             }), 400
 
-        headers = {
-            "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
-
-        payload = {
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 500,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Analyze this trading video transcript and extract trading strategy rules:\n\n{video_text}"
-                }
-            ]
-        }
-
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=payload,
-            timeout=60
+        # -----------------------------
+        # OPENAI ANALYSIS
+        # -----------------------------
+        client = OpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY")
         )
 
+        completion = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a trading strategy analyzer. "
+                        "Extract strategy rules, entries, exits, "
+                        "risk management, and market conditions."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": extracted_text
+                }
+            ]
+        )
+
+        analysis = completion.choices[0].message.content
+
         return jsonify({
-            "ok": response.status_code == 200,
-            "status_code": response.status_code,
-            "anthropic_response": response.json()
+            "ok": True,
+            "analysis": analysis,
+            "source_text_length": len(extracted_text)
         })
 
     except Exception as e:
