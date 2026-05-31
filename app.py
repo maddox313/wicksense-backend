@@ -1765,7 +1765,7 @@ def update_live_signal(market):
             entry_timing = "SETUP FORMING"
             trade_status = "FORMING"
         elif trade_quality_score < 85:
-            entry_timing = "ENTER NOW"
+            entry_timing = "ENTER SOON"
             trade_status = "READY"
         else:
             entry_timing = "ENTER NOW"
