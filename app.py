@@ -7782,38 +7782,40 @@ Transcript:
         }), 500
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+
+from youtube_transcript_api import YouTubeTranscriptApi
+from urllib.parse import urlparse, parse_qs
+
 
 @app.route("/api/extract-youtube-transcript", methods=["POST"])
 def extract_youtube_transcript():
     try:
         data = request.get_json()
-
         if not data:
-            return jsonify({
-                "ok": False,
-                "error": "Missing JSON body"
-            }), 400
+            return jsonify({"ok": False, "error": "Missing JSON body"}), 400
 
         youtube_url = data.get("youtube_url")
-
         if not youtube_url:
-            return jsonify({
-                "ok": False,
-                "error": "Missing youtube_url"
-            }), 400
+            return jsonify({"ok": False, "error": "Missing youtube_url"}), 400
+
+        parsed_url = urlparse(youtube_url)
+        video_id = parse_qs(parsed_url.query).get("v", [None])[0]
+        if not video_id:
+            return jsonify({"ok": False, "error": "Invalid YouTube URL"}), 400
+
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript_text = " ".join([entry["text"] for entry in transcript])
 
         return jsonify({
             "ok": True,
-            "message": "YouTube transcript route is active",
-            "youtube_url": youtube_url
+            "source": "youtube-transcript-api",
+            "transcript_text": transcript_text
         })
 
     except Exception as e:
-        return jsonify({
-            "ok": False,
-            "error": str(e)
-        }), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
