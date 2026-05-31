@@ -7803,7 +7803,7 @@ def extract_youtube_transcript():
         if not video_id:
             return jsonify({"ok": False, "error": "Invalid YouTube URL"}), 400
 
-        transcript = YouTubeTranscriptApi().fetch(video_id)
+        return jsonify({"ok": false, "error": "FORCE_WHISPER_FALLBACK"}), 500
         transcript_text = " ".join([entry["text"] for entry in transcript])
 
         return jsonify({
