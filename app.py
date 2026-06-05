@@ -1120,12 +1120,12 @@ def get_current_live_top_trade(target_market=None):
 # ============================
 def get_chart_symbol(market):
     chart_map = {
-        "NASDAQ": "OANDA:NAS100USD",
-        "Gold": "OANDA:XAUUSD",
-        "Forex": "OANDA:EURUSD",
-        "NaturalGas": "TVC:NATGAS",
-        "DowJones": "OANDA:US30USD",
-        "Futures": "CME_MINI:ES1!"
+        "NASDAQ":     "OANDA:NAS100USD",
+        "GOLD":       "OANDA:XAUUSD",
+        "FOREX":      "OANDA:EURUSD",
+        "NATURALGAS": "TVC:NATGAS",
+        "DOWJONES":   "OANDA:US30USD",
+        "FUTURES":    "CME_MINI:ES1!"
     }
     return chart_map.get(market, "")
 
