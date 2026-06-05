@@ -2198,10 +2198,10 @@ def start_twelvedata_stream():
                     "QQQ": "NASDAQ",
                     "DIA": "DowJones",
                     "XAU/USD": "Gold",
-                    "UNG": "NaturalGas",
+                    "NG": "NaturalGas",    # ← FIXED
                     "EUR/USD": "Forex",
                     "SPY": "Futures"
-                }
+               }
 
                 market = market_map.get(symbol)
 
