@@ -44,17 +44,12 @@ NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
-    "FOREX": "EUR/USD",
-    "GOLD": "XAU/USD",
-
-    # 🔥 CRITICAL FIX (THIS IS THE BIG ONE)
-    "NATURALGAS": "NG",
-
-    "NASDAQ": "NDX",
-    "DOWJONES": "DIA",
-
-    # Optional (keep if you want futures)
-    "FUTURES": "ES"
+    "FOREX":      "EUR/USD",   # ✅ unchanged — all FX brokers
+    "GOLD":       "XAU/USD",   # ✅ unchanged — spot gold, IBKR CFD
+    "NASDAQ":     "QQQ",       # ✅ ETF with full volume — Alpaca trades this
+    "DOWJONES":   "DIA",       # ✅ ETF with full volume — Alpaca trades this
+    "NATURALGAS": "NG",        # ✅ unchanged — NG futures
+    "FUTURES":    "SPY",       # ✅ ETF with full volume — Alpaca trades this
 }
 
 
