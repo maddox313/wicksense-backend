@@ -198,6 +198,11 @@ def market_news():
         return jsonify({"error": str(exc)}), 500
 
 
+from aria import register_aria_routes
+
+register_aria_routes(app)
+
+
 from flask import request, jsonify
 import time
 
@@ -2805,6 +2810,11 @@ def create_notification(notification):
     notification["created_at"] = datetime.utcnow().isoformat() + "Z"
     notification["is_read"] = False
     append_history(NOTIFICATION_FILE, notification, max_items=1000)
+    try:
+        from aria.monitor import hook_backend_notification
+        hook_backend_notification(notification)
+    except Exception:
+        pass
 
 def save_live_signal_history_entry(market, payload):
     try:
