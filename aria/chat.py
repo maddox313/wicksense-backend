@@ -13,7 +13,7 @@ from aria.reasoning.agent import create_reasoning_agent
 
 ANTHROPIC_API_KEY = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-DEFAULT_MODEL = os.environ.get("ARIA_MODEL", "claude-sonnet-4-20250514")
+DEFAULT_MODEL = (os.environ.get("ARIA_MODEL") or "claude-sonnet-4-6").strip()
 MAX_TOOL_ITERATIONS = 6
 
 
