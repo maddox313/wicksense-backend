@@ -26,6 +26,8 @@ except ImportError:
 stripe.api_key = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
 
 TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
+PERPLEXITY_API_KEY = (os.environ.get("PERPLEXITY_API_KEY") or "").strip()
+PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -147,6 +149,54 @@ def markets():
         "NaturalGas",
         "Forex"
     ])
+
+
+@app.route("/market-news", methods=["POST", "OPTIONS"])
+def market_news():
+    """Proxy Perplexity Sonar for daily market news (server-side only)."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    if not PERPLEXITY_API_KEY or "your-" in PERPLEXITY_API_KEY or PERPLEXITY_API_KEY.endswith("here"):
+        return jsonify({"error": "PERPLEXITY_API_KEY is not configured on backend"}), 503
+
+    body = request.get_json(silent=True) or {}
+    messages = body.get("messages") or []
+    if not isinstance(messages, list) or len(messages) == 0:
+        return jsonify({"error": "messages array is required"}), 400
+
+    options = body.get("options") or {}
+    payload = {
+        "model": options.get("model", "sonar-pro"),
+        "messages": messages,
+        "temperature": options.get("temperature", 0.3),
+        "max_tokens": options.get("max_tokens", 1500),
+        "web_search_options": options.get("web_search_options") or {"search_context_size": "medium"},
+    }
+
+    try:
+        resp = requests.post(
+            PERPLEXITY_API_URL,
+            headers={
+                "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=120,
+        )
+        if not resp.ok:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = {"message": resp.text}
+            return jsonify({"error": detail}), resp.status_code
+
+        return jsonify(resp.json()), 200
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Perplexity request timed out"}), 504
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
 
 from flask import request, jsonify
 import time
