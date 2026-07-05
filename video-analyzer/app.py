@@ -443,7 +443,8 @@ def analyze_with_claude(transcript, frames, video_meta, diag):
 
         response = client.messages.create(model=ANTHROPIC_MODEL, max_tokens=4096, messages=[{"role": "user", "content": content}])
         elapsed  = round(time.time() - start, 2)
-        analysis = response.content[0].text if response.content else "" log.info("[CLAUDE] ✓ Analysis complete — response_chars=%d, elapsed=%.2fs", len(analysis), elapsed)
+        analysis = response.content[0].text if response.content else ""
+        log.info("[CLAUDE] ✓ Analysis complete — response_chars=%d, elapsed=%.2fs", len(analysis), elapsed)
         diag["claude_success"]        = True
         diag["claude_elapsed_s"]      = elapsed
         diag["claude_response_chars"] = len(analysis)
