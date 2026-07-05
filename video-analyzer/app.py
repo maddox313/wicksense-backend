@@ -18,6 +18,7 @@ Exposed routes (ONLY):
   GET  /api/video-health              — Video microservice health check
   POST /api/extract-youtube-transcript — Transcript extraction via RapidAPI / fallback
   POST /api/youtube-ingest            — Full YouTube media ingestion pipeline
+  POST /api/chat-completion           — Server-side Claude/OpenAI proxy (Knowledge Analyzer)
 
 Environment variables required:
   ANTHROPIC_API_KEY         — Claude API key
@@ -46,6 +47,8 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+from chat_completion import handle_chat_completion_request
+
 try:
     import requests as http_requests
     HTTP_REQUESTS_AVAILABLE = True
@@ -70,7 +73,7 @@ log = logging.getLogger("wicksense.video-analyzer")
 log.info("=" * 70)
 log.info("[SERVICE] %s — VIDEO ANALYZER MICROSERVICE", SERVICE_NAME)
 log.info("[SERVICE] Version: %s  Build: %s", BUILD_VERSION, BUILD_DATE)
-log.info("[SERVICE] Routes: GET / | GET /api/video-health | POST /api/extract-youtube-transcript | POST /api/youtube-ingest")
+log.info("[SERVICE] Routes: GET / | GET /api/video-health | POST /api/extract-youtube-transcript | POST /api/youtube-ingest | POST /api/chat-completion")
 log.info("[SERVICE] NO market scanning. NO TwelveData. NO paper trading. NO signals. NO trade lifecycle.")
 log.info("=" * 70)
 log.info("VIDEO_ANALYZER_V1_0_ACTIVE")
@@ -101,6 +104,9 @@ app = Flask(__name__)
 CORS(app, origins=[
     "https://wicksense7625.builtwithrocket.new",
     "https://wicksensetrading.com",
+    "http://localhost:4028",
+    "http://127.0.0.1:4028",
+    "http://localhost:5173",
 ])
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -415,11 +421,7 @@ def analyze_with_claude(transcript, frames, video_meta, diag):
             content.append({
                 "type": "text",
                 "text": (
-                    "You are a professional trading analyst. Analyze the following trading video content.\n\n"
-                    "VIDEO TITLE: %s\nCHANNEL: %s\n\nTRANSCRIPT:\n%s\n\n"
-                    "Identify: trading strategies discussed, entry/exit rules, risk management, "
-                    "market conditions, technical indicators, and any specific setups mentioned."
-                ) % (video_meta.get("title", "Unknown"), video_meta.get("channel", "Unknown"), transcript[:15000])
+                    "You are a professional trading analyst. Analyze the following trading video content.\n\n" "VIDEO TITLE: %s\nCHANNEL: %s\n\nTRANSCRIPT:\n%s\n\n" "Identify: trading strategies discussed, entry/exit rules, risk management, " "market conditions, technical indicators, and any specific setups mentioned." ) % (video_meta.get("title", "Unknown"), video_meta.get("channel", "Unknown"), transcript[:15000])
             })
 
         if has_frames:
@@ -441,9 +443,7 @@ def analyze_with_claude(transcript, frames, video_meta, diag):
 
         response = client.messages.create(model=ANTHROPIC_MODEL, max_tokens=4096, messages=[{"role": "user", "content": content}])
         elapsed  = round(time.time() - start, 2)
-        analysis = response.content[0].text if response.content else ""
-
-        log.info("[CLAUDE] ✓ Analysis complete — response_chars=%d, elapsed=%.2fs", len(analysis), elapsed)
+        analysis = response.content[0].text if response.content else "" log.info("[CLAUDE] ✓ Analysis complete — response_chars=%d, elapsed=%.2fs", len(analysis), elapsed)
         diag["claude_success"]        = True
         diag["claude_elapsed_s"]      = elapsed
         diag["claude_response_chars"] = len(analysis)
@@ -520,9 +520,7 @@ def fetch_transcript_via_rapidapi(youtube_url, video_id, request_id):
         return None, "RAPIDAPI_KEY not set"
 
     if not HTTP_REQUESTS_AVAILABLE:
-        return None, "requests library not available"
-
-    log.info("[RAPIDAPI:%s] Fetching transcript for video_id=%s via RapidAPI", request_id, video_id)
+        return None, "requests library not available" log.info("[RAPIDAPI:%s] Fetching transcript for video_id=%s via RapidAPI", request_id, video_id)
 
     try:
         url = "https://%s/transcript" % RAPIDAPI_HOST
@@ -592,9 +590,7 @@ def extract_youtube_transcript():
         return jsonify({"ok": False, "error": "Not a valid YouTube URL"}), 400
 
     video_id_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{10,12})", youtube_url)
-    video_id       = video_id_match.group(1) if video_id_match else "unknown"
-
-    log.info("[YT-TRANSCRIPT:%s] video_id=%s", request_id, video_id)
+    video_id       = video_id_match.group(1) if video_id_match else "unknown" log.info("[YT-TRANSCRIPT:%s] video_id=%s", request_id, video_id)
 
     api_error = None
 
@@ -830,7 +826,27 @@ def youtube_ingest():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECTION 12 — Route: GET /api/video-health
+# SECTION 12 — Route: POST /api/chat-completion (Knowledge Analyzer / Claude)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/chat-completion", methods=["POST"])
+def chat_completion():
+    """Server-side Anthropic/OpenAI proxy — replaces legacy AWS Lambda chat completion."""
+    request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    log.info("[CHAT-COMPLETION:%s] POST /api/chat-completion", request_id)
+
+    body = request.get_json(silent=True) or {}
+    result, status = handle_chat_completion_request(
+        body,
+        anthropic_api_key=ANTHROPIC_API_KEY,
+        anthropic_model=ANTHROPIC_MODEL,
+        openai_api_key=OPENAI_API_KEY,
+    )
+    return jsonify(result), status
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 13 — Route: GET /api/video-health
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/api/video-health", methods=["GET"])
@@ -896,6 +912,7 @@ def root():
             "GET /api/video-health",
             "POST /api/extract-youtube-transcript",
             "POST /api/youtube-ingest",
+            "POST /api/chat-completion",
         ],
     }), 200
 
