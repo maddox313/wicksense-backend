@@ -521,7 +521,9 @@ def fetch_transcript_via_rapidapi(youtube_url, video_id, request_id):
         return None, "RAPIDAPI_KEY not set"
 
     if not HTTP_REQUESTS_AVAILABLE:
-        return None, "requests library not available" log.info("[RAPIDAPI:%s] Fetching transcript for video_id=%s via RapidAPI", request_id, video_id)
+        return None, "requests library not available"
+
+    log.info("[RAPIDAPI:%s] Fetching transcript for video_id=%s via RapidAPI", request_id, video_id)
 
     try:
         url = "https://%s/transcript" % RAPIDAPI_HOST
@@ -591,7 +593,8 @@ def extract_youtube_transcript():
         return jsonify({"ok": False, "error": "Not a valid YouTube URL"}), 400
 
     video_id_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{10,12})", youtube_url)
-    video_id       = video_id_match.group(1) if video_id_match else "unknown" log.info("[YT-TRANSCRIPT:%s] video_id=%s", request_id, video_id)
+    video_id       = video_id_match.group(1) if video_id_match else "unknown"
+    log.info("[YT-TRANSCRIPT:%s] video_id=%s", request_id, video_id)
 
     api_error = None
 
