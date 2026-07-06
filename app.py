@@ -33,7 +33,8 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+from wicksense_backend.register_extensions import register_wicksense_extensions
+register_wicksense_extensions(app)
 
 PRESETS_FILE = "presets.json"
 SIGNAL_HISTORY_FILE = "signal_history.json"
