@@ -293,6 +293,7 @@ def _handle_submit_entry_order(user_id, body):
     })
 
     if paper_trade_uuid:
+        exec_mode = "alpaca_live" if creds.get("mode") == "live" else "alpaca_paper"
         _supabase_patch(
             "paper_trades",
             "id",
@@ -303,6 +304,9 @@ def _handle_submit_entry_order(user_id, body):
                 "alpaca_submitted_at": now_iso(),
                 "stop_loss": repaired_sl,
                 "take_profit": repaired_tp,
+                "execution_mode": exec_mode,
+                "broker_source": "alpaca",
+                "alpaca_executed": True,
             },
         )
 
