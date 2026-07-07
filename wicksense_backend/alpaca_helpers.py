@@ -19,9 +19,50 @@ UUID_RE = re.compile(
 )
 BRACKET_MIN_OFFSET = 0.01
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
+def _env_first(*names):
+    for name in names:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+SUPABASE_URL = _env_first("SUPABASE_URL", "VITE_SUPABASE_URL").rstrip("/")
+SUPABASE_ANON_KEY = _env_first(
+    "SUPABASE_ANON_KEY",
+    "VITE_SUPABASE_ANON_KEY",
+)
+SUPABASE_SERVICE_ROLE_KEY = _env_first(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_KEY",
+)
+
+
+def supabase_api_key():
+    """Project API key for Supabase REST/auth calls (anon preferred)."""
+    return SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY
+
+
+def supabase_auth_configured():
+    return bool(SUPABASE_URL and supabase_api_key())
+
+
+def _supabase_rest_headers(auth_header=None):
+    api_key = supabase_api_key()
+    if not api_key:
+        return None
+    headers = {
+        "apikey": api_key,
+        "Content-Type": "application/json",
+    }
+    if auth_header and auth_header.startswith("Bearer "):
+        headers["Authorization"] = auth_header
+    elif SUPABASE_SERVICE_ROLE_KEY:
+        headers["Authorization"] = f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
+    else:
+        return None
+    return headers
 
 
 def to_uuid_or_null(value):
@@ -31,42 +72,66 @@ def to_uuid_or_null(value):
 
 
 def get_user_id_from_request(auth_header):
+    """
+    Validate Supabase user JWT from Authorization: Bearer <access_token>.
+    Returns (user_id, error_reason).
+    """
     if not auth_header or not auth_header.startswith("Bearer "):
-        return None
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-        log.warning("SUPABASE_URL or SUPABASE_ANON_KEY not configured")
-        return None
+        return None, "missing_bearer_token"
+
+    if not supabase_auth_configured():
+        log.error(
+            "[alpaca] Supabase auth not configured — set SUPABASE_URL and SUPABASE_ANON_KEY on Render"
+        )
+        return None, "supabase_auth_not_configured"
+
     try:
         res = requests.get(
             f"{SUPABASE_URL}/auth/v1/user",
             headers={
                 "Authorization": auth_header,
-                "apikey": SUPABASE_ANON_KEY,
+                "apikey": supabase_api_key(),
             },
             timeout=15,
         )
         if res.status_code != 200:
-            return None
-        return res.json().get("id")
+            log.warning(
+                "[alpaca] Supabase rejected JWT: status=%s body=%s",
+                res.status_code,
+                (res.text or "")[:240],
+            )
+            return None, "invalid_or_expired_token"
+        user_id = res.json().get("id")
+        if not user_id:
+            return None, "invalid_or_expired_token"
+        return user_id, None
     except requests.RequestException as err:
-        log.warning("auth user lookup failed: %s", err)
-        return None
+        log.warning("[alpaca] auth user lookup failed: %s", err)
+        return None, "auth_lookup_failed"
 
 
-def get_user_credentials(user_id):
-    if not user_id or not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+def get_user_credentials(user_id, auth_header=None):
+    if not user_id or not SUPABASE_URL:
         return None
+
+    headers = _supabase_rest_headers(auth_header)
+    if not headers:
+        log.warning("[alpaca] cannot fetch credentials — no Supabase API key configured")
+        return None
+
     try:
         res = requests.get(
             f"{SUPABASE_URL}/rest/v1/alpaca_credentials",
             params={"user_id": f"eq.{user_id}", "select": "api_key,secret_key,mode"},
-            headers={
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            },
+            headers=headers,
             timeout=15,
         )
         if res.status_code != 200:
+            log.warning(
+                "[alpaca] credential fetch HTTP %s: %s",
+                res.status_code,
+                (res.text or "")[:240],
+            )
             return None
         rows = res.json()
         if not rows or not rows[0].get("api_key"):
@@ -78,7 +143,7 @@ def get_user_credentials(user_id):
             "mode": row.get("mode") or "paper",
         }
     except requests.RequestException as err:
-        log.warning("credential fetch failed: %s", err)
+        log.warning("[alpaca] credential fetch failed: %s", err)
         return None
 
 
@@ -180,24 +245,23 @@ def repair_bracket_prices(side, entry_price, stop_loss, take_profit):
     }
 
 
-def log_alpaca_order(user_id, row):
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY or not user_id:
+def log_alpaca_order(user_id, row, auth_header=None):
+    if not user_id or not SUPABASE_URL:
         return
+    headers = _supabase_rest_headers(auth_header)
+    if not headers:
+        return
+    headers["Prefer"] = "return=minimal"
     try:
         payload = {**row, "user_id": user_id}
         requests.post(
             f"{SUPABASE_URL}/rest/v1/alpaca_orders",
-            headers={
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
+            headers=headers,
             json=payload,
             timeout=15,
         )
     except requests.RequestException as err:
-        log.warning("alpaca_orders insert failed: %s", err)
+        log.warning("[alpaca] alpaca_orders insert failed: %s", err)
 
 
 def now_iso():

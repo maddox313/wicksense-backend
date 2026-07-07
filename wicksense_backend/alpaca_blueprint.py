@@ -9,7 +9,7 @@ Routes:
 import json
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 
 from wicksense_backend.alpaca_helpers import (
     SUPABASE_SERVICE_ROLE_KEY,
@@ -52,37 +52,38 @@ def _normalize_action(raw):
 
 def _require_auth():
     auth = request.headers.get("Authorization", "")
-    user_id = get_user_id_from_request(auth)
+    user_id, reason = get_user_id_from_request(auth)
     if not user_id:
-        return None, (jsonify({"error": "Unauthorized"}), 401)
+        return None, (jsonify({"error": "Unauthorized", "reason": reason or "unauthorized"}), 401)
+    g.alpaca_auth_header = auth
     return user_id, None
 
 
 def _require_creds(user_id):
-    creds = get_user_credentials(user_id)
+    auth = getattr(g, "alpaca_auth_header", None)
+    creds = get_user_credentials(user_id, auth)
     if not creds:
         return None, (jsonify({"error": "No credentials found. Please save your API keys first."}), 400)
     return creds, None
 
 
 def _supabase_patch(table, match_col, match_val, payload, user_id=None):
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+    from wicksense_backend.alpaca_helpers import _supabase_rest_headers
+
+    headers = _supabase_rest_headers(getattr(g, "alpaca_auth_header", None))
+    if not headers or not SUPABASE_URL:
         return
     import requests
 
     params = {match_col: f"eq.{match_val}"}
     if user_id:
         params["user_id"] = f"eq.{user_id}"
+    headers["Prefer"] = "return=minimal"
     try:
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/{table}",
             params=params,
-            headers={
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
+            headers=headers,
             json=payload,
             timeout=15,
         )
@@ -90,8 +91,17 @@ def _supabase_patch(table, match_col, match_val, payload, user_id=None):
         log.warning("supabase patch %s failed: %s", table, err)
 
 
+def _log_order(user_id, row):
+    log_alpaca_order(user_id, row, getattr(g, "alpaca_auth_header", None))
+
+
 def _supabase_get_alpaca_orders(user_id, limit=50):
+    from wicksense_backend.alpaca_helpers import _supabase_rest_headers
     import requests
+
+    headers = _supabase_rest_headers(getattr(g, "alpaca_auth_header", None))
+    if not headers or not SUPABASE_URL:
+        return []
 
     res = requests.get(
         f"{SUPABASE_URL}/rest/v1/alpaca_orders",
@@ -101,10 +111,7 @@ def _supabase_get_alpaca_orders(user_id, limit=50):
             "order": "created_at.desc",
             "limit": str(limit),
         },
-        headers={
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        },
+        headers=headers,
         timeout=15,
     )
     if res.status_code != 200:
@@ -198,7 +205,7 @@ def _handle_submit_entry_order(user_id, body):
             asset = asset_res.json()
             if not (asset.get("shortable") and asset.get("easy_to_borrow")):
                 skip_reason = f"Alpaca order skipped: short selling not available for {symbol.upper()}"
-                log_alpaca_order(user_id, {
+                _log_order(user_id, {
                     "paper_trade_id": paper_trade_uuid,
                     "symbol": symbol.upper(),
                     "side": "sell",
@@ -239,7 +246,7 @@ def _handle_submit_entry_order(user_id, body):
     order_data = order_res.json() if order_res.content else {}
 
     if not order_res.ok:
-        log_alpaca_order(user_id, {
+        _log_order(user_id, {
             "paper_trade_id": paper_trade_uuid,
             "symbol": symbol.upper(),
             "side": str(side).lower(),
@@ -266,7 +273,7 @@ def _handle_submit_entry_order(user_id, body):
             "base_price": bracket["base_price"],
         })
 
-    log_alpaca_order(user_id, {
+    _log_order(user_id, {
         "paper_trade_id": paper_trade_uuid,
         "alpaca_order_id": order_data.get("id"),
         "client_order_id": client_order_id,
@@ -434,7 +441,7 @@ def _handle_close_position(user_id, body):
     if not res.ok:
         return jsonify({"error": "Failed to close position", "detail": res.text}), 400
     close_data = res.json() if res.content else {}
-    log_alpaca_order(user_id, {
+    _log_order(user_id, {
         "paper_trade_id": to_uuid_or_null(body.get("paper_trade_id")),
         "alpaca_order_id": close_data.get("id"),
         "symbol": symbol.upper(),
@@ -469,7 +476,7 @@ def _handle_emergency_kill_switch(user_id):
             closed = len(data) if isinstance(data, list) else 0
     except Exception as exc:
         errors.append(f"Close positions: {exc}")
-    log_alpaca_order(user_id, {
+    _log_order(user_id, {
         "event_type": "EMERGENCY_KILL_SWITCH",
         "order_status": "kill_switch_activated",
         "alpaca_response": json.dumps({"cancelled_orders": cancelled, "closed_positions": closed, "errors": errors}),
