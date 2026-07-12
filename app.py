@@ -118,6 +118,13 @@ LIVE_NOTIFICATION_COOLDOWNS = {}
 LIVE_ENGINE_STARTED = False
 LIVE_ENGINE_LOCK = threading.Lock()
 
+# Diagnostics for Top Trade quality gate (ranking itself unchanged).
+TOP_TRADE_QUALITY_GATE_DIAGNOSTICS = {
+    "last_updated": None,
+    "passed": [],
+    "rejected": [],
+}
+
 POLLING_INTERVAL = 7
 WS_RECONNECT_INTERVAL = 30
 
@@ -1067,9 +1074,650 @@ def handle_live_signal_change(market, previous_state, new_payload):
             "trendline": new_payload.get("trendline")
         })
 
+# =========================================================
+# TOP TRADE QUALITY GATE (pre-ranking only — does not change scoring)
+# =========================================================
+
+TOP_TRADE_BUY_PATTERNS = {
+    "HAMMER",
+    "BULLISH ENGULFING",
+    "PIN BAR",
+    "BULLISH PIN BAR",
+}
+TOP_TRADE_SELL_PATTERNS = {
+    "SHOOTING STAR",
+    "BEARISH ENGULFING",
+    "PIN BAR",
+    "BEARISH PIN BAR",
+}
+TOP_TRADE_DEFAULT_TRADABLE_SESSIONS = {
+    "LONDON",
+    "NYSE",
+    "TOKYO",
+    "LONDON/NYSE OVERLAP",
+    "TOKYO/LONDON OVERLAP",
+    "SYDNEY/TOKYO OVERLAP",
+}
+
+
+def get_top_trade_quality_gate_settings():
+    """Config used only by the Top Trade quality gate (ranking formula untouched)."""
+    try:
+        settings = load_risk_settings() or {}
+    except Exception:
+        settings = {}
+
+    tradable = settings.get("top_trade_tradable_sessions")
+    if not isinstance(tradable, list) or not tradable:
+        tradable_sessions = set(TOP_TRADE_DEFAULT_TRADABLE_SESSIONS)
+    else:
+        tradable_sessions = {str(s).strip().upper() for s in tradable if s}
+
+    try:
+        max_age = int(safe_float(settings.get("top_trade_max_setup_age_seconds"), 300))
+    except Exception:
+        max_age = 300
+    if max_age < 30:
+        max_age = 30
+
+    return {
+        "min_risk_reward": safe_float(settings.get("min_risk_reward"), 1.5),
+        "top_trade_max_setup_age_seconds": max_age,
+        "tradable_sessions": tradable_sessions,
+        "enabled_strategies": settings.get("enabled_strategies"),
+        "disabled_strategies": settings.get("disabled_strategies") or [],
+    }
+
+
+def _top_trade_first_positive_number(*values):
+    for value in values:
+        if value is None or value == "":
+            continue
+        number = safe_float(value, None)
+        if number is None:
+            continue
+        if number > 0:
+            return number
+    return None
+
+
+def resolve_top_trade_gate_levels(data):
+    """Read entry/SL/TP from candidate fields only — does not invent levels."""
+    candle = data.get("current_candle") if isinstance(data.get("current_candle"), dict) else {}
+
+    entry = _top_trade_first_positive_number(
+        data.get("entry_price"),
+        data.get("entry"),
+        data.get("close"),
+        candle.get("Close"),
+        candle.get("close"),
+    )
+    stop_loss = _top_trade_first_positive_number(
+        data.get("stop_loss"),
+        data.get("stop"),
+        data.get("sl"),
+    )
+    take_profit = _top_trade_first_positive_number(
+        data.get("take_profit"),
+        data.get("take_profit_1"),
+        data.get("target"),
+        data.get("tp"),
+    )
+    return entry, stop_loss, take_profit
+
+
+def compute_top_trade_gate_risk_reward(signal, entry, stop_loss, take_profit):
+    if entry is None or stop_loss is None or take_profit is None:
+        return None, "missing_price_levels"
+
+    if signal == "BUY":
+        if not (stop_loss < entry < take_profit):
+            return None, "invalid_buy_level_geometry"
+        risk = entry - stop_loss
+        reward = take_profit - entry
+    elif signal == "SELL":
+        if not (take_profit < entry < stop_loss):
+            return None, "invalid_sell_level_geometry"
+        risk = stop_loss - entry
+        reward = entry - take_profit
+    else:
+        return None, "invalid_signal_for_rr"
+
+    if risk <= 0:
+        return None, "non_positive_risk"
+    return round(reward / risk, 4), None
+
+
+def normalize_top_trade_gate_signal(data):
+    signal_raw = str(data.get("signal", "")).strip().upper()
+    if signal_raw in ["BULLISH", "BUY"]:
+        return "BUY"
+    if signal_raw in ["BEARISH", "SELL"]:
+        return "SELL"
+    return None
+
+
+def top_trade_strategy_is_enabled(data, gate_settings):
+    if data.get("strategy_enabled") is False:
+        return False, "strategy_disabled_on_candidate"
+
+    strategy_keys = []
+    for key in (
+        data.get("strategy_id"),
+        data.get("strategy_name"),
+        data.get("strategy_recommendation"),
+        data.get("setup_type"),
+    ):
+        if key is not None and str(key).strip():
+            strategy_keys.append(str(key).strip())
+
+    disabled = gate_settings.get("disabled_strategies") or []
+    disabled_norm = {str(x).strip().upper() for x in disabled if x}
+    for key in strategy_keys:
+        if key.upper() in disabled_norm:
+            return False, f"strategy_disabled:{key}"
+
+    enabled = gate_settings.get("enabled_strategies")
+    if isinstance(enabled, list) and len(enabled) > 0:
+        enabled_norm = {str(x).strip().upper() for x in enabled if x}
+        if not strategy_keys:
+            return False, "strategy_not_identified"
+        if not any(key.upper() in enabled_norm for key in strategy_keys):
+            return False, "strategy_not_in_enabled_list"
+
+    if data.get("strategy_enabled") is True:
+        return True, None
+
+    # No explicit disable and whitelist either absent or matched.
+    if not strategy_keys and data.get("strategy_enabled") is None:
+        # Allow default live engine when no strategy metadata is attached yet,
+        # unless a whitelist is configured (handled above).
+        return True, None
+
+    return True, None
+
+
+def top_trade_trend_confirmation_passes(signal, data):
+    trendline = str(data.get("trendline") or "").lower()
+    breakout = str(data.get("breakout") or "").lower()
+    bias = str(data.get("strategy_visual_bias") or "").lower()
+    confirmation = str(data.get("confirmation_state") or "").strip().lower()
+
+    # Confirmed is enough. Partial alone is too weak for a hard gate pass.
+    if confirmation == "confirmed":
+        return True
+
+    if signal == "BUY":
+        if "rising" in trendline or "support" in trendline:
+            return True
+        if "bullish" in breakout and "failed" not in breakout:
+            return True
+        if bias == "bullish":
+            return True
+        return False
+
+    if signal == "SELL":
+        if "falling" in trendline or "resistance" in trendline:
+            return True
+        if "bearish" in breakout or "breakdown" in breakout:
+            return True
+        if bias == "bearish":
+            return True
+        return False
+
+    return False
+
+
+def top_trade_pattern_confirmation_passes(signal, data):
+    pattern = data.get("pattern")
+    if pattern is None or str(pattern).strip() == "":
+        return False
+
+    pattern_norm = str(pattern).strip().upper()
+    if pattern_norm == "DOJI":
+        return False
+
+    if signal == "BUY":
+        return pattern_norm in TOP_TRADE_BUY_PATTERNS
+    if signal == "SELL":
+        return pattern_norm in TOP_TRADE_SELL_PATTERNS
+    return False
+
+
+def top_trade_setup_freshness_passes(data, max_age_seconds):
+    last_updated = data.get("last_updated")
+    if not last_updated:
+        return False, "missing_last_updated"
+
+    try:
+        raw = str(last_updated).strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        age_seconds = (datetime.utcnow() - parsed).total_seconds()
+    except Exception:
+        return False, "invalid_last_updated"
+
+    if age_seconds < 0:
+        # Clock skew: treat as fresh enough.
+        return True, None
+    if age_seconds > max_age_seconds:
+        return False, f"setup_stale_age_seconds:{int(age_seconds)}"
+    return True, None
+
+
+def top_trade_market_session_is_tradable(data, gate_settings):
+    session_label = str(
+        data.get("session_label")
+        or (get_market_session() or {}).get("session_label")
+        or ""
+    ).strip()
+    active_sessions = data.get("active_sessions")
+    if not isinstance(active_sessions, list):
+        active_sessions = (get_market_session() or {}).get("active_sessions") or []
+
+    if not session_label:
+        return False, "missing_session_label"
+
+    if session_label.strip().upper() in ("CLOSED / LOW LIQUIDITY", "CLOSED", "LOW LIQUIDITY"):
+        return False, "session_closed_or_low_liquidity"
+
+    tradable = gate_settings.get("tradable_sessions") or TOP_TRADE_DEFAULT_TRADABLE_SESSIONS
+    if session_label.strip().upper() in tradable:
+        return True, None
+
+    # Overlap / named session via active list
+    for session in active_sessions:
+        if str(session).strip().upper() in {"LONDON", "NYSE", "TOKYO"}:
+            return True, None
+
+    return False, f"session_not_tradable:{session_label}"
+
+
+def evaluate_top_trade_quality_gate(market_name, data, gate_settings=None):
+    """
+    Pre-ranking Quality Gate for Top Trade only.
+    Candidate must pass ALL checks to enter ranking.
+    Does not modify ranking math.
+    """
+    if gate_settings is None:
+        gate_settings = get_top_trade_quality_gate_settings()
+
+    rejection_reasons = []
+
+    if not isinstance(data, dict):
+        return {
+            "passed": False,
+            "rejection_reasons": ["invalid_candidate_payload"],
+            "signal": None,
+            "entry": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "risk_reward": None,
+            "market": market_name,
+        }
+
+    signal = normalize_top_trade_gate_signal(data)
+    if signal is None:
+        rejection_reasons.append("invalid_signal_must_be_buy_or_sell")
+
+    entry, stop_loss, take_profit = resolve_top_trade_gate_levels(data)
+    if entry is None:
+        rejection_reasons.append("missing_entry_price")
+    if stop_loss is None:
+        rejection_reasons.append("missing_stop_loss")
+    if take_profit is None:
+        rejection_reasons.append("missing_take_profit")
+
+    risk_reward = None
+    if signal and entry is not None and stop_loss is not None and take_profit is not None:
+        risk_reward, rr_error = compute_top_trade_gate_risk_reward(
+            signal, entry, stop_loss, take_profit
+        )
+        if rr_error:
+            rejection_reasons.append(rr_error)
+        else:
+            min_rr = safe_float(gate_settings.get("min_risk_reward"), 1.5)
+            if risk_reward is None or risk_reward < min_rr:
+                rejection_reasons.append(
+                    f"risk_reward_below_minimum:{risk_reward}<{min_rr}"
+                )
+
+    strategy_ok, strategy_reason = top_trade_strategy_is_enabled(data, gate_settings)
+    if not strategy_ok:
+        rejection_reasons.append(strategy_reason or "strategy_not_enabled")
+
+    if signal and not top_trade_trend_confirmation_passes(signal, data):
+        rejection_reasons.append("trend_confirmation_failed")
+
+    if signal and not top_trade_pattern_confirmation_passes(signal, data):
+        rejection_reasons.append("pattern_confirmation_failed")
+
+    fresh_ok, fresh_reason = top_trade_setup_freshness_passes(
+        data,
+        gate_settings.get("top_trade_max_setup_age_seconds", 300),
+    )
+    if not fresh_ok:
+        rejection_reasons.append(fresh_reason or "setup_freshness_failed")
+
+    session_ok, session_reason = top_trade_market_session_is_tradable(data, gate_settings)
+    if not session_ok:
+        rejection_reasons.append(session_reason or "market_session_not_tradable")
+
+    return {
+        "passed": len(rejection_reasons) == 0,
+        "rejection_reasons": rejection_reasons,
+        "signal": signal,
+        "entry": entry,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
+        "risk_reward": risk_reward,
+        "market": market_name,
+    }
+
+
+def reset_top_trade_quality_gate_diagnostics():
+    global TOP_TRADE_QUALITY_GATE_DIAGNOSTICS
+    TOP_TRADE_QUALITY_GATE_DIAGNOSTICS = {
+        "last_updated": datetime.utcnow().isoformat() + "Z",
+        "passed": [],
+        "rejected": [],
+    }
+
+
+def record_top_trade_quality_gate_result(market_name, gate_result):
+    global TOP_TRADE_QUALITY_GATE_DIAGNOSTICS
+    entry = {
+        "market": market_name,
+        "signal": gate_result.get("signal"),
+        "rejection_reasons": list(gate_result.get("rejection_reasons") or []),
+        "entry": gate_result.get("entry"),
+        "stop_loss": gate_result.get("stop_loss"),
+        "take_profit": gate_result.get("take_profit"),
+        "risk_reward": gate_result.get("risk_reward"),
+        "passed": bool(gate_result.get("passed")),
+    }
+    if gate_result.get("passed"):
+        TOP_TRADE_QUALITY_GATE_DIAGNOSTICS["passed"].append(entry)
+    else:
+        TOP_TRADE_QUALITY_GATE_DIAGNOSTICS["rejected"].append(entry)
+    TOP_TRADE_QUALITY_GATE_DIAGNOSTICS["last_updated"] = (
+        datetime.utcnow().isoformat() + "Z"
+    )
+
+
+# =========================================================
+# TOP TRADE RANKING ENGINE (post quality gate only)
+# Single bounded ranking_score 0–100. Does not mutate trade_quality_score.
+# =========================================================
+
+def _clamp_score_0_100(value):
+    return max(0.0, min(100.0, safe_float(value, 0.0)))
+
+
+def _parse_top_trade_setup_timestamp(last_updated):
+    if not last_updated:
+        return 0.0
+    try:
+        raw = str(last_updated).strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed.timestamp()
+    except Exception:
+        return 0.0
+
+
+def _top_trade_trend_alignment_score(signal, data):
+    trendline = str(data.get("trendline") or "").lower()
+    breakout = str(data.get("breakout") or "").lower()
+    bias = str(data.get("strategy_visual_bias") or "").lower()
+    confirmation = str(data.get("confirmation_state") or "").strip().lower()
+
+    score = 0.0
+    if confirmation == "confirmed":
+        score = 100.0
+    elif confirmation == "partial":
+        score = 70.0
+
+    if signal == "BUY":
+        if "rising" in trendline or "support" in trendline:
+            score = max(score, 90.0)
+        if "bullish" in breakout and "failed" not in breakout:
+            score = max(score, 85.0)
+        if bias == "bullish":
+            score = max(score, 75.0)
+    elif signal == "SELL":
+        if "falling" in trendline or "resistance" in trendline:
+            score = max(score, 90.0)
+        if "bearish" in breakout or "breakdown" in breakout:
+            score = max(score, 85.0)
+        if bias == "bearish":
+            score = max(score, 75.0)
+
+    return _clamp_score_0_100(score)
+
+
+def _top_trade_confluence_score(signal, data):
+    breakdown = data.get("strategy_breakdown")
+    agreeing = 0
+    total = 0
+
+    if isinstance(breakdown, dict) and breakdown:
+        for item in breakdown.values():
+            if not isinstance(item, dict):
+                continue
+            total += 1
+            bullish = safe_float(item.get("bullish"), 0.0)
+            bearish = safe_float(item.get("bearish"), 0.0)
+            if signal == "BUY" and bullish > bearish and bullish > 0:
+                agreeing += 1
+            elif signal == "SELL" and bearish > bullish and bearish > 0:
+                agreeing += 1
+
+    agreement_score = (agreeing / total) * 100.0 if total > 0 else 0.0
+    confluence_bonus = safe_float(data.get("confluence_bonus"), 0.0)
+    bonus_score = _clamp_score_0_100(confluence_bonus * 40.0)
+    return _clamp_score_0_100(max(agreement_score, (agreement_score * 0.7) + (bonus_score * 0.3)))
+
+
+def _top_trade_pattern_quality_score(signal, data):
+    pattern = data.get("pattern")
+    if pattern is None or str(pattern).strip() == "":
+        return 0.0
+
+    pattern_norm = str(pattern).strip().upper()
+    if pattern_norm == "DOJI":
+        return 15.0
+
+    if signal == "BUY":
+        if pattern_norm == "BULLISH ENGULFING":
+            return 100.0
+        if pattern_norm == "HAMMER":
+            return 90.0
+        if pattern_norm in ("PIN BAR", "BULLISH PIN BAR"):
+            return 75.0
+    elif signal == "SELL":
+        if pattern_norm == "BEARISH ENGULFING":
+            return 100.0
+        if pattern_norm == "SHOOTING STAR":
+            return 90.0
+        if pattern_norm in ("PIN BAR", "BEARISH PIN BAR"):
+            return 75.0
+
+    return 40.0
+
+
+def _top_trade_session_quality_score(data):
+    session_label = str(data.get("session_label") or "").strip()
+    label_upper = session_label.upper()
+    liquidity = str(data.get("liquidity_profile") or "").strip().lower()
+
+    if "LONDON/NYSE OVERLAP" in label_upper:
+        score = 100.0
+    elif label_upper in ("NYSE", "LONDON"):
+        score = 88.0
+    elif "TOKYO/LONDON OVERLAP" in label_upper:
+        score = 80.0
+    elif label_upper == "TOKYO" or "SYDNEY/TOKYO OVERLAP" in label_upper:
+        score = 70.0
+    elif label_upper == "SYDNEY":
+        score = 55.0
+    elif "CLOSED" in label_upper or "LOW LIQUIDITY" in label_upper:
+        score = 10.0
+    else:
+        score = 40.0
+
+    if liquidity == "high":
+        score = max(score, 90.0)
+    elif liquidity == "moderate":
+        score = max(score, 70.0)
+
+    return _clamp_score_0_100(score)
+
+
+def _top_trade_risk_reward_bonus(data):
+    """Bounded bonus 0–5. Does not dominate the ranking score."""
+    rr = safe_float(data.get("risk_reward"), 0.0)
+    if rr <= 0:
+        signal = normalize_top_trade_gate_signal(data)
+        entry, stop_loss, take_profit = resolve_top_trade_gate_levels(data)
+        if signal and entry is not None and stop_loss is not None and take_profit is not None:
+            rr, rr_error = compute_top_trade_gate_risk_reward(
+                signal, entry, stop_loss, take_profit
+            )
+            if rr_error or rr is None:
+                return 0.0
+            rr = safe_float(rr, 0.0)
+    if rr <= 0:
+        return 0.0
+    # 1.5 → 0, 3.0 → 5, above 3 stays at 5
+    bonus = (rr - 1.5) * (5.0 / 1.5)
+    return max(0.0, min(5.0, bonus))
+
+
+def _scores_differ(a, b, places=4):
+    return round(safe_float(a, 0.0), places) != round(safe_float(b, 0.0), places)
+
+
+def _top_trade_freshness_bonus(data):
+    """Bounded bonus 0–3 based on setup age."""
+    ts = _parse_top_trade_setup_timestamp(data.get("last_updated"))
+    if ts <= 0:
+        return 0.0
+    age_seconds = max(0.0, datetime.utcnow().timestamp() - ts)
+    if age_seconds <= 60:
+        return 3.0
+    if age_seconds <= 180:
+        return 2.0
+    if age_seconds <= 300:
+        return 1.0
+    return 0.0
+
+
+def compute_top_trade_ranking_score(data, signal):
+    """
+    Authoritative Top Trade ranking score (0–100).
+    Confidence is one factor only — not dominant.
+    trade_quality_score is an input factor and is never overwritten by this function.
+    """
+    confidence = _clamp_score_0_100(data.get("confidence"))
+    trade_quality = _clamp_score_0_100(data.get("trade_quality_score"))
+    readiness = _clamp_score_0_100(data.get("trade_readiness_score"))
+    trend = _top_trade_trend_alignment_score(signal, data)
+    confluence = _top_trade_confluence_score(signal, data)
+    pattern = _top_trade_pattern_quality_score(signal, data)
+    session = _top_trade_session_quality_score(data)
+    rr_bonus = _top_trade_risk_reward_bonus(data)
+    freshness_bonus = _top_trade_freshness_bonus(data)
+
+    # Weights sum to 0.92; remaining headroom reserved for capped bonuses (≤8).
+    weighted = (
+        confidence * 0.15 +
+        trade_quality * 0.20 +
+        readiness * 0.15 +
+        trend * 0.12 +
+        confluence * 0.12 +
+        pattern * 0.10 +
+        session * 0.08
+    )
+    weighted = _clamp_score_0_100(weighted)
+
+    ranking_score = _clamp_score_0_100(weighted + rr_bonus + freshness_bonus)
+
+    return {
+        "ranking_score": round(ranking_score, 2),
+        "components": {
+            "confidence": round(confidence, 2),
+            "trade_quality": round(trade_quality, 2),
+            "execution_readiness": round(readiness, 2),
+            "trend_alignment": round(trend, 2),
+            "multi_strategy_confluence": round(confluence, 2),
+            "pattern_quality": round(pattern, 2),
+            "session_quality": round(session, 2),
+            "risk_reward_bonus": round(rr_bonus, 2),
+            "freshness_bonus": round(freshness_bonus, 2),
+            "weighted_core": round(weighted, 2),
+        },
+    }
+
+
+def top_trade_is_better_candidate(candidate, current_best):
+    """
+    Deterministic tie-break after ranking_score:
+    1) Higher Trade Quality
+    2) Higher Confidence
+    3) Better Risk/Reward
+    4) Newer setup
+    5) Alphabetical market (final fallback)
+    """
+    if current_best is None:
+        return True
+
+    if _scores_differ(candidate.get("ranking_score"), current_best.get("ranking_score"), places=2):
+        return safe_float(candidate.get("ranking_score"), 0.0) > safe_float(
+            current_best.get("ranking_score"), 0.0
+        )
+
+    if _scores_differ(
+        candidate.get("trade_quality_score"),
+        current_best.get("trade_quality_score"),
+        places=2,
+    ):
+        return safe_float(candidate.get("trade_quality_score"), 0.0) > safe_float(
+            current_best.get("trade_quality_score"), 0.0
+        )
+
+    if _scores_differ(candidate.get("confidence"), current_best.get("confidence"), places=2):
+        return safe_float(candidate.get("confidence"), 0.0) > safe_float(
+            current_best.get("confidence"), 0.0
+        )
+
+    cand_rr = candidate.get("risk_reward")
+    best_rr = current_best.get("risk_reward")
+    if cand_rr is None and best_rr is None:
+        pass
+    elif cand_rr is None:
+        return False
+    elif best_rr is None:
+        return True
+    elif _scores_differ(cand_rr, best_rr, places=4):
+        return safe_float(cand_rr, 0.0) > safe_float(best_rr, 0.0)
+
+    cand_ts = _parse_top_trade_setup_timestamp(candidate.get("last_updated"))
+    best_ts = _parse_top_trade_setup_timestamp(current_best.get("last_updated"))
+    if cand_ts != best_ts:
+        return cand_ts > best_ts
+
+    return str(candidate.get("market", "")).upper() < str(current_best.get("market", "")).upper()
+
+
 def get_current_live_top_trade(target_market=None):
     best_trade = None
-    best_score = -999
 
     # Support both possible LIVE_MARKET_STATE shapes
     if isinstance(LIVE_MARKET_STATE.get("markets"), dict):
@@ -1084,6 +1732,9 @@ def get_current_live_top_trade(target_market=None):
     print("LIVE TOP TRADE TARGET:", normalized_target_market)
     print("LIVE MARKET STATE KEYS:", list(live_markets.keys()))
 
+    reset_top_trade_quality_gate_diagnostics()
+    gate_settings = get_top_trade_quality_gate_settings()
+
     for market_name, data in live_markets.items():
         if not isinstance(data, dict):
             continue
@@ -1094,81 +1745,147 @@ def get_current_live_top_trade(target_market=None):
             print("TOP TRADE SKIP MARKET:", market_name, "TARGET:", normalized_target_market)
             continue
 
-        signal_raw = str(data.get("signal", "")).strip().upper()
-        if not signal_raw:
-            signal_raw = "BUY"
-
-        confidence = safe_float(data.get("confidence"), 0.0)
-        entry_timing = str(data.get("entry_timing", "")).strip().upper()
-        readiness = safe_float(data.get("trade_readiness_score"), 0.0)
-
-        if signal_raw in ["BULLISH", "BUY"]:
-            normalized_signal = "BUY"
-        elif signal_raw in ["BEARISH", "SELL"]:
-            normalized_signal = "SELL"
-        else:
-            print("TOP TRADE SKIP BAD SIGNAL:", market_name, signal_raw)
+        # Quality Gate — exclude from ranking if any required check fails.
+        gate_result = evaluate_top_trade_quality_gate(market_name, data, gate_settings)
+        record_top_trade_quality_gate_result(market_name, gate_result)
+        if not gate_result.get("passed"):
+            print(
+                "TOP TRADE QUALITY GATE REJECT:",
+                market_name,
+                gate_result.get("rejection_reasons"),
+                flush=True,
+            )
             continue
 
-        score = compute_trade_score(data)
-        score += readiness * 0.2
+        # Use gate-normalized signal only — never coerce empty signals to BUY.
+        normalized_signal = gate_result.get("signal")
+        if normalized_signal not in ("BUY", "SELL"):
+            print("TOP TRADE SKIP BAD SIGNAL AFTER GATE:", market_name, flush=True)
+            continue
+
+        confidence = _clamp_score_0_100(data.get("confidence"))
+        entry_timing = str(data.get("entry_timing", "")).strip().upper()
+        readiness = _clamp_score_0_100(data.get("trade_readiness_score"))
+        # Independent quality metric from the signal pipeline — never overwritten by ranking.
+        trade_quality_score = _clamp_score_0_100(data.get("trade_quality_score"))
+
+        # Keep ranking RR/levels aligned with gate-validated geometry.
+        rank_data = dict(data)
+        if gate_result.get("risk_reward") is not None:
+            rank_data["risk_reward"] = gate_result.get("risk_reward")
+        if gate_result.get("entry") is not None:
+            rank_data["entry_price"] = gate_result.get("entry")
+            rank_data["entry"] = gate_result.get("entry")
+        if gate_result.get("stop_loss") is not None:
+            rank_data["stop_loss"] = gate_result.get("stop_loss")
+        if gate_result.get("take_profit") is not None:
+            rank_data["take_profit"] = gate_result.get("take_profit")
+
+        rank_result = compute_top_trade_ranking_score(rank_data, normalized_signal)
+        ranking_score = rank_result["ranking_score"]
 
         print(
             "TOP TRADE CHECK:",
             market_name,
             normalized_signal,
+            "confidence=",
             confidence,
-            entry_timing,
+            "quality=",
+            trade_quality_score,
+            "readiness=",
             readiness,
-            score,
+            "ranking_score=",
+            ranking_score,
+            "entry_timing=",
+            entry_timing,
             "TARGET:",
-            normalized_target_market
+            normalized_target_market,
+            flush=True,
         )
 
-        if score > best_score:
-            best_score = score
-            candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
+        candle = data.get("current_candle", {}) if isinstance(data.get("current_candle"), dict) else {}
 
-            best_trade = {
-                "market": market_name,
-                "last_updated": data.get("last_updated"),
-                "open": candle.get("Open", data.get("open")),
-                "high": candle.get("High", data.get("high")),
-                "low": candle.get("Low", data.get("low")),
-                "close": candle.get("Close", data.get("close")),
-                "upper_wick": data.get("upper_wick"),
-                "lower_wick": data.get("lower_wick"),
-                "signal": normalized_signal,
-                "confidence": confidence,
-                "pattern": data.get("pattern"),
-                "breakout": data.get("breakout"),
-                "liquidity_event": data.get("liquidity_event"),
-                "trendline": data.get("trendline"),
-                "setup_type": data.get("setup_type"),
-                "ai_summary": data.get("ai_summary"),
-                "trade_thesis": data.get("trade_thesis"),
-                "risk_note": data.get("risk_note"),
-                "strategy_recommendation": data.get("strategy_recommendation"),
-                "strategy_reason": data.get("strategy_reason"),
-                "suggested_action": data.get("suggested_action"),
-                "support_levels": data.get("support_levels"),
-                "resistance_levels": data.get("resistance_levels"),
-                "trendline_points": data.get("trendline_points"),
-                "breakout_zone": data.get("breakout_zone"),
-                "entry_zone": data.get("entry_zone"),
-                "strategy_visual_bias": data.get("strategy_visual_bias"),
-                "entry_timing": data.get("entry_timing"),
-                "confirmation_state": data.get("confirmation_state"),
-                "trade_readiness_score": readiness,
-                "execution_guidance": data.get("execution_guidance"),
-                "session_label": data.get("session_label"),
-                "active_sessions": data.get("active_sessions"),
-                "liquidity_profile": data.get("liquidity_profile"),
-                "utc_hour": data.get("utc_hour"),
-                "trade_quality_score": round(score, 2)
-            }
+        entry_price = (
+            gate_result.get("entry")
+            if gate_result.get("entry") is not None
+            else data.get("entry_price", data.get("entry"))
+        )
+        stop_loss = (
+            gate_result.get("stop_loss")
+            if gate_result.get("stop_loss") is not None
+            else data.get("stop_loss")
+        )
+        take_profit = (
+            gate_result.get("take_profit")
+            if gate_result.get("take_profit") is not None
+            else data.get("take_profit")
+        )
+        risk_reward = (
+            gate_result.get("risk_reward")
+            if gate_result.get("risk_reward") is not None
+            else data.get("risk_reward")
+        )
+
+        candidate = {
+            "market": market_name,
+            "last_updated": data.get("last_updated"),
+            "open": candle.get("Open", data.get("open")),
+            "high": candle.get("High", data.get("high")),
+            "low": candle.get("Low", data.get("low")),
+            "close": candle.get("Close", data.get("close")),
+            "upper_wick": data.get("upper_wick"),
+            "lower_wick": data.get("lower_wick"),
+            "signal": normalized_signal,
+            "confidence": confidence,
+            "pattern": data.get("pattern"),
+            "breakout": data.get("breakout"),
+            "liquidity_event": data.get("liquidity_event"),
+            "trendline": data.get("trendline"),
+            "setup_type": data.get("setup_type"),
+            "ai_summary": data.get("ai_summary"),
+            "trade_thesis": data.get("trade_thesis"),
+            "risk_note": data.get("risk_note"),
+            "strategy_recommendation": data.get("strategy_recommendation"),
+            "strategy_reason": data.get("strategy_reason"),
+            "suggested_action": data.get("suggested_action"),
+            "strategy_name": data.get("strategy_name"),
+            "strategy_id": data.get("strategy_id"),
+            "support_levels": data.get("support_levels"),
+            "resistance_levels": data.get("resistance_levels"),
+            "trendline_points": data.get("trendline_points"),
+            "breakout_zone": data.get("breakout_zone"),
+            "entry_zone": data.get("entry_zone"),
+            "strategy_visual_bias": data.get("strategy_visual_bias"),
+            "entry_timing": data.get("entry_timing"),
+            "confirmation_state": data.get("confirmation_state"),
+            "trade_readiness_score": readiness,
+            "execution_guidance": data.get("execution_guidance"),
+            "session_label": data.get("session_label"),
+            "active_sessions": data.get("active_sessions"),
+            "liquidity_profile": data.get("liquidity_profile"),
+            "utc_hour": data.get("utc_hour"),
+            "entry": entry_price,
+            "entry_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "risk_reward": risk_reward,
+            "trade_quality_score": round(trade_quality_score, 2),
+            "ranking_score": ranking_score,
+            "ranking_components": rank_result.get("components"),
+        }
+
+        if top_trade_is_better_candidate(candidate, best_trade):
+            best_trade = candidate
 
     print("FINAL LIVE TOP TRADE:", best_trade)
+    print(
+        "TOP TRADE QUALITY GATE SUMMARY:",
+        "passed=",
+        len(TOP_TRADE_QUALITY_GATE_DIAGNOSTICS.get("passed") or []),
+        "rejected=",
+        len(TOP_TRADE_QUALITY_GATE_DIAGNOSTICS.get("rejected") or []),
+        flush=True,
+    )
     return best_trade
 
 # ============================
@@ -1299,6 +2016,17 @@ def live_top_trade():
 
         return jsonify(top_trade)
 
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+@app.route('/live-top-trade-quality-gate', methods=['GET'])
+def live_top_trade_quality_gate_diagnostics():
+    """Read-only diagnostics for the Top Trade quality gate (no ranking changes)."""
+    try:
+        return jsonify(TOP_TRADE_QUALITY_GATE_DIAGNOSTICS)
     except Exception as e:
         return jsonify({
             "error": str(e)
@@ -1856,6 +2584,56 @@ def update_live_signal(market):
             "Use paper trading only while testing. Confirm entry, stop loss, target, and market direction before taking any real trade."
         )
 
+        # -----------------------------
+        # COMPLETE TRADE PLAN (for Top Trade quality gate)
+        # Levels come from build_trade_levels — not invented in ranking.
+        # -----------------------------
+        try:
+            trade_levels = build_trade_levels(signal_data, current_candle) or {}
+        except Exception as levels_error:
+            print(f"⚠️ build_trade_levels failed for {market}: {levels_error}", flush=True)
+            trade_levels = {}
+
+        entry_price = trade_levels.get("entry_price", trade_levels.get("entry"))
+        stop_loss = trade_levels.get("stop_loss")
+        take_profit = trade_levels.get("take_profit")
+        risk_reward = trade_levels.get("risk_reward")
+
+        # If directional but levels helper returned nothing, still expose entry from close.
+        if entry_price is None:
+            entry_price = safe_float(current_candle.get("Close"), None)
+
+        try:
+            setup_type = get_setup_type({
+                **signal_data,
+                "confidence": confidence,
+                "signal": signal_data.get("signal"),
+            })
+        except Exception:
+            setup_type = signal_data.get("setup_type")
+
+        try:
+            strategy_output = build_strategy_engine_output(df, signal_data) or {}
+        except Exception as strategy_error:
+            print(f"⚠️ build_strategy_engine_output failed for {market}: {strategy_error}", flush=True)
+            strategy_output = {}
+
+        try:
+            timing_output = build_strategy_timing_output(df, signal_data) or {}
+        except Exception:
+            timing_output = {}
+
+        try:
+            visual_output = build_strategy_visual_output(df, signal_data) or {}
+        except Exception:
+            visual_output = {}
+
+        strategy_id = "backend_original_v1"
+        strategy_name = "Backend Original Strategy"
+        strategy_recommendation = strategy_output.get("strategy_recommendation")
+        strategy_reason = strategy_output.get("strategy_reason")
+        suggested_action = strategy_output.get("suggested_action")
+
         new_payload = {
             "market": market,
             "completed_candles": completed_candles,
@@ -1878,18 +2656,50 @@ def update_live_signal(market):
             "entry_timing": entry_timing,
             "execution_guidance": execution_guidance,
 
+            # Complete trade plan fields required by Top Trade quality gate
+            "entry": entry_price,
+            "entry_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "risk_per_unit": trade_levels.get("risk_per_unit"),
+            "reward_per_unit": trade_levels.get("reward_per_unit"),
+            "risk_reward": risk_reward,
+
+            "strategy_id": strategy_id,
+            "strategy_name": strategy_name,
+            "strategy_version": "1.0.0",
+            "strategy_enabled": True,
+            "strategy_recommendation": strategy_recommendation,
+            "strategy_reason": strategy_reason,
+            "suggested_action": suggested_action,
+
             "pattern": signal_data.get("pattern"),
             "breakout": signal_data.get("breakout"),
             "liquidity_event": signal_data.get("liquidity_event"),
             "trendline": signal_data.get("trendline"),
+            "strategy_breakdown": signal_data.get("strategy_breakdown"),
+            "confluence_bonus": confluence_bonus,
+            "reasons": signal_data.get("reasons"),
 
-            "setup_type": signal_data.get("setup_type"),
+            "setup_type": setup_type,
             "ai_summary": ai_summary,
             "trade_thesis": trade_thesis,
             "risk_note": risk_note,
 
-            "support_levels": signal_data.get("support"),
-            "resistance_levels": signal_data.get("resistance"),
+            "support": signal_data.get("support"),
+            "resistance": signal_data.get("resistance"),
+            "support_levels": strategy_output.get(
+                "support_levels", signal_data.get("support")
+            ),
+            "resistance_levels": strategy_output.get(
+                "resistance_levels", signal_data.get("resistance")
+            ),
+
+            "trendline_points": visual_output.get("trendline_points"),
+            "breakout_zone": visual_output.get("breakout_zone"),
+            "entry_zone": visual_output.get("entry_zone"),
+            "strategy_visual_bias": visual_output.get("strategy_visual_bias"),
+            "confirmation_state": timing_output.get("confirmation_state"),
 
             "session_label": session_data.get("session_label"),
             "active_sessions": session_data.get("active_sessions"),
@@ -2731,6 +3541,19 @@ def ensure_risk_settings_file():
             "min_confidence_threshold": 70.0,
             "max_risk_percent_per_trade": 2.0,
             "block_low_quality_setups": False,
+            # Top Trade quality gate (pre-ranking)
+            "min_risk_reward": 1.5,
+            "top_trade_max_setup_age_seconds": 300,
+            "top_trade_tradable_sessions": [
+                "London",
+                "NYSE",
+                "Tokyo",
+                "London/NYSE Overlap",
+                "Tokyo/London Overlap",
+                "Sydney/Tokyo Overlap",
+            ],
+            "enabled_strategies": None,
+            "disabled_strategies": [],
             "updated_at": datetime.utcnow().isoformat() + "Z"
         }
         with open(RISK_SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -5871,7 +6694,13 @@ def store_signal(user_id, signal):
 
 
 def build_trade_levels(signal_data, last_row):
-    signal = signal_data.get("signal", "Neutral")
+    signal = str(signal_data.get("signal", "Neutral")).strip()
+    # Normalize live BUY/SELL aliases used by update_live_signal display path
+    if signal.upper() in ("BUY", "BULLISH"):
+        signal = "Bullish"
+    elif signal.upper() in ("SELL", "BEARISH"):
+        signal = "Bearish"
+
     entry = float(last_row["Close"])
     candle_high = float(last_row["High"])
     candle_low = float(last_row["Low"])
@@ -5949,6 +6778,7 @@ def build_trade_levels(signal_data, last_row):
 
     return {
         "entry": round(entry, 6),
+        "entry_price": round(entry, 6),
         "stop_loss": round(stop_loss, 6) if stop_loss is not None else None,
         "take_profit": round(take_profit, 6) if take_profit is not None else None,
         "risk_per_unit": round(risk_per_unit, 6) if risk_per_unit is not None else None,
