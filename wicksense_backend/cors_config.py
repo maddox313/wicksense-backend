@@ -14,6 +14,7 @@ from flask_cors import CORS
 DEFAULT_ORIGINS = [
     "https://wicksensetrading.com",
     "https://www.wicksensetrading.com",
+    "https://wicksense-day-trader-pro.onrender.com",
     "https://wicksense7625.builtwithrocket.new",
     "http://localhost:4028",
     "http://127.0.0.1:4028",
