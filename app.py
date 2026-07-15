@@ -70,6 +70,12 @@ INTERVAL_MAP = {
     "1w": "1week"
 }
 
+# /live-candles history depth for mounted frontend detectors.
+# Highest insufficient_history gate among live Flask consumers is 60
+# (S101 / S102 / S108 MA50+10 / S111). Default 100 = 60 + buffer.
+# Do not raise without checking TwelveData quota.
+LIVE_CANDLES_OUTPUTSIZE = 100
+
 
 LIVE_SCAN_CACHE = {
     "last_updated": None,
@@ -7796,16 +7802,20 @@ def live_candles():
 
         market = market.upper()
 
-        print(f"📡 LIVE CANDLES request | market={market} timeframe={timeframe}", flush=True)
+        print(
+            f"📡 LIVE CANDLES request | market={market} timeframe={timeframe} "
+            f"outputsize={LIVE_CANDLES_OUTPUTSIZE}",
+            flush=True,
+        )
 
         # ✅ Fix timeframe mapping
         interval = INTERVAL_MAP.get(timeframe, "1h")
 
-        # ✅ Fetch data
+        # ✅ Fetch data (depth sized for live strategy history gates — not 50)
         df = fetch_live_market_data(
             market,
             interval=interval,
-            outputsize=50
+            outputsize=LIVE_CANDLES_OUTPUTSIZE,
         )
 
         if df is None or df.empty:
