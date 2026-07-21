@@ -8,6 +8,7 @@ Add near the top of the main app.py (after `app = Flask(__name__)`):
 
 Requires env vars on Render:
   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+  ALPACA_CREDENTIALS_ENCRYPTION_KEY  (base64 32-byte key; NEVER a VITE_* var)
 """
 
 from wicksense_backend.cors_config import apply_cors, register_global_options_handler

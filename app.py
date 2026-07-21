@@ -151,7 +151,16 @@ def home():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "alive"}), 200
+    encryption_configured = False
+    try:
+        from wicksense_backend.alpaca_crypto import encryption_configured as _enc_ok
+        encryption_configured = bool(_enc_ok())
+    except Exception:
+        encryption_configured = False
+    return jsonify({
+        "status": "alive",
+        "alpaca_credentials_encryption_configured": encryption_configured,
+    }), 200
 
 @app.route("/markets")
 def markets():
