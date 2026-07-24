@@ -3191,7 +3191,13 @@ def validate_market_df(df: pd.DataFrame):
     return missing
 
 
-def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 50):
+def fetch_live_market_data(
+    market: str,
+    interval: str = "1h",
+    outputsize: int = 50,
+    start_date: str = None,
+    end_date: str = None,
+):
     try:
         import pandas as pd
         import requests
@@ -3201,6 +3207,8 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
         # -----------------------------
         market = str(market).strip().upper().replace(" ", "")
         interval = str(interval).strip().lower()
+        start_date = (str(start_date).strip() if start_date else "") or None
+        end_date = (str(end_date).strip() if end_date else "") or None
 
         # -----------------------------
         # SYMBOL MAPPING
@@ -3232,7 +3240,8 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
             return None
 
         print(
-            f"📊 Requesting TwelveData: symbol={symbol}, interval={mapped_interval}, outputsize={outputsize}",
+            f"📊 Requesting TwelveData: symbol={symbol}, interval={mapped_interval}, "
+            f"outputsize={outputsize}, start_date={start_date}, end_date={end_date}",
             flush=True
         )
 
@@ -3245,8 +3254,14 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
             "symbol": symbol,
             "interval": mapped_interval,
             "outputsize": outputsize,
-            "apikey": TWELVE_DATA_API_KEY
+            "apikey": TWELVE_DATA_API_KEY,
         }
+        # TwelveData supports start_date / end_date for ranged history.
+        # Without these, only the most recent `outputsize` bars are returned.
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
 
         response = requests.get(url, params=params)
         data = response.json()
@@ -3291,8 +3306,10 @@ def fetch_live_market_data(market: str, interval: str = "1h", outputsize: int = 
             return None
 
         # -----------------------------
-        # SORT DATA
+        # SORT DATA (keep Datetime as a column — callers must not rely on index)
         # -----------------------------
+        df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
+        df = df.dropna(subset=["Datetime"]).copy()
         df = df.sort_values("Datetime").reset_index(drop=True)
 
         print(f"✅ Data fetched: {len(df)} rows", flush=True)
@@ -7263,7 +7280,10 @@ def price_history():
         start_date = get_string_from_request("start_date", "")
         end_date = get_string_from_request("end_date", "")
 
-        print(f"[price-history] raw market={market}, timeframe={timeframe}, outputsize={outputsize}")
+        print(
+            f"[price-history] raw market={market}, timeframe={timeframe}, "
+            f"outputsize={outputsize}, start_date={start_date}, end_date={end_date}"
+        )
 
         if not market:
             return jsonify({"error": "No market was provided"}), 400
@@ -7291,13 +7311,29 @@ def price_history():
 
         print(f"[price-history] mapped market={market}")
 
-        if outputsize < 20:
-            outputsize = 20
-        if outputsize > 100:
-            outputsize = 100
+        # Recent-window mode (no dates): keep legacy small caps for charts.
+        # Date-range mode: allow up to TwelveData's typical max so history is usable
+        # for reconciliation / backtests (start_date/end_date were previously ignored).
+        ranged = bool(start_date or end_date)
+        if ranged:
+            if outputsize < 500:
+                outputsize = 5000
+            if outputsize > 5000:
+                outputsize = 5000
+        else:
+            if outputsize < 20:
+                outputsize = 20
+            if outputsize > 100:
+                outputsize = 100
 
         print("[price-history] calling fetch_live_market_data...")
-        df = fetch_live_market_data(market, interval=timeframe, outputsize=outputsize)
+        df = fetch_live_market_data(
+            market,
+            interval=timeframe,
+            outputsize=outputsize,
+            start_date=start_date or None,
+            end_date=end_date or None,
+        )
         print("[price-history] fetch_live_market_data returned")
 
         if df is None or df.empty:
@@ -7313,8 +7349,46 @@ def price_history():
                 }
             }), 400
 
+        # Defensive: ensure Datetime column exists and is timezone-aware UTC
+        if "Datetime" not in df.columns:
+            return jsonify({
+                "error": "Datetime column missing from fetched candle data",
+                "details": {"columns": list(df.columns)}
+            }), 500
+
+        df = df.copy()
+        df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
+        df = df.dropna(subset=["Datetime"]).copy()
+
+        # Local end_date filter (covers date-only end_date inclusivity quirks)
+        if end_date:
+            end_dt = pd.to_datetime(end_date, utc=True, errors="coerce")
+            if not pd.isna(end_dt):
+                # If caller passed a bare date, include the entire UTC day
+                if len(str(end_date).strip()) <= 10:
+                    end_dt = end_dt + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+                df = df[df["Datetime"] <= end_dt].copy()
+
+        if start_date:
+            start_dt = pd.to_datetime(start_date, utc=True, errors="coerce")
+            if not pd.isna(start_dt):
+                df = df[df["Datetime"] >= start_dt].copy()
+
+        if df.empty:
+            return jsonify({
+                "error": "No market data returned after date filter",
+                "details": {
+                    "market_requested": market_key,
+                    "market_mapped": market,
+                    "timeframe": timeframe,
+                    "outputsize": outputsize,
+                    "start_date": start_date,
+                    "end_date": end_date
+                }
+            }), 400
+
         candles = []
-        for i, row in df.iterrows():
+        for _, row in df.iterrows():
             if (
                 pd.isna(row.get("Open")) or
                 pd.isna(row.get("High")) or
@@ -7323,10 +7397,17 @@ def price_history():
             ):
                 continue
 
-            time_value = i.isoformat() if isinstance(i, pd.Timestamp) else str(i)
+            # Use the Datetime COLUMN — not the DataFrame index.
+            # (reset_index made index 0..n; that previously produced time="0","1",…)
+            dt = row.get("Datetime")
+            if isinstance(dt, pd.Timestamp):
+                time_value = dt.isoformat()
+            else:
+                time_value = str(dt)
 
             candles.append({
                 "time": time_value,
+                "datetime": time_value,
                 "open": round(float(row["Open"]), 6),
                 "high": round(float(row["High"]), 6),
                 "low": round(float(row["Low"]), 6),
@@ -7334,7 +7415,7 @@ def price_history():
                 "volume": round(float(row["Volume"]), 6) if "Volume" in df.columns and pd.notna(row.get("Volume")) else 0.0
             })
 
-        print(f"[price-history] returning {len(candles)} candles")
+        print(f"[price-history] returning {len(candles)} candles (ranged={ranged})")
 
         return jsonify({
             "market": market,
