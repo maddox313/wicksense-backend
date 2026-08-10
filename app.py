@@ -70,11 +70,12 @@ INTERVAL_MAP = {
     "1w": "1week"
 }
 
-# /live-candles history depth for mounted frontend detectors.
-# Highest insufficient_history gate among live Flask consumers is 60
-# (S101 / S102 / S108 MA50+10 / S111). Default 100 = 60 + buffer.
-# Do not raise without checking TwelveData quota.
+# /live-candles default history depth when client omits outputsize.
+# Clients (candleFetchCacheService) forward per-poller outputsize; honor it.
+# Default 100 kept for backward compatibility. Cap allows ≥110 and up to 300+.
+# Do not raise the default without checking TwelveData quota.
 LIVE_CANDLES_OUTPUTSIZE = 100
+LIVE_CANDLES_OUTPUTSIZE_MAX = 5000
 
 
 LIVE_SCAN_CACHE = {
@@ -7886,6 +7887,15 @@ def live_candles():
     try:
         market = request.args.get("market", "").strip()
         timeframe = request.args.get("interval", "1h").strip().lower()
+        raw_outputsize = request.args.get("outputsize", str(LIVE_CANDLES_OUTPUTSIZE))
+        try:
+            outputsize = int(raw_outputsize)
+        except (TypeError, ValueError):
+            outputsize = LIVE_CANDLES_OUTPUTSIZE
+        if outputsize < 1:
+            outputsize = LIVE_CANDLES_OUTPUTSIZE
+        if outputsize > LIVE_CANDLES_OUTPUTSIZE_MAX:
+            outputsize = LIVE_CANDLES_OUTPUTSIZE_MAX
 
         if not market:
             return jsonify({"error": "No market provided"}), 400
@@ -7894,18 +7904,18 @@ def live_candles():
 
         print(
             f"📡 LIVE CANDLES request | market={market} timeframe={timeframe} "
-            f"outputsize={LIVE_CANDLES_OUTPUTSIZE}",
+            f"outputsize={outputsize}",
             flush=True,
         )
 
         # ✅ Fix timeframe mapping
         interval = INTERVAL_MAP.get(timeframe, "1h")
 
-        # ✅ Fetch data (depth sized for live strategy history gates — not 50)
+        # ✅ Fetch data — honor client outputsize (default LIVE_CANDLES_OUTPUTSIZE)
         df = fetch_live_market_data(
             market,
             interval=interval,
-            outputsize=LIVE_CANDLES_OUTPUTSIZE,
+            outputsize=outputsize,
         )
 
         if df is None or df.empty:
@@ -7913,7 +7923,9 @@ def live_candles():
             return jsonify({
                 "candles": [],
                 "count": 0,
-                "market": market
+                "market": market,
+                "interval": interval,
+                "outputsize": outputsize,
             })
 
         print(f"✅ Data fetched: {len(df)} rows", flush=True)
@@ -7935,12 +7947,14 @@ def live_candles():
                 print(f"⚠️ Skipping row: {e}", flush=True)
                 continue
 
-        print(f"🚀 Returning {len(candles)} candles", flush=True)
+        print(f"🚀 Returning {len(candles)} candles (requested={outputsize})", flush=True)
 
         return jsonify({
             "candles": candles,
             "count": len(candles),
-            "market": market
+            "market": market,
+            "interval": interval,
+            "outputsize": outputsize,
         })
 
     except Exception as e:
