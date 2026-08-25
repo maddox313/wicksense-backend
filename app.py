@@ -3257,12 +3257,24 @@ def fetch_live_market_data(
             "outputsize": outputsize,
             "apikey": TWELVE_DATA_API_KEY,
         }
+        # TwelveData default timezone is Exchange (naive local wall-clock).
+        # Request UTC so pd.to_datetime(..., utc=True) preserves absolute time
+        # instead of mislabeling exchange-local clocks as UTC.
+        # Note: TwelveData ignores timezone for intervals >= 1day (Exchange only).
+        if mapped_interval not in ("1day", "1week", "1month"):
+            params["timezone"] = "UTC"
         # TwelveData supports start_date / end_date for ranged history.
         # Without these, only the most recent `outputsize` bars are returned.
         if start_date:
             params["start_date"] = start_date
         if end_date:
             params["end_date"] = end_date
+
+        print(
+            f"📡 TwelveData timezone mode: "
+            f"{'UTC' if 'timezone' in params else 'Exchange (daily+; param ignored)'}",
+            flush=True,
+        )
 
         response = requests.get(url, params=params)
         data = response.json()
@@ -3308,12 +3320,18 @@ def fetch_live_market_data(
 
         # -----------------------------
         # SORT DATA (keep Datetime as a column — callers must not rely on index)
+        # Intraday: TwelveData datetime is UTC wall-clock when timezone=UTC.
+        # utc=True then correctly labels absolute time (not Exchange-local-as-UTC).
         # -----------------------------
         df["Datetime"] = pd.to_datetime(df["Datetime"], utc=True, errors="coerce")
         df = df.dropna(subset=["Datetime"]).copy()
         df = df.sort_values("Datetime").reset_index(drop=True)
 
-        print(f"✅ Data fetched: {len(df)} rows", flush=True)
+        print(
+            f"✅ Data fetched: {len(df)} rows "
+            f"(intraday timezone={'UTC' if mapped_interval not in ('1day', '1week', '1month') else 'Exchange'})",
+            flush=True,
+        )
 
         return df
 
@@ -7955,6 +7973,13 @@ def live_candles():
             "market": market,
             "interval": interval,
             "outputsize": outputsize,
+            # Observational: documents that fetch_live_market_data requested UTC
+            # for intraday intervals (TwelveData ignores timezone on daily+).
+            "timezone_mode": (
+                "UTC"
+                if interval not in ("1day", "1week", "1month")
+                else "Exchange"
+            ),
         })
 
     except Exception as e:
