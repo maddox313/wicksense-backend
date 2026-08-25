@@ -65,12 +65,22 @@ class ReasoningAgent:
         arguments: dict[str, Any] | None,
         context: dict[str, Any] | None,
         permissions: dict[str, Any] | None,
+        *,
+        user_id: str | None = None,
+        auth_header: str | None = None,
     ) -> dict[str, Any]:
         """
         EXECUTE → VERIFY (+ partial LEARN on action level)
         Dispatches through the Universal Action Dispatcher, never bypasses it.
         """
-        result = dispatch_action(action_name, arguments, context, permissions)
+        result = dispatch_action(
+            action_name,
+            arguments,
+            context,
+            permissions,
+            user_id=user_id,
+            auth_header=auth_header,
+        )
         verification = verify_action_result(action_name, result)
 
         if self._trace:

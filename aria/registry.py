@@ -15,6 +15,8 @@ class ActionContext:
     news: dict[str, Any]
     preferences: dict[str, Any]
     permissions: dict[str, Any]
+    user_id: str | None = None
+    auth_header: str | None = None
 
     @classmethod
     def from_payload(
@@ -22,6 +24,9 @@ class ActionContext:
         arguments: dict[str, Any] | None,
         context: dict[str, Any] | None,
         permissions: dict[str, Any] | None,
+        *,
+        user_id: str | None = None,
+        auth_header: str | None = None,
     ) -> ActionContext:
         ctx = context or {}
         return cls(
@@ -30,6 +35,8 @@ class ActionContext:
             news=ctx.get("news") or {},
             preferences=ctx.get("preferences") or {},
             permissions=permissions or {},
+            user_id=user_id or ctx.get("authenticated_user_id") or ctx.get("user_id"),
+            auth_header=auth_header,
         )
 
 

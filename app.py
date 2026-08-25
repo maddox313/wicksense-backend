@@ -6357,7 +6357,11 @@ def scan_history():
 @app.route("/trade-journal", methods=["GET"])
 def get_trade_journal():
     try:
-        journal = load_history(TRADE_JOURNAL_FILE)
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+        journal = load_user_json(user_id, "trade_journal.json", [])
         return jsonify({
             "count": len(journal),
             "items": journal
@@ -6372,10 +6376,15 @@ def get_trade_journal():
 @app.route("/trade-journal", methods=["POST"])
 def create_trade_journal_entry():
     try:
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json, save_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
         body = get_request_body()
 
         entry = {
             "id": str(uuid.uuid4()),
+            "user_id": user_id,
             "created_at": datetime.utcnow().isoformat() + "Z",
             "updated_at": datetime.utcnow().isoformat() + "Z",
             "market": body.get("market"),
@@ -6394,7 +6403,10 @@ def create_trade_journal_entry():
             "mistake_tag": body.get("mistake_tag", "")
         }
 
-        append_history(TRADE_JOURNAL_FILE, entry, max_items=500)
+        journal = load_user_json(user_id, "trade_journal.json", [])
+        journal.append(entry)
+        journal = journal[-500:]
+        save_user_json(user_id, "trade_journal.json", journal)
         return jsonify(entry)
     except Exception as e:
         return jsonify({
@@ -6571,7 +6583,11 @@ def delete_alert_rule(rule_id):
 @app.route("/notifications", methods=["GET"])
 def get_notifications():
     try:
-        items = load_notifications()
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+        items = load_user_json(user_id, "notifications.json", [])
         unread_count = sum(1 for n in items if not n.get("is_read", False))
 
         return jsonify({
@@ -6589,13 +6605,17 @@ def get_notifications():
 @app.route("/notifications/<notification_id>/read", methods=["PUT"])
 def mark_notification_read(notification_id):
     try:
-        items = load_notifications()
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json, save_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+        items = load_user_json(user_id, "notifications.json", [])
 
         for n in items:
             if n["id"] == notification_id:
                 n["is_read"] = True
 
-        save_notifications(items)
+        save_user_json(user_id, "notifications.json", items)
 
         return jsonify({"success": True})
 
@@ -6609,10 +6629,13 @@ def mark_notification_read(notification_id):
 @app.route("/notifications/<notification_id>", methods=["DELETE"])
 def delete_notification(notification_id):
     try:
-        items = load_notifications()
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json, save_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+        items = load_user_json(user_id, "notifications.json", [])
         filtered = [n for n in items if n["id"] != notification_id]
-
-        save_notifications(filtered)
+        save_user_json(user_id, "notifications.json", filtered)
 
         return jsonify({
             "success": True,
@@ -6629,7 +6652,21 @@ def delete_notification(notification_id):
 @app.route("/risk-settings", methods=["GET"])
 def get_risk_settings():
     try:
-        settings = load_risk_settings()
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+        settings = load_user_json(user_id, "risk_settings.json", None)
+        if settings is None:
+            # Do not leak shared global file across users — return defaults
+            settings = {
+                "max_daily_loss": 500.0,
+                "min_confidence_threshold": 70.0,
+                "max_risk_percent_per_trade": 2.0,
+                "block_low_quality_setups": False,
+                "account_size": 10000.0,
+                "risk_percent": 1.0,
+            }
         return jsonify(settings)
     except Exception as e:
         return jsonify({
@@ -6641,8 +6678,19 @@ def get_risk_settings():
 @app.route("/risk-settings", methods=["PUT"])
 def update_risk_settings():
     try:
+        from wicksense_backend.tenant_flask_auth import require_user, load_user_json, save_user_json
+        user_id, err = require_user()
+        if user_id is None:
+            return err
         body = get_request_body()
-        settings = load_risk_settings()
+        settings = load_user_json(user_id, "risk_settings.json", {
+            "max_daily_loss": 500.0,
+            "min_confidence_threshold": 70.0,
+            "max_risk_percent_per_trade": 2.0,
+            "block_low_quality_setups": False,
+            "account_size": 10000.0,
+            "risk_percent": 1.0,
+        })
 
         settings["max_daily_loss"] = float(
             body.get("max_daily_loss", settings.get("max_daily_loss", 500.0))
@@ -6656,8 +6704,12 @@ def update_risk_settings():
         settings["block_low_quality_setups"] = bool(
             body.get("block_low_quality_setups", settings.get("block_low_quality_setups", False))
         )
+        if "account_size" in body:
+            settings["account_size"] = float(body.get("account_size"))
+        if "risk_percent" in body:
+            settings["risk_percent"] = float(body.get("risk_percent"))
 
-        save_risk_settings(settings)
+        save_user_json(user_id, "risk_settings.json", settings)
         return jsonify(settings)
 
     except Exception as e:
@@ -7542,7 +7594,15 @@ def execute_paper_trade():
 @app.route('/close-paper-trade', methods=['POST'])
 def close_paper_trade():
     try:
+        from wicksense_backend.tenant_flask_auth import require_user
+        user_id, err = require_user()
+        if user_id is None:
+            return err
+
         data = request.get_json(silent=True) or {}
+        claimed = data.get("user_id") or data.get("userId")
+        if claimed and str(claimed) != str(user_id):
+            return jsonify({"error": "Forbidden", "reason": "identity_mismatch"}), 403
 
         trade_id = data.get("trade_id")
         market = data.get("market")
@@ -7554,7 +7614,28 @@ def close_paper_trade():
         if not trade_id:
             return jsonify({"error": "Missing trade_id"}), 400
 
-        # --- BUILD PAYLOAD ---
+        # Ownership check: trade must belong to authenticated user (or be unknown to paper_trades)
+        try:
+            check = requests.get(
+                f"{SUPABASE_URL}/rest/v1/paper_trades",
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                },
+                params={
+                    "id": f"eq.{trade_id}",
+                    "select": "id,user_id",
+                    "limit": "1",
+                },
+                timeout=20,
+            )
+            if check.status_code == 200:
+                rows = check.json() or []
+                if rows and str(rows[0].get("user_id")) != str(user_id):
+                    return jsonify({"error": "Forbidden", "reason": "trade_not_owned"}), 403
+        except Exception:
+            pass
+
         payload = {
             "trade_id": trade_id,
             "market": market,
@@ -7562,10 +7643,9 @@ def close_paper_trade():
             "outcome": outcome,
             "exit_price": exit_price,
             "pnl_pts": pnl_pts,
-            "user_id": "550e8400-e29b-41d4-a716-446655440000"
+            "user_id": user_id,
         }
 
-        # --- SEND TO SUPABASE ---
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/closed_trades",
             headers={
@@ -7581,7 +7661,6 @@ def close_paper_trade():
             return jsonify({
                 "error": "Supabase insert failed",
                 "details": response.text,
-                "payload": payload
             }), 500
 
         return jsonify({
@@ -8105,13 +8184,19 @@ def duplicate_preset(preset_id):
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
     try:
-        print("🔥 HIT /create-checkout-session")
+        print("HIT /create-checkout-session")
+        from wicksense_backend.tenant_flask_auth import require_user
+        auth_user_id, err = require_user()
+        if auth_user_id is None:
+            return err
 
         data = request.get_json(silent=True) or {}
-        print("🔥 CHECKOUT PAYLOAD:", data)
+        claimed = data.get("user_id") or data.get("userId")
+        if claimed and str(claimed) != str(auth_user_id):
+            return jsonify({"error": "Forbidden", "reason": "identity_mismatch"}), 403
 
         price_id = data.get("price_id")
-        user_id = data.get("user_id")
+        user_id = auth_user_id
         plan = data.get("plan", "pro")
         success_url = data.get("success_url")
         cancel_url = data.get("cancel_url")
@@ -8119,16 +8204,11 @@ def create_checkout_session():
         if not price_id:
             return jsonify({"error": "price_id is required"}), 400
 
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
-
         if not success_url:
             return jsonify({"error": "success_url is required"}), 400
 
         if not cancel_url:
             return jsonify({"error": "cancel_url is required"}), 400
-
-        print("🔥 CREATING STRIPE SESSION WITH 7 DAY TRIAL")
 
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -8151,15 +8231,13 @@ def create_checkout_session():
             }
         )
 
-        print("🔥 STRIPE SESSION CREATED:", checkout_session.id)
-
         return jsonify({
             "checkout_url": checkout_session.url,
             "id": checkout_session.id
         })
 
     except Exception as e:
-        print("🔥 CHECKOUT ERROR:", str(e))
+        print("CHECKOUT ERROR:", str(e))
         return jsonify({
             "error": "Failed to create checkout session",
             "details": str(e)

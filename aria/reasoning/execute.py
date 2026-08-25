@@ -15,6 +15,8 @@ def execute_with_reasoning(
     *,
     user_message: str | None = None,
     history: list[dict[str, str]] | None = None,
+    user_id: str | None = None,
+    auth_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Run a single action through Observe → Recall → Plan → Execute → Verify → Learn.
@@ -25,7 +27,14 @@ def execute_with_reasoning(
 
     reasoning_prompt, trace = agent.prepare_turn(msg, history, context)
 
-    result = agent.execute_action(action_name, arguments, context, permissions)
+    result = agent.execute_action(
+        action_name,
+        arguments,
+        context,
+        permissions,
+        user_id=user_id,
+        auth_header=auth_header,
+    )
 
     learnings = agent.finalize_turn(
         msg,

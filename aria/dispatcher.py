@@ -20,12 +20,28 @@ def dispatch_action(
     arguments: dict[str, Any] | None,
     context: dict[str, Any] | None,
     permissions: dict[str, Any] | None,
+    *,
+    user_id: str | None = None,
+    auth_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Execute a registered action by name.
     Core logic never branches on action names — the registry owns dispatch.
+    Identity (user_id / auth_header) must come from verified JWT, never from LLM args.
     """
     ensure_actions_loaded()
+
+    # Reject tool arguments that try to select another user
+    args = dict(arguments or {})
+    for spoof_key in ("user_id", "userId", "account_id", "accountId"):
+        claimed = args.pop(spoof_key, None)
+        if claimed is not None and user_id and str(claimed) != str(user_id):
+            return ActionResult(
+                result=(
+                    f"{action_name} refused: {spoof_key} does not match authenticated user. "
+                    "ARIA tools always operate on the signed-in account."
+                ),
+            ).to_dict()
 
     definition = registry.get(action_name)
     if not definition:
@@ -51,11 +67,10 @@ def dispatch_action(
         # Integration stubs after authorization (broker wiring comes later)
         if definition.category == "integration" and action_name != "execute_trade":
             return ActionResult(
-                result=execute_integration_stub(action_name, arguments or {}),
+                result=execute_integration_stub(action_name, args),
             ).to_dict()
 
         if action_name == "execute_trade":
-            args = arguments or {}
             return ActionResult(
                 result=(
                     f"Trade execution authorized but broker routing not wired. "
@@ -64,7 +79,9 @@ def dispatch_action(
                 ),
             ).to_dict()
 
-    ctx = ActionContext.from_payload(arguments, context, permissions)
+    ctx = ActionContext.from_payload(
+        args, context, permissions, user_id=user_id, auth_header=auth_header
+    )
     try:
         result = definition.handler(ctx)
         if not isinstance(result, ActionResult):

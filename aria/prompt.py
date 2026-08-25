@@ -7,16 +7,29 @@ from typing import Any
 
 STRATEGY_DIRECTORY = """
 WICKSENSE STRATEGY DIRECTORY (use these exact names when referencing strategies):
-- strategy_001 / strategy_001_bearish → "Bearish Wick Rejection Sniper" (S001)
-- strategy_001_bullish → "Bullish Wick Rejection Sniper" (S001 Bullish)
-- strategy_002 → "Bullish Wick Rejection Sniper V3" (S002)
-- strategy_003 / trend_pullback_wick_confirmation → "Trend Pullback Wick Confirmation" (S003)
+
+CERTIFIED (Strategy Certification Standard v1 — frozen OHLC 2025-09-05→2026-03-05 1h):
+- strategy_001 → "Bearish Rejection Snipe S001 Certified V1" (S001) — CERTIFIED Grade A/Pass
+  Authoritative gates: body≥20% of range; wick = upperWick/body (strong≥1.2, medium floor 0.7); weak/micro OFF;
+  next-candle close < signal low (3-bar timeout); MA50+below-VWAP confidence only; London/NY/overlap session;
+  markets = matrix only. NEVER say min_wick_ratio 0.6 as % of range.
+- strategy_002 → "Bullish Wick Rejection Sniper S002" (S002) — CERTIFIED Grade D/Pass
+  Authoritative gates: body≥20% of range; wick = lowerWick/body (strong≥1.2, medium floor 0.7); weak/micro OFF;
+  NO next-candle confirmation (entry on close); Support Strength Score + MA50 + above-VWAP = confidence only;
+  London/NY/overlap; markets = matrix only. NEVER say min_wick_ratio 0.65, v3_enforcement, or entry above high.
+
+OTHER:
+- strategy_001_bullish → "S001 Bullish Support Bounce Sniper" (NOT the same as certified S002)
+- strategy_003 / trend_pullback_wick_confirmation → "Trend Pullback Wick Confirmation" (S003) — Final Revision:
+  LOOKBACK=20; 2-of-5 Trend Agreement; MA20/structure pullback 0.4% ATR-aware (NOT 1.5 ATR);
+  wick ≥0.7× body (strong ≥1.2); next-candle confirm 3-bar timeout; London/NY (crypto independent).
+  NEVER say missing wick ratio, pullback_depth_atr=1.5, or production lookback 50.
 - strategy_004 / box_rejection → "Box Rejection" (S004)
 - s105 / strategy_005_ema_pullback → "EMA Pullback Continuation V2" (S005)
 - bull_bear_180_reversal → "Bull/Bear 180 Reversal" (S006)
 - S101 / pin_bar → "S101 Pin Bar V2" (S101)
 - s102 / doji_reversal_pro → "Doji Reversal Pro" (S102)
-- bearish_confluence_setup → "Bearish Confluence Setup" (S103) — V2 enforcement active
+- bearish_confluence_setup → "Bearish Confluence Setup" (S103) — Aria gates: min confluence 4/4, ≥15M TF, bearish regime required, loss reason logging
 - bearish_breakdown_continuation → "Bearish Breakdown Continuation" (S104)
 - s111_v2 → "Support/Resistance Rejection V2" (S111)
 - bearish_momentum_setup → "Bearish Momentum Setup"
@@ -27,6 +40,9 @@ WICKSENSE STRATEGY DIRECTORY (use these exact names when referencing strategies)
 - wicksense_t1 → "WickSense T1 — Liquidity Sweep"
 - doji_v2 → "Doji V2"
 - bullish_confluence_setup → "Bullish Confluence Setup"
+
+When the user asks for a full logic printout of S001 or S002, call explain_strategy / get_strategy_parameters
+and quote the catalog parameters + entry_logic — do not invent V3 or % of range wick rules.
 """.strip()
 
 
@@ -128,7 +144,13 @@ def build_aria_system_prompt(context: dict[str, Any] | None) -> str:
 
     stats_json = __import__("json").dumps(state.get("strategyStats") or {}, indent=2)
 
-    return f"""You are ARIA — the WickSense AI Trading Intelligence Assistant (Executive v2).
+    memory = ctx.get("memory") or {}
+    rulebook = ctx.get("memoryRulebook") or memory.get("memoryRulebook") or ""
+    if not isinstance(rulebook, str):
+        rulebook = str(rulebook) if rulebook else ""
+    rulebook = rulebook.strip()
+
+    prompt = f"""You are ARIA — the WickSense AI Trading Intelligence Assistant (Executive v2).
 
 IDENTITY & ROLE:
 - You are a voice-first trading intelligence layer embedded inside WickSense
@@ -206,6 +228,15 @@ RESPONSE STYLE:
 - Use trading terminology naturally
 - Lead with the most important insight
 - End with a clear recommendation or next step"""
+
+    if rulebook:
+        prompt += (
+            "\n\nPERSONAL / USER RECALL (user-saved memories from the Memory page. "
+            "Use these for personal facts such as the user's name. "
+            "Custom and Conversation Summary entries are personal recall, not trading rules):\n"
+            f"{rulebook}"
+        )
+    return prompt
 
 
 def build_context_summary_for_voice(context: dict[str, Any] | None) -> str:

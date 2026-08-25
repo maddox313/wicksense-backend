@@ -74,6 +74,8 @@ def run_aria_chat(
     *,
     max_tokens: int = 600,
     temperature: float = 0.7,
+    user_id: str | None = None,
+    auth_header: str | None = None,
 ) -> dict[str, Any]:
     """
     Run ARIA chat through the reasoning layer, then Anthropic tool-use loop.
@@ -87,6 +89,13 @@ def run_aria_chat(
     # OBSERVE → RECALL → PLAN
     reasoning_prompt, trace = agent.prepare_turn(message, history, context)
     system = build_aria_system_prompt(context) + "\n" + reasoning_prompt
+    system += (
+        "\n\nTENANT RULES: You operate only for the authenticated user. "
+        "Prefer truth-gateway tools (getAccountSummary, getStrategyStatus, getOpenTrades, "
+        "getClosedTrades, getPerformance, getMarketStatus). Never invent another user's data. "
+        "If a field is cannot_verify, say you cannot verify it. "
+        "Do not say GO/ACTIVE merely because a strategy is enabled."
+    )
 
     messages: list[dict[str, Any]] = []
     for item in history or []:
@@ -126,7 +135,12 @@ def run_aria_chat(
 
                 # EXECUTE → VERIFY (via reasoning agent → dispatcher)
                 exec_result = agent.execute_action(
-                    tool_name, tool_input, context, permissions
+                    tool_name,
+                    tool_input,
+                    context,
+                    permissions,
+                    user_id=user_id,
+                    auth_header=auth_header,
                 )
                 tool_calls_made.append(
                     {

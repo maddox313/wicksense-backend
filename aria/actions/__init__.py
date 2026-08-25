@@ -25,4 +25,6 @@ def load_all_actions() -> None:
         strategy_actions,
         trading_actions,
     )
+    # Truth gateway registers JWT-bound read tools
+    import aria.truth_gateway  # noqa: F401
     _loaded = True

@@ -102,11 +102,49 @@ def recall_memories(
     for note in memory.get("coachingNotes") or []:
         add("fact", f"Coaching note: {note}", "risk_profile", 0.4)
 
+    trading_types = {
+        "Trading Preference",
+        "Learning",
+        "Watch List",
+        "Strategy Rule",
+        "Decision",
+    }
+    persistent = memory.get("persistentMemories") or {}
+    for row in persistent.get("recent") or []:
+        if isinstance(row, str):
+            add("fact", row, "persistent_recent", 0.4)
+            continue
+        if not isinstance(row, dict):
+            continue
+        mem_id = row.get("id")
+        title = (row.get("title") or "").strip()
+        body = (row.get("content") or "").strip()
+        if not title and not body:
+            continue
+        memory_type = row.get("memoryType") or row.get("memory_type") or "Note"
+        text = f"[{memory_type}] {title}: {body}".strip() if title else f"[{memory_type}] {body}".strip()
+        if memory_type == "Project":
+            kind = "project"
+        elif memory_type == "Reminder":
+            kind = "routine"
+        elif memory_type in trading_types:
+            kind = "strategy"
+        else:
+            kind = "fact"
+        meta = {"id": mem_id} if mem_id else {}
+        add(kind, text, "persistent_recent", 0.4, meta)
+
     candidates.sort(key=lambda x: x.relevance, reverse=True)
-    # Deduplicate similar content
+    seen_ids: set[str] = set()
     seen: set[str] = set()
     unique: list[MemoryItem] = []
     for item in candidates:
+        mem_id = (item.metadata or {}).get("id")
+        if mem_id:
+            sid = str(mem_id)
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
         key = item.content[:80].lower()
         if key in seen:
             continue
