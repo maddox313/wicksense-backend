@@ -11,7 +11,7 @@ from aria.auth import (
     sanitize_aria_context,
 )
 from aria.chat import run_aria_chat
-from aria.events import get_recent_events, ingest_event
+from aria.events import EventIngestRejected, SCOPE_USER, get_recent_events, ingest_event
 from aria.integrations import INTEGRATION_STATUS
 from aria.prompt import (
     build_aria_system_prompt,
@@ -177,12 +177,23 @@ def register_aria_routes(app):
         event_type = (body.get("type") or body.get("event_type") or "").strip()
         if not event_type:
             return jsonify({"error": "type is required"}), 400
-        event = ingest_event(
-            event_type,
-            body.get("payload") or body.get("data") or {},
-            source=body.get("source") or "frontend",
-            user_id=user_id,
-        )
+        # Ownership always from JWT user_id — never from body for tenant binding.
+        # Optional body scope may request global only when type is allowlisted;
+        # default is user scope for frontend ingest.
+        requested_scope = body.get("scope") or SCOPE_USER
+        try:
+            event = ingest_event(
+                event_type,
+                body.get("payload") or body.get("data") or {},
+                source=body.get("source") or "frontend",
+                user_id=user_id,
+                scope=requested_scope,
+            )
+        except EventIngestRejected as exc:
+            return jsonify({
+                "error": "event_ingest_rejected",
+                "reason": exc.reason,
+            }), 400
         return jsonify({"event": event, "deduplicated": event is None}), 200
 
     @app.route("/aria/events/recent", methods=["GET", "OPTIONS"])
@@ -193,6 +204,7 @@ def register_aria_routes(app):
         if auth[0] is None:
             return auth[1]
         user_id, _auth_header = auth
+        # Query user_id accepted only for mismatch validation — never overrides JWT.
         claimed = request.args.get("user_id")
         if claimed and str(claimed) != str(user_id):
             return jsonify({
@@ -201,7 +213,13 @@ def register_aria_routes(app):
             }), 403
         since = request.args.get("since", type=float)
         limit = request.args.get("limit", default=20, type=int)
-        events = get_recent_events(since=since, limit=limit, user_id=user_id)
+        try:
+            events = get_recent_events(since=since, limit=limit, user_id=user_id)
+        except EventIngestRejected as exc:
+            return jsonify({
+                "error": "Forbidden",
+                "reason": exc.reason,
+            }), 403
         return jsonify({"events": events}), 200
 
     @app.route("/aria/integrations", methods=["GET", "OPTIONS"])
