@@ -48,6 +48,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from chat_completion import handle_chat_completion_request
+from supabase_auth import get_user_id_from_auth_header
 
 try:
     import requests as http_requests
@@ -101,13 +102,19 @@ else:
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://wicksense7625.builtwithrocket.new",
-    "https://wicksensetrading.com",
-    "http://localhost:4028",
-    "http://127.0.0.1:4028",
-    "http://localhost:5173",
-])
+CORS(
+    app,
+    origins=[
+        "https://wicksense7625.builtwithrocket.new",
+        "https://wicksensetrading.com",
+        "http://localhost:4028",
+        "http://127.0.0.1:4028",
+        "http://localhost:5173",
+    ],
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+    methods=["GET", "POST", "OPTIONS"],
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY         = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -463,8 +470,11 @@ def analyze_with_claude(transcript, frames, video_meta, diag):
 # SECTION 7 — Temp File Management
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def create_temp_workspace(video_id):
-    workspace = os.path.join(TMP_DIR, "wicksense_%s_%d" % (video_id, int(time.time())))
+def create_temp_workspace(video_id, user_id=None):
+    owner = (str(user_id)[:8] if user_id else "anon")
+    workspace = os.path.join(
+        TMP_DIR, "wicksense_%s_%s_%d" % (owner, video_id, int(time.time()))
+    )
     os.makedirs(workspace, exist_ok=True)
     log.info("[TMP] Created workspace: %s", workspace)
     return workspace
@@ -655,8 +665,34 @@ def youtube_ingest():
     log.info("=" * 70)
     log.info("[INGEST:%s] POST /api/youtube-ingest received", request_id)
 
+    # Authenticate BEFORE any YouTube/yt-dlp/Whisper/Claude work.
+    auth_header = request.headers.get("Authorization", "")
+    authenticated_user_id, auth_reason = get_user_id_from_auth_header(auth_header)
+    if not authenticated_user_id:
+        log.warning("[INGEST:%s] Unauthorized — reason=%s", request_id, auth_reason)
+        return jsonify({
+            "success": False,
+            "error": "Unauthorized",
+            "reason": auth_reason or "unauthorized",
+        }), 401
+
     body        = request.get_json(silent=True) or {}
     youtube_url = (body.get("youtube_url") or "").strip()
+
+    # Never trust client identity fields over JWT auth.uid.
+    for field in ("user_id", "userId", "owner_id", "ownerId", "account_id", "accountId"):
+        claimed = body.get(field)
+        if claimed is not None and str(claimed).strip() != "" and str(claimed) != str(authenticated_user_id):
+            log.warning(
+                "[INGEST:%s] identity_mismatch field=%s auth_uid_prefix=%s",
+                request_id, field, str(authenticated_user_id)[:8],
+            )
+            return jsonify({
+                "success": False,
+                "error": "Forbidden",
+                "reason": "identity_mismatch",
+                "detail": "%s does not match authenticated user" % field,
+            }), 403
 
     if not youtube_url:
         return jsonify({"success": False, "error": "youtube_url is required"}), 400
@@ -722,7 +758,7 @@ def youtube_ingest():
         video_id_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{10,12})", youtube_url)
         video_id       = video_id_match.group(1) if video_id_match else "unknown"
 
-        workspace  = create_temp_workspace(video_id)
+        workspace  = create_temp_workspace(video_id, authenticated_user_id)
         video_meta = fetch_video_metadata(youtube_url, diag)
 
         # ── Try RapidAPI captions first ───────────────────────────────────────
