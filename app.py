@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+﻿from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 from openai import OpenAI
@@ -47,12 +47,12 @@ NOTIFICATION_FILE = "notifications.json"
 RISK_SETTINGS_FILE = "risk_settings.json"
 
 MARKET_SYMBOLS = {
-    "FOREX":      "EUR/USD",   # ✅ unchanged — all FX brokers
-    "GOLD":       "XAU/USD",   # ✅ unchanged — spot gold, IBKR CFD
-    "NASDAQ":     "QQQ",       # ✅ ETF with full volume — Alpaca trades this
-    "DOWJONES":   "DIA",       # ✅ ETF with full volume — Alpaca trades this
-    "NATURALGAS": "NG",        # ✅ unchanged — NG futures
-    "FUTURES":    "SPY",       # ✅ ETF with full volume — Alpaca trades this
+    "FOREX":      "EUR/USD",   # âœ… unchanged â€” all FX brokers
+    "GOLD":       "XAU/USD",   # âœ… unchanged â€” spot gold, IBKR CFD
+    "NASDAQ":     "QQQ",       # âœ… ETF with full volume â€” Alpaca trades this
+    "DOWJONES":   "DIA",       # âœ… ETF with full volume â€” Alpaca trades this
+    "NATURALGAS": "NG",        # âœ… unchanged â€” NG futures
+    "FUTURES":    "SPY",       # âœ… ETF with full volume â€” Alpaca trades this
 }
 
 
@@ -72,7 +72,7 @@ INTERVAL_MAP = {
 
 # /live-candles default history depth when client omits outputsize.
 # Clients (candleFetchCacheService) forward per-poller outputsize; honor it.
-# Default 100 kept for backward compatibility. Cap allows ≥110 and up to 300+.
+# Default 100 kept for backward compatibility. Cap allows â‰¥110 and up to 300+.
 # Do not raise the default without checking TwelveData quota.
 LIVE_CANDLES_OUTPUTSIZE = 100
 LIVE_CANDLES_OUTPUTSIZE_MAX = 5000
@@ -154,10 +154,15 @@ def home():
 def health():
     encryption_configured = False
     try:
-        from wicksense_backend.alpaca_crypto import encryption_configured as _enc_ok
-        encryption_configured = bool(_enc_ok())
+        from wicksense_backend.alpaca_creds_crypto import resolve_active_key_id, load_key_bytes
+        load_key_bytes(resolve_active_key_id())
+        encryption_configured = True
     except Exception:
-        encryption_configured = False
+        try:
+            from wicksense_backend.alpaca_crypto import encryption_configured as _enc_ok
+            encryption_configured = bool(_enc_ok())
+        except Exception:
+            encryption_configured = False
     return jsonify({
         "status": "alive",
         "alpaca_credentials_encryption_configured": encryption_configured,
@@ -248,14 +253,14 @@ def resolve_outcomes():
 
             entry = signal.get("entry")
 
-            # 🔥 FIXED: Accept ALL possible stop loss keys
+            # ðŸ”¥ FIXED: Accept ALL possible stop loss keys
             sl = (
                 signal.get("stop_loss") or
                 signal.get("sl") or
                 signal.get("stop")
             )
 
-            # 🔥 FIXED: Accept ALL possible take profit keys
+            # ðŸ”¥ FIXED: Accept ALL possible take profit keys
             tp = (
                 signal.get("take_profit") or
                 signal.get("tp") or
@@ -396,7 +401,7 @@ def resolve_outcomes():
                 "pnl_pts": pnl
             })
 
-            # 🔥 Prevent rate limiting
+            # ðŸ”¥ Prevent rate limiting
             time.sleep(0.2)
 
         except Exception as e:
@@ -418,7 +423,7 @@ def resolve_outcomes():
 @app.route("/run-outcome-engine", methods=["POST"])
 def run_outcome_engine():
     try:
-        print("🔥 Outcome Engine Triggered")
+        print("ðŸ”¥ Outcome Engine Triggered")
 
         # For now just return success (we will connect it next)
         return jsonify({
@@ -852,7 +857,7 @@ def get_market_from_request():
         return request.form.get("market")
 
     except Exception as e:
-        print(f"❌ get_market_from_request error: {e}", flush=True)
+        print(f"âŒ get_market_from_request error: {e}", flush=True)
         return None
 
 
@@ -1000,7 +1005,7 @@ def update_live_candle(market, price):
     state["current_candle"] = current_candle
     state["last_updated"] = now.isoformat() + "Z"
 
-    # 🔥 CRITICAL FIX: write back into markets layer
+    # ðŸ”¥ CRITICAL FIX: write back into markets layer
     LIVE_MARKET_STATE["markets"][market] = state
 
 
@@ -1091,7 +1096,7 @@ def handle_live_signal_change(market, previous_state, new_payload):
         })
 
 # =========================================================
-# TOP TRADE QUALITY GATE (pre-ranking only — does not change scoring)
+# TOP TRADE QUALITY GATE (pre-ranking only â€” does not change scoring)
 # =========================================================
 
 TOP_TRADE_BUY_PATTERNS = {
@@ -1159,7 +1164,7 @@ def _top_trade_first_positive_number(*values):
 
 
 def resolve_top_trade_gate_levels(data):
-    """Read entry/SL/TP from candidate fields only — does not invent levels."""
+    """Read entry/SL/TP from candidate fields only â€” does not invent levels."""
     candle = data.get("current_candle") if isinstance(data.get("current_candle"), dict) else {}
 
     entry = _top_trade_first_positive_number(
@@ -1467,7 +1472,7 @@ def record_top_trade_quality_gate_result(market_name, gate_result):
 
 # =========================================================
 # TOP TRADE RANKING ENGINE (post quality gate only)
-# Single bounded ranking_score 0–100. Does not mutate trade_quality_score.
+# Single bounded ranking_score 0â€“100. Does not mutate trade_quality_score.
 # =========================================================
 
 def _clamp_score_0_100(value):
@@ -1598,7 +1603,7 @@ def _top_trade_session_quality_score(data):
 
 
 def _top_trade_risk_reward_bonus(data):
-    """Bounded bonus 0–5. Does not dominate the ranking score."""
+    """Bounded bonus 0â€“5. Does not dominate the ranking score."""
     rr = safe_float(data.get("risk_reward"), 0.0)
     if rr <= 0:
         signal = normalize_top_trade_gate_signal(data)
@@ -1612,7 +1617,7 @@ def _top_trade_risk_reward_bonus(data):
             rr = safe_float(rr, 0.0)
     if rr <= 0:
         return 0.0
-    # 1.5 → 0, 3.0 → 5, above 3 stays at 5
+    # 1.5 â†’ 0, 3.0 â†’ 5, above 3 stays at 5
     bonus = (rr - 1.5) * (5.0 / 1.5)
     return max(0.0, min(5.0, bonus))
 
@@ -1622,7 +1627,7 @@ def _scores_differ(a, b, places=4):
 
 
 def _top_trade_freshness_bonus(data):
-    """Bounded bonus 0–3 based on setup age."""
+    """Bounded bonus 0â€“3 based on setup age."""
     ts = _parse_top_trade_setup_timestamp(data.get("last_updated"))
     if ts <= 0:
         return 0.0
@@ -1638,8 +1643,8 @@ def _top_trade_freshness_bonus(data):
 
 def compute_top_trade_ranking_score(data, signal):
     """
-    Authoritative Top Trade ranking score (0–100).
-    Confidence is one factor only — not dominant.
+    Authoritative Top Trade ranking score (0â€“100).
+    Confidence is one factor only â€” not dominant.
     trade_quality_score is an input factor and is never overwritten by this function.
     """
     confidence = _clamp_score_0_100(data.get("confidence"))
@@ -1652,7 +1657,7 @@ def compute_top_trade_ranking_score(data, signal):
     rr_bonus = _top_trade_risk_reward_bonus(data)
     freshness_bonus = _top_trade_freshness_bonus(data)
 
-    # Weights sum to 0.92; remaining headroom reserved for capped bonuses (≤8).
+    # Weights sum to 0.92; remaining headroom reserved for capped bonuses (â‰¤8).
     weighted = (
         confidence * 0.15 +
         trade_quality * 0.20 +
@@ -1762,7 +1767,7 @@ def get_current_live_top_trade(target_market=None):
             print("TOP TRADE SKIP MARKET:", market_name, "TARGET:", normalized_target_market)
             continue
 
-        # Quality Gate — exclude from ranking if any required check fails.
+        # Quality Gate â€” exclude from ranking if any required check fails.
         gate_result = evaluate_top_trade_quality_gate(market_name, data, gate_settings)
         record_top_trade_quality_gate_result(market_name, gate_result)
         if not gate_result.get("passed"):
@@ -1774,7 +1779,7 @@ def get_current_live_top_trade(target_market=None):
             )
             continue
 
-        # Use gate-normalized signal only — never coerce empty signals to BUY.
+        # Use gate-normalized signal only â€” never coerce empty signals to BUY.
         normalized_signal = gate_result.get("signal")
         if normalized_signal not in ("BUY", "SELL"):
             print("TOP TRADE SKIP BAD SIGNAL AFTER GATE:", market_name, flush=True)
@@ -1783,7 +1788,7 @@ def get_current_live_top_trade(target_market=None):
         confidence = _clamp_score_0_100(data.get("confidence"))
         entry_timing = str(data.get("entry_timing", "")).strip().upper()
         readiness = _clamp_score_0_100(data.get("trade_readiness_score"))
-        # Independent quality metric from the signal pipeline — never overwritten by ranking.
+        # Independent quality metric from the signal pipeline â€” never overwritten by ranking.
         trade_quality_score = _clamp_score_0_100(data.get("trade_quality_score"))
 
         # Keep ranking RR/levels aligned with gate-validated geometry.
@@ -1963,7 +1968,7 @@ def get_live_best_trades_logic():
 
                 enriched = dict(data)
 
-                # ✅ FORCE THESE FIELDS TO EXIST (THIS FIXES YOUR ISSUE)
+                # âœ… FORCE THESE FIELDS TO EXIST (THIS FIXES YOUR ISSUE)
                 enriched["market"] = market_name
                 enriched["confidence"] = confidence
                 enriched["trade_readiness_score"] = readiness
@@ -2206,7 +2211,7 @@ def compute_trade_score(state):
         return round(score, 2)
 
     except Exception as e:
-        print(f"❌ compute_trade_score error: {e}", flush=True)
+        print(f"âŒ compute_trade_score error: {e}", flush=True)
         return 0
 
 
@@ -2293,7 +2298,7 @@ def get_all_live_ranked_trades():
             ranked.append(trade)
 
         except Exception as e:
-            print(f"⚠️ Skipping {market_name}: {e}", flush=True)
+            print(f"âš ï¸ Skipping {market_name}: {e}", flush=True)
             continue
 
     ranked.sort(
@@ -2510,14 +2515,14 @@ def update_live_signal(market):
 
         for col in required_cols:
             if col not in df.columns:
-                print(f"❌ Missing column {col} for {market}", flush=True)
+                print(f"âŒ Missing column {col} for {market}", flush=True)
                 return
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
         df = df.dropna(subset=required_cols).copy()
 
         if df.empty:
-            print(f"❌ DataFrame empty after cleaning for {market}", flush=True)
+            print(f"âŒ DataFrame empty after cleaning for {market}", flush=True)
             return
 
         # -----------------------------
@@ -2528,7 +2533,7 @@ def update_live_signal(market):
             if not isinstance(signal_data, dict):
                 signal_data = {}
         except Exception as e:
-            print(f"❌ evaluate_signal failed for {market}: {e}", flush=True)
+            print(f"âŒ evaluate_signal failed for {market}: {e}", flush=True)
             return
 
         # -----------------------------
@@ -2603,12 +2608,12 @@ def update_live_signal(market):
 
         # -----------------------------
         # COMPLETE TRADE PLAN (for Top Trade quality gate)
-        # Levels come from build_trade_levels — not invented in ranking.
+        # Levels come from build_trade_levels â€” not invented in ranking.
         # -----------------------------
         try:
             trade_levels = build_trade_levels(signal_data, current_candle) or {}
         except Exception as levels_error:
-            print(f"⚠️ build_trade_levels failed for {market}: {levels_error}", flush=True)
+            print(f"âš ï¸ build_trade_levels failed for {market}: {levels_error}", flush=True)
             trade_levels = {}
 
         entry_price = trade_levels.get("entry_price", trade_levels.get("entry"))
@@ -2632,7 +2637,7 @@ def update_live_signal(market):
         try:
             strategy_output = build_strategy_engine_output(df, signal_data) or {}
         except Exception as strategy_error:
-            print(f"⚠️ build_strategy_engine_output failed for {market}: {strategy_error}", flush=True)
+            print(f"âš ï¸ build_strategy_engine_output failed for {market}: {strategy_error}", flush=True)
             strategy_output = {}
 
         try:
@@ -2735,10 +2740,10 @@ def update_live_signal(market):
                 handle_live_signal_change(market, previous_state, new_payload)
                 save_live_signal_history_entry(market, new_payload)
         except Exception as e:
-            print(f"⚠️ post-update hooks failed: {e}", flush=True)
+            print(f"âš ï¸ post-update hooks failed: {e}", flush=True)
 
     except Exception as e:
-        print(f"❌ update_live_signal fatal error for {market}: {e}", flush=True)
+        print(f"âŒ update_live_signal fatal error for {market}: {e}", flush=True)
 
 
 def update_trade_ranking(market):
@@ -2794,11 +2799,11 @@ def update_trade_ranking(market):
         TRADE_RANKINGS["last_updated"] = datetime.utcnow().isoformat() + "Z"
 
     except Exception as e:
-        print(f"❌ Ranking error for {market}: {e}", flush=True)
+        print(f"âŒ Ranking error for {market}: {e}", flush=True)
 
 
 def run_polling_fallback():
-    print("🔥 run_polling_fallback entered", flush=True)
+    print("ðŸ”¥ run_polling_fallback entered", flush=True)
 
     global POLLING_ACTIVE, STREAM_STATUS, LIVE_MARKET_STATE
 
@@ -2810,7 +2815,7 @@ def run_polling_fallback():
     STREAM_STATUS["polling_active"] = True
     STREAM_STATUS["websocket_active"] = False
 
-    # 🧠 ENSURE MARKETS EXIST (CRITICAL FIX)
+    # ðŸ§  ENSURE MARKETS EXIST (CRITICAL FIX)
     if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
         LIVE_MARKET_STATE["markets"] = {}
 
@@ -2820,11 +2825,11 @@ def run_polling_fallback():
         if m not in LIVE_MARKET_STATE["markets"]:
             LIVE_MARKET_STATE["markets"][m] = {}
 
-    print(f"✅ Markets initialized: {list(LIVE_MARKET_STATE['markets'].keys())}", flush=True)
+    print(f"âœ… Markets initialized: {list(LIVE_MARKET_STATE['markets'].keys())}", flush=True)
 
     while POLLING_ACTIVE:
         try:
-            print("🔄 polling loop tick", flush=True)
+            print("ðŸ”„ polling loop tick", flush=True)
 
             for market in list(LIVE_MARKET_STATE["markets"].keys()):
                 try:
@@ -2835,7 +2840,7 @@ def run_polling_fallback():
                     )
 
                     if df is None or df.empty:
-                        print(f"⚠️ No data for {market}", flush=True)
+                        print(f"âš ï¸ No data for {market}", flush=True)
                         continue
 
                     latest = df.iloc[-1]
@@ -2846,16 +2851,16 @@ def run_polling_fallback():
                         low_p = float(latest["Low"])
                         close_p = float(latest["Close"])
                     except Exception as parse_error:
-                        print(f"❌ Parse error for {market}: {parse_error}", flush=True)
+                        print(f"âŒ Parse error for {market}: {parse_error}", flush=True)
                         continue
 
                     # SCALE GUARDS
                     if market == "Forex" and (close_p <= 0 or close_p > 5):
-                        print(f"🚫 REJECTED Forex bad scale: {close_p}", flush=True)
+                        print(f"ðŸš« REJECTED Forex bad scale: {close_p}", flush=True)
                         continue
 
                     if market == "Gold" and (close_p < 1000 or close_p > 5000):
-                        print(f"🚫 REJECTED Gold bad scale: {close_p}", flush=True)
+                        print(f"ðŸš« REJECTED Gold bad scale: {close_p}", flush=True)
                         continue
 
                     existing = LIVE_MARKET_STATE["markets"].get(market, {})
@@ -2868,7 +2873,7 @@ def run_polling_fallback():
 
                     completed_candles = existing_completed.copy()
 
-                    # 🧠 BUILD HISTORY WITHOUT RESETTING
+                    # ðŸ§  BUILD HISTORY WITHOUT RESETTING
                     if len(df) > 1:
                         historical_rows = df.iloc[:-1].copy()
 
@@ -2886,7 +2891,7 @@ def run_polling_fallback():
                                     completed_candles.append(new_candle)
 
                             except Exception as candle_error:
-                                print(f"⚠️ Skipping candle for {market}: {candle_error}", flush=True)
+                                print(f"âš ï¸ Skipping candle for {market}: {candle_error}", flush=True)
                                 continue
 
                     completed_candles = completed_candles[-50:]
@@ -2909,15 +2914,15 @@ def run_polling_fallback():
 
                     LIVE_MARKET_STATE["markets"][market] = existing
 
-                    # 🚀 SIGNAL ENGINE
+                    # ðŸš€ SIGNAL ENGINE
                     try:
                         update_live_signal(market)
                         update_trade_ranking(market)
                     except Exception as signal_error:
-                        print(f"❌ Signal error for {market}: {signal_error}", flush=True)
+                        print(f"âŒ Signal error for {market}: {signal_error}", flush=True)
 
                 except Exception as market_error:
-                    print(f"❌ Market loop error for {market}: {market_error}", flush=True)
+                    print(f"âŒ Market loop error for {market}: {market_error}", flush=True)
                     continue
 
             STREAM_STATUS["last_tick"] = datetime.utcnow().isoformat() + "Z"
@@ -2928,7 +2933,7 @@ def run_polling_fallback():
             STREAM_STATUS["last_error"] = str(e)
             STREAM_STATUS["status"] = "disconnected"
 
-            print(f"❌ polling error: {e}", flush=True)
+            print(f"âŒ polling error: {e}", flush=True)
 
             time.sleep(5)
 
@@ -2947,7 +2952,7 @@ def get_simulated_base_price(market):
 def seed_live_market_state():
     global LIVE_MARKET_STATE
 
-    print("🌱 Seeding live market state...", flush=True)
+    print("ðŸŒ± Seeding live market state...", flush=True)
 
     # Ensure correct structure
     if not isinstance(LIVE_MARKET_STATE, dict):
@@ -2964,7 +2969,7 @@ def seed_live_market_state():
 
     for market in LIVE_MARKET_STATE["markets"].keys():
         try:
-            print(f"🌱 Seeding {market}", flush=True)
+            print(f"ðŸŒ± Seeding {market}", flush=True)
 
             base_price = get_simulated_base_price(market)
             completed_candles = []
@@ -3020,7 +3025,7 @@ def seed_live_market_state():
             update_live_signal(market)
 
         except Exception as e:
-            print(f"❌ Seed error for {market}: {e}", flush=True)
+            print(f"âŒ Seed error for {market}: {e}", flush=True)
 
 
 def run_live_signal_engine():
@@ -3062,7 +3067,7 @@ def run_live_signal_engine():
             time.sleep(10)
 
         except Exception as e:
-            print(f"❌ Live signal engine error: {e}", flush=True)
+            print(f"âŒ Live signal engine error: {e}", flush=True)
             time.sleep(10)
 
 
@@ -3081,7 +3086,7 @@ def start_twelvedata_stream():
                     "QQQ": "NASDAQ",
                     "DIA": "DowJones",
                     "XAU/USD": "Gold",
-                    "NG": "NaturalGas",    # ← FIXED
+                    "NG": "NaturalGas",    # â† FIXED
                     "EUR/USD": "Forex",
                     "SPY": "Futures"
                }
@@ -3136,7 +3141,7 @@ def start_twelvedata_stream_with_reconnect():
         except Exception as e:
             STREAM_STATUS["status"] = "disconnected"
             STREAM_STATUS["last_error"] = str(e)
-            print(f"❌ TwelveData websocket error: {e}", flush=True)
+            print(f"âŒ TwelveData websocket error: {e}", flush=True)
             time.sleep(30)
 
 
@@ -3150,7 +3155,7 @@ def ensure_live_engine_started():
         if LIVE_ENGINE_STARTED:
             return
 
-        print("🚀 Starting live engine in POLLING ONLY mode", flush=True)
+        print("ðŸš€ Starting live engine in POLLING ONLY mode", flush=True)
 
         if "markets" not in LIVE_MARKET_STATE or not isinstance(LIVE_MARKET_STATE["markets"], dict):
             LIVE_MARKET_STATE["markets"] = {}
@@ -3173,7 +3178,7 @@ def ensure_live_engine_started():
             })
 
         def start_engine():
-            print("🔥 Using polling fallback only", flush=True)
+            print("ðŸ”¥ Using polling fallback only", flush=True)
             run_polling_fallback()
 
         threading.Thread(target=start_engine, daemon=True).start()
@@ -3216,10 +3221,10 @@ def fetch_live_market_data(
         # -----------------------------
         symbol = MARKET_SYMBOLS.get(market)
 
-        print(f"📡 FETCH SYMBOL: {market} -> {symbol}", flush=True)
+        print(f"ðŸ“¡ FETCH SYMBOL: {market} -> {symbol}", flush=True)
 
         if not symbol:
-            print(f"❌ No symbol mapping for market: {market}", flush=True)
+            print(f"âŒ No symbol mapping for market: {market}", flush=True)
             return None
 
         # -----------------------------
@@ -3237,11 +3242,11 @@ def fetch_live_market_data(
             mapped_interval = INTERVAL_MAP.get(interval)
 
         if not mapped_interval:
-            print(f"❌ Invalid interval mapping: {interval}", flush=True)
+            print(f"âŒ Invalid interval mapping: {interval}", flush=True)
             return None
 
         print(
-            f"📊 Requesting TwelveData: symbol={symbol}, interval={mapped_interval}, "
+            f"ðŸ“Š Requesting TwelveData: symbol={symbol}, interval={mapped_interval}, "
             f"outputsize={outputsize}, start_date={start_date}, end_date={end_date}",
             flush=True
         )
@@ -3271,7 +3276,7 @@ def fetch_live_market_data(
             params["end_date"] = end_date
 
         print(
-            f"📡 TwelveData timezone mode: "
+            f"ðŸ“¡ TwelveData timezone mode: "
             f"{'UTC' if 'timezone' in params else 'Exchange (daily+; param ignored)'}",
             flush=True,
         )
@@ -3283,7 +3288,7 @@ def fetch_live_market_data(
         # ERROR HANDLING
         # -----------------------------
         if "values" not in data:
-            print(f"❌ TwelveData ERROR: {data}", flush=True)
+            print(f"âŒ TwelveData ERROR: {data}", flush=True)
             return None
 
         # -----------------------------
@@ -3306,7 +3311,7 @@ def fetch_live_market_data(
 
         for col in required_cols:
             if col not in df.columns:
-                print(f"❌ Missing column: {col}", flush=True)
+                print(f"âŒ Missing column: {col}", flush=True)
                 return None
 
             df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
@@ -3315,11 +3320,11 @@ def fetch_live_market_data(
         df = df.dropna(subset=required_cols).copy()
 
         if df.empty:
-            print("❌ No valid numeric rows after cleaning", flush=True)
+            print("âŒ No valid numeric rows after cleaning", flush=True)
             return None
 
         # -----------------------------
-        # SORT DATA (keep Datetime as a column — callers must not rely on index)
+        # SORT DATA (keep Datetime as a column â€” callers must not rely on index)
         # Intraday: TwelveData datetime is UTC wall-clock when timezone=UTC.
         # utc=True then correctly labels absolute time (not Exchange-local-as-UTC).
         # -----------------------------
@@ -3328,7 +3333,7 @@ def fetch_live_market_data(
         df = df.sort_values("Datetime").reset_index(drop=True)
 
         print(
-            f"✅ Data fetched: {len(df)} rows "
+            f"âœ… Data fetched: {len(df)} rows "
             f"(intraday timezone={'UTC' if mapped_interval not in ('1day', '1week', '1month') else 'Exchange'})",
             flush=True,
         )
@@ -3336,7 +3341,7 @@ def fetch_live_market_data(
         return df
 
     except Exception as e:
-        print(f"❌ fetch_live_market_data ERROR: {e}", flush=True)
+        print(f"âŒ fetch_live_market_data ERROR: {e}", flush=True)
         return None
 
 
@@ -3406,7 +3411,7 @@ def fetch_candles():
 
         # Handle completely missing fetch result
         if df is None:
-            print(f"⚠️ fetch_live_market_data returned None for {market}", flush=True)
+            print(f"âš ï¸ fetch_live_market_data returned None for {market}", flush=True)
             return jsonify({
                 "ok": True,
                 "market": market,
@@ -3419,7 +3424,7 @@ def fetch_candles():
 
         # Handle empty dataframe
         if df.empty:
-            print(f"⚠️ Empty dataframe returned for {market}", flush=True)
+            print(f"âš ï¸ Empty dataframe returned for {market}", flush=True)
             return jsonify({
                 "ok": True,
                 "market": market,
@@ -3431,7 +3436,7 @@ def fetch_candles():
             }), 200
 
         if "Datetime" not in df.columns:
-            print(f"❌ Datetime column missing for {market}. Columns: {list(df.columns)}", flush=True)
+            print(f"âŒ Datetime column missing for {market}. Columns: {list(df.columns)}", flush=True)
             return jsonify({
                 "ok": False,
                 "error": "Datetime column missing from fetched candle data"
@@ -3478,7 +3483,7 @@ def fetch_candles():
 
         # If everything got filtered out, return empty cleanly
         if df.empty:
-            print(f"⚠️ No candles remaining after filtering for {market}", flush=True)
+            print(f"âš ï¸ No candles remaining after filtering for {market}", flush=True)
             return jsonify({
                 "ok": True,
                 "market": market,
@@ -3569,7 +3574,7 @@ def load_history(file_path):
             return json.loads(content)
 
     except Exception as e:
-        print("🔥 HISTORY LOAD FAILED:", str(e))
+        print("ðŸ”¥ HISTORY LOAD FAILED:", str(e))
         return []
 
 
@@ -3969,7 +3974,7 @@ def detect_wick_pattern(df):
         return None
 
     except Exception as e:
-        print(f"❌ detect_wick_pattern error: {e}", flush=True)
+        print(f"âŒ detect_wick_pattern error: {e}", flush=True)
         return None
 
 
@@ -4798,7 +4803,7 @@ def get_trade_readiness(signal_data):
         return round(max(0, min(score, 100)), 2)
 
     except Exception as e:
-        print(f"❌ get_trade_readiness error: {e}", flush=True)
+        print(f"âŒ get_trade_readiness error: {e}", flush=True)
         return 0
 
 
@@ -5642,7 +5647,7 @@ def build_market_script(intelligence):
         f"The Strongest Setup in the Market Right Now",
         f"AI Says Watch {top_market} Right Now",
         f"{top_market} Just Printed a {top_setup}",
-        f"Today’s Best AI Trade Setup Revealed"
+        f"Todayâ€™s Best AI Trade Setup Revealed"
     ]
 
     short_captions = [
@@ -6658,7 +6663,7 @@ def get_risk_settings():
             return err
         settings = load_user_json(user_id, "risk_settings.json", None)
         if settings is None:
-            # Do not leak shared global file across users — return defaults
+            # Do not leak shared global file across users â€” return defaults
             settings = {
                 "max_daily_loss": 500.0,
                 "min_confidence_threshold": 70.0,
@@ -6762,7 +6767,7 @@ def scan_markets_route():
 def store_signal(user_id, signal):
     try:
         if not user_id:
-            print("📊 SIGNAL NOT STORED: missing user_id", flush=True)
+            print("ðŸ“Š SIGNAL NOT STORED: missing user_id", flush=True)
             return
 
         payload = {
@@ -6778,7 +6783,7 @@ def store_signal(user_id, signal):
             "created_at": datetime.utcnow().isoformat() + "Z"
         }
 
-        print("🔥 store_signal running", flush=True)
+        print("ðŸ”¥ store_signal running", flush=True)
         response = requests.post(
             f"{SUPABASE_URL}/rest/v1/signals_history",
             headers={
@@ -6791,11 +6796,11 @@ def store_signal(user_id, signal):
             timeout=20
         )
 
-        print("📊 SIGNAL STORED STATUS:", response.status_code, flush=True)
-        print("📊 SIGNAL STORED RESPONSE:", response.text, flush=True)
+        print("ðŸ“Š SIGNAL STORED STATUS:", response.status_code, flush=True)
+        print("ðŸ“Š SIGNAL STORED RESPONSE:", response.text, flush=True)
 
     except Exception as e:
-        print("❌ SIGNAL STORE ERROR:", str(e), flush=True)
+        print("âŒ SIGNAL STORE ERROR:", str(e), flush=True)
 
 
 def build_trade_levels(signal_data, last_row):
@@ -6925,7 +6930,7 @@ def signal():
                 "valid_options": VALID_TIMEFRAMES
             }), 400
 
-        print(f"📡 FULL SIGNAL ROUTE | market={market} timeframe={timeframe}", flush=True)
+        print(f"ðŸ“¡ FULL SIGNAL ROUTE | market={market} timeframe={timeframe}", flush=True)
 
         # -----------------------------
         # FETCH MARKET DATA
@@ -6937,12 +6942,12 @@ def signal():
         )
 
         if df is None or df.empty:
-            print(f"❌ No data returned for {market}", flush=True)
+            print(f"âŒ No data returned for {market}", flush=True)
             return jsonify({
                 "error": f"No market data available for {market}"
             }), 500
 
-        print(f"📊 Raw DF columns for {market}: {list(df.columns)}", flush=True)
+        print(f"ðŸ“Š Raw DF columns for {market}: {list(df.columns)}", flush=True)
 
         # -----------------------------
         # FORCE CLEAN NUMERIC CONVERSION
@@ -6951,7 +6956,7 @@ def signal():
 
         for col in required_cols:
             if col not in df.columns:
-                print(f"❌ Missing column: {col}", flush=True)
+                print(f"âŒ Missing column: {col}", flush=True)
                 return jsonify({"error": f"Missing column: {col}"}), 500
 
             df[col] = df[col].astype(str).str.replace(",", "", regex=False).str.strip()
@@ -6959,11 +6964,11 @@ def signal():
 
         df = df.dropna(subset=required_cols).copy()
 
-        print("🧼 CLEANED DATA TYPES:", flush=True)
+        print("ðŸ§¼ CLEANED DATA TYPES:", flush=True)
         print(df[required_cols].dtypes, flush=True)
 
         if df.empty:
-            print(f"❌ No valid numeric rows remain for {market}", flush=True)
+            print(f"âŒ No valid numeric rows remain for {market}", flush=True)
             return jsonify({
                 "error": "No valid numeric data after cleaning"
             }), 500
@@ -6976,25 +6981,25 @@ def signal():
         try:
             ai_text = build_ai_explanation(signal_data)
         except Exception as ai_error:
-            print(f"⚠️ build_ai_explanation failed: {ai_error}", flush=True)
+            print(f"âš ï¸ build_ai_explanation failed: {ai_error}", flush=True)
             ai_text = {}
 
         try:
             mtf_data = get_multi_timeframe_confirmation(market, timeframe)
         except Exception as mtf_error:
-            print(f"⚠️ get_multi_timeframe_confirmation failed: {mtf_error}", flush=True)
+            print(f"âš ï¸ get_multi_timeframe_confirmation failed: {mtf_error}", flush=True)
             mtf_data = {}
 
         try:
             session_data = get_market_session()
         except Exception as session_error:
-            print(f"⚠️ get_market_session failed: {session_error}", flush=True)
+            print(f"âš ï¸ get_market_session failed: {session_error}", flush=True)
             session_data = {}
 
         try:
             setup_type = get_setup_type(signal_data)
         except Exception as setup_error:
-            print(f"⚠️ get_setup_type failed: {setup_error}", flush=True)
+            print(f"âš ï¸ get_setup_type failed: {setup_error}", flush=True)
             setup_type = None
 
         last_row = df.iloc[-1]
@@ -7049,7 +7054,7 @@ def signal():
             "status": "ok"
         }
 
-        print(f"✅ FULL SIGNAL GENERATED for {market}", flush=True)
+        print(f"âœ… FULL SIGNAL GENERATED for {market}", flush=True)
         return jsonify(response)
 
     except Exception as e:
@@ -7468,8 +7473,8 @@ def price_history():
             ):
                 continue
 
-            # Use the Datetime COLUMN — not the DataFrame index.
-            # (reset_index made index 0..n; that previously produced time="0","1",…)
+            # Use the Datetime COLUMN â€” not the DataFrame index.
+            # (reset_index made index 0..n; that previously produced time="0","1",â€¦)
             dt = row.get("Datetime")
             if isinstance(dt, pd.Timestamp):
                 time_value = dt.isoformat()
@@ -8000,15 +8005,15 @@ def live_candles():
         market = market.upper()
 
         print(
-            f"📡 LIVE CANDLES request | market={market} timeframe={timeframe} "
+            f"ðŸ“¡ LIVE CANDLES request | market={market} timeframe={timeframe} "
             f"outputsize={outputsize}",
             flush=True,
         )
 
-        # ✅ Fix timeframe mapping
+        # âœ… Fix timeframe mapping
         interval = INTERVAL_MAP.get(timeframe, "1h")
 
-        # ✅ Fetch data — honor client outputsize (default LIVE_CANDLES_OUTPUTSIZE)
+        # âœ… Fetch data â€” honor client outputsize (default LIVE_CANDLES_OUTPUTSIZE)
         df = fetch_live_market_data(
             market,
             interval=interval,
@@ -8016,7 +8021,7 @@ def live_candles():
         )
 
         if df is None or df.empty:
-            print(f"❌ No data returned for {market}", flush=True)
+            print(f"âŒ No data returned for {market}", flush=True)
             return jsonify({
                 "candles": [],
                 "count": 0,
@@ -8025,10 +8030,10 @@ def live_candles():
                 "outputsize": outputsize,
             })
 
-        print(f"✅ Data fetched: {len(df)} rows", flush=True)
-        print(f"📊 Columns: {list(df.columns)}", flush=True)
+        print(f"âœ… Data fetched: {len(df)} rows", flush=True)
+        print(f"ðŸ“Š Columns: {list(df.columns)}", flush=True)
 
-        # ✅ Build candles safely
+        # âœ… Build candles safely
         candles = []
 
         for _, row in df.iterrows():
@@ -8041,10 +8046,10 @@ def live_candles():
                     "close": float(str(row["Close"]).replace(",", "").strip())
                 })
             except Exception as e:
-                print(f"⚠️ Skipping row: {e}", flush=True)
+                print(f"âš ï¸ Skipping row: {e}", flush=True)
                 continue
 
-        print(f"🚀 Returning {len(candles)} candles (requested={outputsize})", flush=True)
+        print(f"ðŸš€ Returning {len(candles)} candles (requested={outputsize})", flush=True)
 
         return jsonify({
             "candles": candles,
@@ -8063,7 +8068,7 @@ def live_candles():
 
     except Exception as e:
         import traceback
-        print("❌ LIVE CANDLES ERROR:", str(e), flush=True)
+        print("âŒ LIVE CANDLES ERROR:", str(e), flush=True)
         traceback.print_exc()
 
         return jsonify({
@@ -8256,7 +8261,7 @@ def map_price_id_to_plan(price_id):
 
 def get_user_by_stripe_customer_id(customer_id):
     # TEMP: replace later with database lookup
-    print("🔥 LOOKUP USER BY CUSTOMER:", customer_id)
+    print("ðŸ”¥ LOOKUP USER BY CUSTOMER:", customer_id)
     return {"id": "test_user"}  # temporary fake user
 
 
@@ -8268,7 +8273,7 @@ def update_user_subscription_status(
     stripe_subscription_id=None,
     trial_end=None
 ):
-    print("🔥 USER UPDATED:", {
+    print("ðŸ”¥ USER UPDATED:", {
         "user_id": user_id,
         "subscription_status": subscription_status,
         "effective_plan": effective_plan,
@@ -8303,7 +8308,7 @@ def get_user_by_stripe_customer_id(customer_id):
         return None
 
     except Exception as e:
-        print("🔥 get_user_by_stripe_customer_id ERROR:", str(e), flush=True)
+        print("ðŸ”¥ get_user_by_stripe_customer_id ERROR:", str(e), flush=True)
         return None
 
 
@@ -8316,7 +8321,7 @@ def update_user_subscription_status(
     trial_end=None
 ):
     try:
-        print("🔥 WRITING TO SUPABASE START", flush=True)
+        print("ðŸ”¥ WRITING TO SUPABASE START", flush=True)
 
         payload = {
             "id": user_id,
@@ -8329,7 +8334,7 @@ def update_user_subscription_status(
             "updated_at": datetime.utcnow().isoformat()
         }
 
-        print("🔥 PAYLOAD:", payload, flush=True)
+        print("ðŸ”¥ PAYLOAD:", payload, flush=True)
 
         response = requests.post(
             f"{os.environ.get('SUPABASE_URL')}/rest/v1/user_subscriptions",
@@ -8342,31 +8347,31 @@ def update_user_subscription_status(
             json=payload
         )
 
-        print("🔥 SUPABASE STATUS:", response.status_code, flush=True)
-        print("🔥 SUPABASE RESPONSE:", response.text, flush=True)
+        print("ðŸ”¥ SUPABASE STATUS:", response.status_code, flush=True)
+        print("ðŸ”¥ SUPABASE RESPONSE:", response.text, flush=True)
 
     except Exception as e:
-        print("🔥 SUPABASE ERROR:", str(e), flush=True)
+        print("ðŸ”¥ SUPABASE ERROR:", str(e), flush=True)
 
 
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
     try:
-        print("🔥 WEBHOOK HIT", flush=True)
+        print("ðŸ”¥ WEBHOOK HIT", flush=True)
 
         event = request.get_json(force=True, silent=True)
 
         if not event:
-            print("🔥 NO JSON", flush=True)
+            print("ðŸ”¥ NO JSON", flush=True)
             return jsonify({"error": "No JSON"}), 400
 
         event_type = event.get("type")
         data = event.get("data", {}).get("object", {})
 
-        print("🔥 EVENT:", event_type, flush=True)
+        print("ðŸ”¥ EVENT:", event_type, flush=True)
 
         if event_type == "checkout.session.completed":
-            print("🔥 CHECKOUT HIT", flush=True)
+            print("ðŸ”¥ CHECKOUT HIT", flush=True)
 
             metadata = data.get("metadata", {}) or {}
             user_id = metadata.get("user_id")
@@ -8375,13 +8380,13 @@ def stripe_webhook():
             customer_id = data.get("customer")
             subscription_id = data.get("subscription")
 
-            print("🔥 USER:", user_id, flush=True)
-            print("🔥 PLAN:", plan, flush=True)
-            print("🔥 CUSTOMER:", customer_id, flush=True)
-            print("🔥 SUB:", subscription_id, flush=True)
+            print("ðŸ”¥ USER:", user_id, flush=True)
+            print("ðŸ”¥ PLAN:", plan, flush=True)
+            print("ðŸ”¥ CUSTOMER:", customer_id, flush=True)
+            print("ðŸ”¥ SUB:", subscription_id, flush=True)
 
             if not user_id:
-                print("🔥 ERROR: Missing user_id", flush=True)
+                print("ðŸ”¥ ERROR: Missing user_id", flush=True)
                 return jsonify({"error": "Missing user_id"}), 200
 
             trial_end_ts = None
@@ -8396,7 +8401,7 @@ def stripe_webhook():
                     in_trial = bool(trial_end_ts and trial_end_ts > now_ts)
 
                 except Exception as sub_error:
-                    print("🔥 SUB FETCH ERROR:", str(sub_error), flush=True)
+                    print("ðŸ”¥ SUB FETCH ERROR:", str(sub_error), flush=True)
 
             if plan == "elite":
                 subscription_status = "trial_elite" if in_trial else "elite"
@@ -8410,7 +8415,7 @@ def stripe_webhook():
                 if trial_end_ts else None
             )
 
-            print("🔥 FINAL STATUS:", subscription_status, flush=True)
+            print("ðŸ”¥ FINAL STATUS:", subscription_status, flush=True)
 
             try:
                 update_user_subscription_status(
@@ -8422,12 +8427,12 @@ def stripe_webhook():
                     trial_end=trial_end_iso
                 )
             except Exception as db_error:
-                print("🔥 SUPABASE ERROR:", str(db_error), flush=True)
+                print("ðŸ”¥ SUPABASE ERROR:", str(db_error), flush=True)
 
         return jsonify({"received": True}), 200
 
     except Exception as e:
-        print("🔥 WEBHOOK CRASH:", str(e), flush=True)
+        print("ðŸ”¥ WEBHOOK CRASH:", str(e), flush=True)
         return jsonify({
             "error": "Webhook crashed",
             "details": str(e)
@@ -8643,7 +8648,7 @@ def run_strategy_backtest(df, strategy_name):
             })
 
         except Exception as e:
-            print(f"❌ run_strategy_backtest error ({strategy_name} @ {i}): {str(e)}", flush=True)
+            print(f"âŒ run_strategy_backtest error ({strategy_name} @ {i}): {str(e)}", flush=True)
             continue
 
     return trades
@@ -8661,7 +8666,7 @@ def run_full_backtest():
                 df = fetch_live_market_data(market, interval="1h", outputsize=300)
 
                 if df is None or df.empty:
-                    print(f"❌ market error {market}: no data returned", flush=True)
+                    print(f"âŒ market error {market}: no data returned", flush=True)
                     continue
 
                 for strategy in strategies:
@@ -8702,10 +8707,10 @@ def run_full_backtest():
                         })
 
                     except Exception as strat_error:
-                        print(f"❌ strategy error {market}-{strategy}: {strat_error}", flush=True)
+                        print(f"âŒ strategy error {market}-{strategy}: {strat_error}", flush=True)
 
             except Exception as market_error:
-                print(f"❌ market error {market}: {str(market_error)}", flush=True)
+                print(f"âŒ market error {market}: {str(market_error)}", flush=True)
 
         # Filter out low sample-size results first
         filtered_results = []
@@ -8734,16 +8739,16 @@ def run_full_backtest():
         })
 
     except Exception as e:
-        print(f"❌ FULL BACKTEST CRASH: {str(e)}", flush=True)
+        print(f"âŒ FULL BACKTEST CRASH: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/trade-thesis", methods=["POST"])
 def trade_thesis():
     try:
-        print("🔥 /trade-thesis HIT", flush=True)
+        print("ðŸ”¥ /trade-thesis HIT", flush=True)
 
         data = request.get_json(silent=True) or {}
-        print(f"🔥 incoming data: {data}", flush=True)
+        print(f"ðŸ”¥ incoming data: {data}", flush=True)
 
         return jsonify({
             "status": "success",
@@ -8751,7 +8756,7 @@ def trade_thesis():
         })
 
     except Exception as e:
-        print(f"❌ ERROR: {str(e)}", flush=True)
+        print(f"âŒ ERROR: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 500
 
 

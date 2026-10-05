@@ -14,14 +14,12 @@ from flask import Blueprint, jsonify, request, g
 from wicksense_backend.alpaca_helpers import (
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_URL,
-    REAL_LIVE_ORDER_SUBMISSION_ENABLED,
     alpaca_fetch,
-    build_credential_status,
-    build_mock_live_order,
     delete_user_credentials,
     fetch_latest_trade_price,
     get_user_credentials,
     get_user_id_from_request,
+    load_user_credentials_metadata,
     log_alpaca_order,
     now_iso,
     repair_bracket_prices,
@@ -34,6 +32,9 @@ log = logging.getLogger("wicksense.alpaca")
 alpaca_bp = Blueprint("alpaca", __name__, url_prefix="/alpaca")
 
 KNOWN_ACTIONS = {
+    "save_credentials",
+    "load_credentials",
+    "delete_credentials",
     "test_connection",
     "send_test_order",
     "submit_entry_order",
@@ -46,12 +47,6 @@ KNOWN_ACTIONS = {
     "emergency_kill_switch",
     "get_alpaca_orders",
     "reset_paper_account",
-    "save_credentials",
-    "load_credentials",
-    "delete_credentials",
-    "get_account",
-    "cancel_order",
-    "reconcile_fills",
 }
 
 
@@ -70,133 +65,13 @@ def _require_auth():
     return user_id, None
 
 
-def _require_creds(user_id, forced_mode=None):
+def _require_creds(user_id, mode=None):
     auth = getattr(g, "alpaca_auth_header", None)
-    body = request.get_json(silent=True) or {}
-    mode = forced_mode or body.get("credential_mode")
-    if mode not in ("paper", "live"):
-        mode = None
-    creds = get_user_credentials(user_id, auth, forced_mode=mode)
+    creds = get_user_credentials(user_id, auth, mode)
     if not creds:
-        slot = mode or "active"
-        return None, (
-            jsonify({
-                "error": f"No Alpaca {slot} credentials found. Save and test that credential pair first.",
-            }),
-            400,
-        )
+        label = f"{mode} " if mode in ("paper", "live") else ""
+        return None, (jsonify({"error": f"No {label}credentials found. Please save your API keys first."}), 400)
     return creds, None
-
-
-def _record_connection_result(user_id, mode, account):
-    """Persist connection metadata via service_role (no secrets; account ids/numbers masked)."""
-    import requests
-    from wicksense_backend.alpaca_crypto import mask_account_id, mask_account_number
-
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-        return
-    is_live = mode == "live"
-    ok = bool(account and account.get("id"))
-    now = now_iso()
-    patch = {"updated_at": now}
-    masked_id = mask_account_id((account or {}).get("id"))
-    masked_num = mask_account_number((account or {}).get("account_number"))
-    if is_live:
-        patch.update({
-            "live_connection_ok": ok,
-            "live_last_tested_at": now,
-            "live_account_id": masked_id,
-            "live_account_number": masked_num,
-            "live_account_status": (account or {}).get("status"),
-        })
-    else:
-        patch.update({
-            "paper_connection_ok": ok,
-            "paper_last_tested_at": now,
-            "paper_account_id": masked_id,
-            "paper_account_number": masked_num,
-            "paper_account_status": (account or {}).get("status"),
-        })
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-    }
-    try:
-        requests.patch(
-            f"{SUPABASE_URL}/rest/v1/alpaca_credentials",
-            params={"user_id": f"eq.{user_id}"},
-            headers=headers,
-            json=patch,
-            timeout=15,
-        )
-    except Exception as err:
-        log.warning("record connection result failed: %s", err)
-
-
-def _sanitize_public_payload(obj):
-    """Defense-in-depth: strip secret keys from any dict returned to the browser."""
-    if obj is None:
-        return None
-    if isinstance(obj, list):
-        return [_sanitize_public_payload(x) for x in obj]
-    if not isinstance(obj, dict):
-        return obj
-    kill = {
-        "api_key",
-        "secret_key",
-        "paper_api_key",
-        "paper_secret_key",
-        "live_api_key",
-        "live_secret_key",
-        "APCA-API-KEY-ID",
-        "APCA-API-SECRET-KEY",
-        "_api_key",
-        "_secret_key",
-    }
-    out = {}
-    for k, v in obj.items():
-        if k in kill or (isinstance(k, str) and (
-            k.lower() in ("apikey", "apisecret")
-            or k.endswith("_secret_key")
-            or (k.endswith("_api_key") and "last4" not in k and "preview" not in k)
-        )):
-            continue
-        out[k] = _sanitize_public_payload(v) if isinstance(v, (dict, list)) else v
-    return out
-
-
-def _public_json(payload, status=200):
-    return jsonify(_sanitize_public_payload(payload)), status
-
-
-def _handle_save_credentials(user_id, body):
-    slot = body.get("credentialMode") or body.get("credential_mode") or body.get("mode") or "paper"
-    if slot not in ("paper", "live"):
-        slot = "paper"
-    api_key = body.get("api_key")
-    secret_key = body.get("secret_key")
-    # Accept secrets only on this write endpoint — never log them
-    result = save_user_credentials(user_id, slot, api_key, secret_key)
-    status = result.get("success")
-    code = 200 if status else 400
-    safe = {k: v for k, v in result.items() if k not in ("api_key", "secret_key")}
-    return _public_json(safe, code)
-
-
-def _handle_load_credentials(user_id):
-    status = build_credential_status(user_id)
-    if status.get("error") == "service_role_not_configured":
-        return _public_json({"error": "service_role_not_configured"}, 503)
-    return _public_json({"credentials": status, "success": True})
-
-
-def _handle_delete_credentials(user_id, body):
-    slot = body.get("credentialMode") or body.get("credential_mode") or body.get("mode") or "paper"
-    result = delete_user_credentials(user_id, slot)
-    code = 200 if result.get("success") else 400
-    return _public_json(result, code)
 
 
 def _supabase_patch(table, match_col, match_val, payload, user_id=None):
@@ -221,6 +96,30 @@ def _supabase_patch(table, match_col, match_val, payload, user_id=None):
         )
     except Exception as err:
         log.warning("supabase patch %s failed: %s", table, err)
+
+
+def _paper_trade_is_owned(user_id, paper_trade_uuid):
+    from wicksense_backend.alpaca_helpers import _supabase_rest_headers
+    import requests
+
+    headers = _supabase_rest_headers(getattr(g, "alpaca_auth_header", None))
+    if not headers or not SUPABASE_URL:
+        return False
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL}/rest/v1/paper_trades",
+            params={
+                "id": f"eq.{paper_trade_uuid}",
+                "user_id": f"eq.{user_id}",
+                "select": "id",
+                "limit": "1",
+            },
+            headers=headers,
+            timeout=15,
+        )
+        return response.status_code == 200 and bool(response.json())
+    except (requests.RequestException, ValueError):
+        return False
 
 
 def _log_order(user_id, row):
@@ -251,41 +150,21 @@ def _supabase_get_alpaca_orders(user_id, limit=50):
     return res.json()
 
 
-def _handle_test_connection(user_id):
-    body = request.get_json(silent=True) or {}
-    forced = body.get("credential_mode") or body.get("mode")
-    if forced not in ("paper", "live"):
-        forced = None
-    creds, err = _require_creds(user_id, forced_mode=forced)
+def _handle_test_connection(user_id, body=None):
+    mode = (body or {}).get("mode")
+    if mode not in ("paper", "live"):
+        mode = None
+    creds, err = _require_creds(user_id, mode)
     if err:
         return err
     res = alpaca_fetch(creds, "/account")
     if not res.ok:
-        _record_connection_result(user_id, creds.get("mode"), None)
-        return jsonify({
-            "success": False,
-            "mode": creds.get("mode"),
-            "error": "Alpaca API rejected the credentials",
-            "detail": res.text,
-            "status": res.status_code,
-        }), 400
+        return jsonify({"error": "Alpaca API rejected the credentials", "detail": res.text, "status": res.status_code}), 400
     account = res.json()
-    _record_connection_result(user_id, creds.get("mode"), account)
-    return jsonify(_masked_account_payload(creds.get("mode"), account, success=True))
-
-
-def _masked_account_payload(mode, account, success=True):
-    """Browser-safe account view — never returns full account id/number."""
-    from wicksense_backend.alpaca_crypto import mask_account_id, mask_account_number
-
-    account = account or {}
-    return {
-        "success": success,
-        "mode": mode,
-        "endpoint": "live" if mode == "live" else "paper",
+    return jsonify({
+        "success": True,
         "account": {
-            "id": mask_account_id(account.get("id")),
-            "account_number": mask_account_number(account.get("account_number")),
+            "id": account.get("id"),
             "status": account.get("status"),
             "currency": account.get("currency"),
             "buying_power": account.get("buying_power"),
@@ -295,105 +174,14 @@ def _masked_account_payload(mode, account, success=True):
             "last_equity": account.get("last_equity"),
             "trading_blocked": account.get("trading_blocked"),
             "account_blocked": account.get("account_blocked"),
-            "shorting_enabled": account.get("shorting_enabled"),
-            "pattern_day_trader": account.get("pattern_day_trader"),
-            "multiplier": account.get("multiplier"),
-            "daytrade_count": account.get("daytrade_count"),
-            "long_market_value": account.get("long_market_value"),
-            "short_market_value": account.get("short_market_value"),
-        },
-    }
-
-
-def _handle_get_account(user_id):
-    """Same Alpaca /account fetch as test_connection, without rewriting connection stamps unless forced."""
-    body = request.get_json(silent=True) or {}
-    forced = body.get("credential_mode") or body.get("mode")
-    if forced not in ("paper", "live"):
-        forced = None
-    creds, err = _require_creds(user_id, forced_mode=forced)
-    if err:
-        return err
-    res = alpaca_fetch(creds, "/account")
-    if not res.ok:
-        return jsonify({
-            "success": False,
-            "mode": creds.get("mode"),
-            "error": "Alpaca API rejected the credentials",
-            "status": res.status_code,
-        }), 400
-    return jsonify(_masked_account_payload(creds.get("mode"), res.json(), success=True))
-
-
-def _handle_cancel_order(user_id, body):
-    creds, err = _require_creds(user_id)
-    if err:
-        return err
-    alpaca_order_id = body.get("alpaca_order_id") or body.get("order_id")
-    if not alpaca_order_id:
-        return jsonify({"error": "alpaca_order_id is required"}), 400
-    res = alpaca_fetch(creds, f"/orders/{alpaca_order_id}", "DELETE")
-    if not res.ok:
-        detail = {}
-        try:
-            detail = res.json()
-        except Exception:
-            detail = {"raw": (res.text or "")[:200]}
-        return jsonify({
-            "success": False,
-            "error": "Cancel order failed",
-            "status": res.status_code,
-            "detail": detail,
-        }), 400
-    data = res.json() if res.content else {"id": alpaca_order_id, "status": "canceled"}
-    return jsonify({
-        "success": True,
-        "mode": creds.get("mode"),
-        "order": {
-            "alpaca_order_id": data.get("id") or alpaca_order_id,
-            "order_status": data.get("status") or "canceled",
-            "symbol": data.get("symbol"),
-            "side": data.get("side"),
-            "qty": data.get("qty"),
         },
     })
-
-
-def _handle_reconcile_fills(user_id, body):
-    """Reconcile fills for one or more Alpaca orders into alpaca_orders / paper_trades."""
-    ids = body.get("alpaca_order_ids") or body.get("order_ids") or []
-    single = body.get("alpaca_order_id")
-    if single:
-        ids = list(ids) + [single]
-    if not ids:
-        return jsonify({"error": "alpaca_order_id or alpaca_order_ids required"}), 400
-    results = []
-    for oid in ids:
-        sub = _handle_get_order_status(user_id, {
-            "alpaca_order_id": oid,
-            "paper_trade_id": body.get("paper_trade_id"),
-        })
-        # Flask handlers return (response, status) or Response
-        if isinstance(sub, tuple):
-            resp, code = sub
-            payload = resp.get_json(silent=True) or {}
-            results.append({"alpaca_order_id": oid, "ok": code < 400, **payload})
-        else:
-            payload = sub.get_json(silent=True) or {}
-            results.append({"alpaca_order_id": oid, "ok": True, **payload})
-    return jsonify({"success": all(r.get("ok") for r in results), "results": results})
 
 
 def _handle_send_test_order(user_id):
     creds, err = _require_creds(user_id)
     if err:
         return err
-    if creds.get("mode") == "live":
-        return jsonify({
-            "success": False,
-            "blocked": True,
-            "error": "Test orders are blocked in Live mode. No test-order may submit a live order.",
-        }), 400
     payload = {
         "symbol": "SPY",
         "qty": "1",
@@ -406,16 +194,13 @@ def _handle_send_test_order(user_id):
     data = res.json() if res.content else {}
     if not res.ok:
         return jsonify({"error": "Test order failed", "detail": data, "status": res.status_code}), 400
-    return jsonify({"success": True, "mode": "paper", "order": data})
+    return jsonify({"success": True, "order": data})
 
 
 def _handle_submit_entry_order(user_id, body):
     creds, err = _require_creds(user_id)
     if err:
         return err
-
-    if creds.get("mode") == "live" and not REAL_LIVE_ORDER_SUBMISSION_ENABLED:
-        return jsonify(build_mock_live_order(body))
 
     symbol = body.get("symbol")
     side = body.get("side")
@@ -434,6 +219,9 @@ def _handle_submit_entry_order(user_id, body):
     paper_trade_uuid = to_uuid_or_null(paper_trade_id)
     external_ref = external_trade_ref or (paper_trade_id if not paper_trade_uuid and isinstance(paper_trade_id, str) else None)
 
+    if paper_trade_uuid and not _paper_trade_is_owned(user_id, paper_trade_uuid):
+        return jsonify({"error": "Forbidden", "reason": "paper_trade_not_owned"}), 403
+
     latest_price = fetch_latest_trade_price(symbol, creds)
     base_price = latest_price if latest_price is not None else entry_price
     bracket = repair_bracket_prices(side, base_price, stop_loss, take_profit)
@@ -446,7 +234,6 @@ def _handle_submit_entry_order(user_id, body):
         "bracket_base_price": bracket["base_price"],
         "bracket_repairs": bracket["repaired"],
         "latest_trade_price": latest_price,
-        "credential_mode": creds.get("mode"),
     }
 
     if str(side).lower() == "sell":
@@ -558,11 +345,11 @@ def _handle_submit_entry_order(user_id, body):
                 "broker_source": "alpaca",
                 "alpaca_executed": True,
             },
+            user_id=user_id,
         )
 
     return jsonify({
         "success": True,
-        "mode": creds.get("mode"),
         "order": {
             "alpaca_order_id": order_data.get("id"),
             "symbol": order_data.get("symbol"),
@@ -583,6 +370,10 @@ def _handle_get_order_status(user_id, body):
     alpaca_order_id = body.get("alpaca_order_id")
     if not alpaca_order_id:
         return jsonify({"error": "alpaca_order_id is required"}), 400
+    paper_trade_uuid = to_uuid_or_null(body.get("paper_trade_id"))
+    if paper_trade_uuid and not _paper_trade_is_owned(user_id, paper_trade_uuid):
+        return jsonify({"error": "Forbidden", "reason": "paper_trade_not_owned"}), 403
+
     res = alpaca_fetch(creds, f"/orders/{alpaca_order_id}")
     if not res.ok:
         return jsonify({"error": "Failed to fetch order status"}), 400
@@ -605,14 +396,13 @@ def _handle_get_order_status(user_id, body):
         user_id=user_id,
     )
 
-    paper_trade_uuid = to_uuid_or_null(body.get("paper_trade_id"))
     if paper_trade_uuid:
         patch = {"alpaca_order_status": new_status}
         if filled_avg:
             patch["alpaca_filled_price"] = filled_avg
         if new_status == "filled":
             patch["alpaca_filled_at"] = order_data.get("filled_at") or now_iso()
-        _supabase_patch("paper_trades", "id", paper_trade_uuid, patch)
+        _supabase_patch("paper_trades", "id", paper_trade_uuid, patch, user_id=user_id)
 
     return jsonify({
         "order": {
@@ -692,12 +482,17 @@ def _handle_close_position(user_id, body):
     symbol = body.get("symbol")
     if not symbol:
         return jsonify({"error": "symbol is required"}), 400
+    supplied_paper_trade_id = body.get("paper_trade_id")
+    paper_trade_uuid = to_uuid_or_null(supplied_paper_trade_id)
+    if supplied_paper_trade_id is not None:
+        if not paper_trade_uuid or not _paper_trade_is_owned(user_id, paper_trade_uuid):
+            return jsonify({"error": "Forbidden", "reason": "paper_trade_not_owned"}), 403
     res = alpaca_fetch(creds, f"/positions/{symbol.upper()}", "DELETE")
     if not res.ok:
         return jsonify({"error": "Failed to close position", "detail": res.text}), 400
     close_data = res.json() if res.content else {}
     _log_order(user_id, {
-        "paper_trade_id": to_uuid_or_null(body.get("paper_trade_id")),
+        "paper_trade_id": paper_trade_uuid,
         "alpaca_order_id": close_data.get("id"),
         "symbol": symbol.upper(),
         "side": close_data.get("side") or "sell",
@@ -745,6 +540,50 @@ def _handle_get_alpaca_orders(user_id, body):
     return jsonify({"orders": orders})
 
 
+def _handle_save_credentials(user_id, body):
+    # auth.uid (user_id) is authoritative — reject conflicting client identity.
+    if body.get("user_id") not in (None, "", user_id) and str(body.get("user_id")) != str(user_id):
+        return jsonify({
+            "error": "Forbidden",
+            "reason": "identity_mismatch",
+            "detail": "user_id does not match authenticated user",
+        }), 403
+    result, err = save_user_credentials(
+        user_id,
+        body.get("api_key"),
+        body.get("secret_key"),
+        body.get("mode"),
+    )
+    if err == "api_key_and_secret_key_required":
+        return jsonify({"error": "api_key and secret_key are required"}), 400
+    if err:
+        return jsonify({"error": "Failed to save credentials", "reason": err}), 500
+    return jsonify(result)
+
+
+def _handle_load_credentials(user_id):
+    result, err = load_user_credentials_metadata(user_id)
+    if err:
+        return jsonify({"error": "Failed to load credentials", "reason": err}), 500
+    return jsonify(result)
+
+
+def _handle_delete_credentials(user_id, body):
+    if body.get("user_id") not in (None, "", user_id) and str(body.get("user_id")) != str(user_id):
+        return jsonify({
+            "error": "Forbidden",
+            "reason": "identity_mismatch",
+            "detail": "user_id does not match authenticated user",
+        }), 403
+    mode = body.get("mode")
+    if mode is not None and mode not in ("paper", "live"):
+        return jsonify({"error": "mode must be paper or live"}), 400
+    result, err = delete_user_credentials(user_id, mode)
+    if err:
+        return jsonify({"error": "Failed to delete credentials", "reason": err}), 500
+    return jsonify(result)
+
+
 def _dispatch_action(action, user_id, body):
     if action == "save_credentials":
         return _handle_save_credentials(user_id, body)
@@ -753,17 +592,11 @@ def _dispatch_action(action, user_id, body):
     if action == "delete_credentials":
         return _handle_delete_credentials(user_id, body)
     if action == "test_connection":
-        return _handle_test_connection(user_id)
-    if action == "get_account":
-        return _handle_get_account(user_id)
+        return _handle_test_connection(user_id, body)
     if action == "send_test_order":
         return _handle_send_test_order(user_id)
     if action == "submit_entry_order":
         return _handle_submit_entry_order(user_id, body)
-    if action == "cancel_order":
-        return _handle_cancel_order(user_id, body)
-    if action == "reconcile_fills":
-        return _handle_reconcile_fills(user_id, body)
     if action == "get_order_status":
         return _handle_get_order_status(user_id, body)
     if action == "get_positions":
@@ -819,9 +652,7 @@ def _dispatch_action(action, user_id, body):
         return jsonify({
             "success": True,
             "message": "Alpaca paper account reset.",
-            "account": _masked_account_payload(
-                creds.get("mode"), account, success=True
-            ).get("account") if account else None,
+            "account": account,
         })
     return jsonify({"error": f"Unknown action: {action}"}), 400
 
@@ -840,19 +671,10 @@ def alpaca_action(action):
         return auth_err
 
     body = request.get_json(silent=True) or {}
-    result = _dispatch_action(normalized, user_id, body)
-    # Sanitize any Response JSON body before it reaches the browser
-    if isinstance(result, tuple) and len(result) >= 1:
-        resp = result[0]
-        code = result[1] if len(result) > 1 else 200
-        if hasattr(resp, "get_json"):
-            data = resp.get_json(silent=True)
-            if isinstance(data, (dict, list)):
-                return _public_json(data, code)
-        return result
-    if hasattr(result, "get_json"):
-        data = result.get_json(silent=True)
-        if isinstance(data, (dict, list)):
-            status = getattr(result, "status_code", 200) or 200
-            return _public_json(data, status)
-    return result
+    if body.get("user_id") not in (None, "") and str(body.get("user_id")) != str(user_id):
+        return jsonify({
+            "error": "Forbidden",
+            "reason": "identity_mismatch",
+            "detail": "user_id does not match authenticated user",
+        }), 403
+    return _dispatch_action(normalized, user_id, body)
