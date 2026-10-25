@@ -8180,6 +8180,39 @@ def duplicate_preset(preset_id):
             "details": str(e)
         }), 500
 
+def _beta_billing_freeze_active():
+    """Phase 5B — env override or Supabase beta_runtime_flags.billing_freeze."""
+    env_flag = (os.environ.get("BETA_BILLING_FROZEN") or "").strip().lower()
+    if env_flag in ("1", "true", "yes", "on"):
+        return True
+    try:
+        base = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+        key = (
+            os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+            or os.environ.get("SUPABASE_KEY")
+            or ""
+        ).strip()
+        if not base or not key:
+            return False
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{base}/rest/v1/beta_runtime_flags?flag_key=eq.billing_freeze&select=enabled",
+            headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            rows = json.loads(resp.read().decode("utf-8") or "[]")
+        if isinstance(rows, list) and rows:
+            return rows[0].get("enabled") is True
+    except Exception as e:
+        print("BETA_BILLING_FREEZE_CHECK_ERROR:", str(e))
+    return False
+
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
@@ -8189,6 +8222,13 @@ def create_checkout_session():
         auth_user_id, err = require_user()
         if auth_user_id is None:
             return err
+
+        if _beta_billing_freeze_active():
+            return jsonify({
+                "error": "Billing upgrades are frozen for the limited beta. Paper trading remains available on the Free plan.",
+                "reason": "beta_billing_frozen",
+                "billing_freeze": True,
+            }), 403
 
         data = request.get_json(silent=True) or {}
         claimed = data.get("user_id") or data.get("userId")
