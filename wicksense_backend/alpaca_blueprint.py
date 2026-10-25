@@ -12,8 +12,10 @@ import logging
 from flask import Blueprint, jsonify, request, g
 
 from wicksense_backend.alpaca_helpers import (
+    LIVE_BROKERAGE_DENY_REASON,
     SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_URL,
+    LiveBrokerageDeniedError,
     alpaca_fetch,
     delete_user_credentials,
     fetch_latest_trade_price,
@@ -65,9 +67,23 @@ def _require_auth():
     return user_id, None
 
 
+def _live_denied_response(detail=None):
+    return jsonify({
+        "ok": False,
+        "error": "b8_live_broker_execution_blocked",
+        "reason_code": LIVE_BROKERAGE_DENY_REASON,
+        "decision": "denied",
+        "message": "Live brokerage execution is disabled. Paper-only mode is enforced.",
+        "detail": detail,
+    }), 403
+
+
 def _require_creds(user_id, mode=None):
     auth = getattr(g, "alpaca_auth_header", None)
-    creds = get_user_credentials(user_id, auth, mode)
+    try:
+        creds = get_user_credentials(user_id, auth, mode)
+    except LiveBrokerageDeniedError as err:
+        return None, _live_denied_response(str(err))
     if not creds:
         label = f"{mode} " if mode in ("paper", "live") else ""
         return None, (jsonify({"error": f"No {label}credentials found. Please save your API keys first."}), 400)
@@ -556,6 +572,8 @@ def _handle_save_credentials(user_id, body):
     )
     if err == "api_key_and_secret_key_required":
         return jsonify({"error": "api_key and secret_key are required"}), 400
+    if err == LIVE_BROKERAGE_DENY_REASON:
+        return _live_denied_response("save_credentials_live_mode")
     if err:
         return jsonify({"error": "Failed to save credentials", "reason": err}), 500
     return jsonify(result)
@@ -677,4 +695,7 @@ def alpaca_action(action):
             "reason": "identity_mismatch",
             "detail": "user_id does not match authenticated user",
         }), 403
-    return _dispatch_action(normalized, user_id, body)
+    try:
+        return _dispatch_action(normalized, user_id, body)
+    except LiveBrokerageDeniedError as err:
+        return _live_denied_response(str(err))

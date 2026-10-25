@@ -21,6 +21,29 @@ log = logging.getLogger("wicksense.alpaca")
 ALPACA_PAPER_BASE = "https://paper-api.alpaca.markets/v2"
 ALPACA_LIVE_BASE = "https://api.alpaca.markets/v2"
 ALPACA_DATA_BASE = "https://data.alpaca.markets/v2"
+
+# Layer B — unconditional paper-only live-order hard DENY for this release.
+# No env var, request param, DB setting, credential, or URL override may enable live.
+# ALPACA_LIVE_EXECUTION_ENABLED (if present in the environment) is intentionally ignored.
+LIVE_BROKERAGE_DENY_REASON = "live_brokerage_execution_denied"
+LIVE_BROKERAGE_EXECUTION_ALLOWED = False
+
+
+class LiveBrokerageDeniedError(PermissionError):
+    """Raised when a path would use Alpaca live trading API (always denied in this release)."""
+
+    reason_code = LIVE_BROKERAGE_DENY_REASON
+
+
+def is_live_brokerage_execution_allowed():
+    """Always False in this release — do not gate on environment variables."""
+    return bool(LIVE_BROKERAGE_EXECUTION_ALLOWED)
+
+
+def assert_live_brokerage_allowed(mode, context="alpaca"):
+    if mode == "live":
+        log.warning("[alpaca] LIVE DENY context=%s", context)
+        raise LiveBrokerageDeniedError(f"Live brokerage blocked ({context})")
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.I,
@@ -223,12 +246,16 @@ def get_user_credentials(user_id, auth_header=None, mode=None):
     Load Alpaca credentials for JWT-authoritative user_id.
     auth_header is unused for DB fetch (service-role); retained for call-site compat.
     Decrypts in memory only. Crypto failures fail closed (no plaintext fallback).
+    Layer B: never returns live-mode credentials (unconditional DENY this release).
     """
     del auth_header  # ownership already established by caller JWT validation
     if not user_id or not SUPABASE_URL:
         return None
 
     preferred = mode if mode in ("paper", "live") else None
+    if preferred == "live":
+        assert_live_brokerage_allowed("live", "credential_preferred_live")
+
     rows = _fetch_credential_rows(user_id, preferred)
     if rows is None:
         return None
@@ -243,15 +270,21 @@ def get_user_credentials(user_id, auth_header=None, mode=None):
     if preferred:
         row = next((r for r in rows if normalize_alpaca_mode(r.get("mode")) == preferred), None)
     if row is None:
-        row = next((r for r in rows if normalize_alpaca_mode(r.get("mode")) != "live"), None) or rows[0]
-    return _resolve_credentials_from_row(row, user_id)
+        # Prefer paper; never fall back to live when Layer B deny is active.
+        row = next((r for r in rows if normalize_alpaca_mode(r.get("mode")) != "live"), None)
+        if row is None and rows and normalize_alpaca_mode(rows[0].get("mode")) == "live":
+            assert_live_brokerage_allowed("live", "credential_fallback_live_only")
+            row = rows[0]
+        elif row is None:
+            row = rows[0]
+    creds = _resolve_credentials_from_row(row, user_id)
+    if creds:
+        assert_live_brokerage_allowed(creds.get("mode"), "credential_resolved")
+    return creds
 
 
 def save_user_credentials(user_id, api_key, secret_key, mode=None):
     """Encrypt server-side and upsert; plaintext columns NULL. Returns safe metadata."""
-    headers = _supabase_service_headers()
-    if not headers or not SUPABASE_URL:
-        return None, "service_role_not_configured"
     if not user_id:
         return None, "unauthorized"
     api_key = str(api_key or "").strip()
@@ -259,6 +292,12 @@ def save_user_credentials(user_id, api_key, secret_key, mode=None):
     if not api_key or not secret_key:
         return None, "api_key_and_secret_key_required"
     resolved_mode = normalize_alpaca_mode(mode, api_key)
+    # Layer B: unconditional deny of live credential persistence before any network use.
+    if resolved_mode == "live":
+        return None, LIVE_BROKERAGE_DENY_REASON
+    headers = _supabase_service_headers()
+    if not headers or not SUPABASE_URL:
+        return None, "service_role_not_configured"
     try:
         enc = encrypt_credential_envelope(api_key, secret_key, user_id, resolved_mode)
     except AlpacaCredsCryptoError as err:
@@ -377,11 +416,17 @@ def delete_user_credentials(user_id, mode=None):
 
 
 def alpaca_base(creds):
-    return ALPACA_LIVE_BASE if creds.get("mode") == "live" else ALPACA_PAPER_BASE
+    mode = creds.get("mode") or "paper"
+    assert_live_brokerage_allowed(mode, "alpaca_base")
+    # Live host is unreachable in this release (assert above always raises for live).
+    return ALPACA_PAPER_BASE
 
 
 def alpaca_fetch(creds, path, method="GET", body=None):
     url = f"{alpaca_base(creds)}{path}"
+    # Defense-in-depth: trading calls may only use the paper host in this release.
+    if (not url.startswith(ALPACA_PAPER_BASE)) or url.startswith(ALPACA_LIVE_BASE):
+        raise LiveBrokerageDeniedError("Live brokerage blocked (url_guard)")
     headers = {
         "APCA-API-KEY-ID": creds["api_key"],
         "APCA-API-SECRET-KEY": creds["secret_key"],
