@@ -53,6 +53,10 @@ MARKET_SYMBOLS = {
     "DOWJONES":   "DIA",       # âœ… ETF with full volume â€” Alpaca trades this
     "NATURALGAS": "NG",        # âœ… unchanged â€” NG futures
     "FUTURES":    "SPY",       # âœ… ETF with full volume â€” Alpaca trades this
+    # S112 paper identity. Worker sends Crypto; direct BTC/USD and BTCUSD alias the same spot.
+    "CRYPTO":     "BTC/USD",
+    "BTCUSD":     "BTC/USD",
+    "BTC/USD":    "BTC/USD",
 }
 
 
