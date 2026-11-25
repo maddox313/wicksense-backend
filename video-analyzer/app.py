@@ -16,9 +16,10 @@ This service does NOT run:
 Exposed routes (ONLY):
   GET  /                              — Service identity check
   GET  /api/video-health              — Video microservice health check
-  POST /api/extract-youtube-transcript — Transcript extraction via RapidAPI / fallback
-  POST /api/youtube-ingest            — Full YouTube media ingestion pipeline
-  POST /api/chat-completion           — Server-side Claude/OpenAI proxy (Knowledge Analyzer)
+  POST /api/extract-youtube-transcript — Analyzer transcript extraction via RapidAPI / fallback
+  POST /api/youtube-ingest            — Analyzer YouTube media ingestion pipeline
+  POST /api/knowledge-analysis        — Elite-gated Analyzer Claude proxy
+  POST /api/chat-completion           — Shared Claude/OpenAI proxy for other AI features
 
 Environment variables required:
   ANTHROPIC_API_KEY         — Claude API key
@@ -48,7 +49,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from chat_completion import handle_chat_completion_request
-from supabase_auth import get_user_id_from_auth_header
+from supabase_auth import guard_analyzer_request
 
 try:
     import requests as http_requests
@@ -591,7 +592,13 @@ def extract_youtube_transcript():
     log.info("=" * 70)
     log.info("[YT-TRANSCRIPT:%s] POST /api/extract-youtube-transcript received", request_id)
 
-    body        = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True) or {}
+    _user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), body)
+    if denied:
+        payload, status = denied
+        log.warning("[YT-TRANSCRIPT:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
+        return jsonify(payload), status
+
     youtube_url = (body.get("youtube_url") or body.get("url") or "").strip()
 
     log.info("[YT-TRANSCRIPT:%s] youtube_url = %s", request_id, youtube_url)
@@ -665,34 +672,14 @@ def youtube_ingest():
     log.info("=" * 70)
     log.info("[INGEST:%s] POST /api/youtube-ingest received", request_id)
 
-    # Authenticate BEFORE any YouTube/yt-dlp/Whisper/Claude work.
-    auth_header = request.headers.get("Authorization", "")
-    authenticated_user_id, auth_reason = get_user_id_from_auth_header(auth_header)
-    if not authenticated_user_id:
-        log.warning("[INGEST:%s] Unauthorized — reason=%s", request_id, auth_reason)
-        return jsonify({
-            "success": False,
-            "error": "Unauthorized",
-            "reason": auth_reason or "unauthorized",
-        }), 401
+    body = request.get_json(silent=True) or {}
+    authenticated_user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), body)
+    if denied:
+        payload, status = denied
+        log.warning("[INGEST:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
+        return jsonify(payload), status
 
-    body        = request.get_json(silent=True) or {}
     youtube_url = (body.get("youtube_url") or "").strip()
-
-    # Never trust client identity fields over JWT auth.uid.
-    for field in ("user_id", "userId", "owner_id", "ownerId", "account_id", "accountId"):
-        claimed = body.get(field)
-        if claimed is not None and str(claimed).strip() != "" and str(claimed) != str(authenticated_user_id):
-            log.warning(
-                "[INGEST:%s] identity_mismatch field=%s auth_uid_prefix=%s",
-                request_id, field, str(authenticated_user_id)[:8],
-            )
-            return jsonify({
-                "success": False,
-                "error": "Forbidden",
-                "reason": "identity_mismatch",
-                "detail": "%s does not match authenticated user" % field,
-            }), 403
 
     if not youtube_url:
         return jsonify({"success": False, "error": "youtube_url is required"}), 400
@@ -866,12 +853,36 @@ def youtube_ingest():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECTION 12 — Route: POST /api/chat-completion (Knowledge Analyzer / Claude)
+# SECTION 12 — Analyzer route and shared chat route
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/knowledge-analysis", methods=["POST"])
+def knowledge_analysis():
+    """Elite-gated Claude analysis for the Trading Knowledge Analyzer. Does not read saved subscriber knowledge."""
+    request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    log.info("[KNOWLEDGE-ANALYSIS:%s] POST /api/knowledge-analysis", request_id)
+
+    body = request.get_json(silent=True) or {}
+    _user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), body)
+    if denied:
+        payload, status = denied
+        log.warning("[KNOWLEDGE-ANALYSIS:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
+        return jsonify(payload), status
+
+    result, status = handle_chat_completion_request(
+        body,
+        anthropic_api_key=ANTHROPIC_API_KEY,
+        anthropic_model=ANTHROPIC_MODEL,
+        openai_api_key=OPENAI_API_KEY,
+    )
+    return jsonify(result), status
+
 
 @app.route("/api/chat-completion", methods=["POST"])
 def chat_completion():
-    """Server-side Anthropic/OpenAI proxy — replaces legacy AWS Lambda chat completion."""
+    """Shared Claude/OpenAI proxy for AI Coach, journal review, and preset suggestions.
+    This route does not read or write saved subscriber knowledge and does not apply the Analyzer plan gate.
+    """
     request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     log.info("[CHAT-COMPLETION:%s] POST /api/chat-completion", request_id)
 
