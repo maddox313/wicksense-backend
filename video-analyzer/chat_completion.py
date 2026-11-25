@@ -58,8 +58,6 @@ def run_anthropic_completion(api_key, default_model, model, messages, parameters
     }
     if system:
         kwargs["system"] = system
-    if parameters.get("temperature") is not None:
-        kwargs["temperature"] = float(parameters["temperature"])
 
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(**kwargs)
