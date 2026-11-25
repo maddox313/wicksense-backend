@@ -108,6 +108,7 @@ CORS(
     origins=[
         "https://wicksense7625.builtwithrocket.new",
         "https://wicksensetrading.com",
+        "https://wicksense-day-trader-pro-staging.onrender.com",
         "http://localhost:4028",
         "http://127.0.0.1:4028",
         "http://localhost:5173",
