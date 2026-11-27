@@ -624,42 +624,13 @@ def extract_youtube_transcript():
         log.info("=" * 70)
         return jsonify({"ok": True, "transcript_text": transcript_text, "source": "rapidapi"}), 200
 
-    # ── Method 2: Whisper fallback ────────────────────────────────────────────
-    yt_dlp_available  = CONTAINER_STATUS.get("checks", {}).get("yt_dlp", {}).get("available", False)
-    whisper_available = CONTAINER_STATUS.get("checks", {}).get("whisper", {}).get("available", False)
-
-    if yt_dlp_available and whisper_available:
-        log.info("[YT-TRANSCRIPT:%s] ── Method 2: Whisper fallback ──", request_id)
-        workspace = None
-        try:
-            workspace  = create_temp_workspace(video_id)
-            audio_path = os.path.join(workspace, "audio_%s.mp3" % video_id)
-            diag       = {}
-
-            ytdlp_ok = download_audio_ytdlp(youtube_url, audio_path, diag)
-
-            if ytdlp_ok and diag.get("audio_file_path"):
-                transcript_text = transcribe_with_whisper(diag["audio_file_path"], diag)
-                if transcript_text and len(transcript_text) > 50:
-                    log.info("[YT-TRANSCRIPT:%s] ✓ Whisper fallback succeeded — %d chars", request_id, len(transcript_text))
-                    log.info("=" * 70)
-                    return jsonify({"ok": True, "transcript_text": transcript_text, "source": "whisper"}), 200
-                else:
-                    log.warning("[YT-TRANSCRIPT:%s] Whisper produced empty/short transcript", request_id)
-            else:
-                log.warning("[YT-TRANSCRIPT:%s] yt-dlp audio download failed", request_id)
-
-        except Exception as whisper_exc:
-            log.error("[YT-TRANSCRIPT:%s] Whisper fallback threw: %s", request_id, whisper_exc)
-        finally:
-            if workspace:
-                cleanup_temp_workspace(workspace)
-    else:
-        log.warning("[YT-TRANSCRIPT:%s] Whisper fallback unavailable — yt_dlp=%s whisper=%s", request_id, yt_dlp_available, whisper_available)
-
-    log.error("[YT-TRANSCRIPT:%s] All transcript extraction methods failed. Last error: %s", request_id, api_error)
-    log.info("=" * 70)
-    return jsonify({"ok": False, "error": "No captions available"}), 200
+    log.info("[YT-TRANSCRIPT:%s] No authorized captions. YouTube download was not attempted.", request_id)
+    return jsonify({
+        "ok": False,
+        "error": "YouTube could not be processed because no authorized captions were available. Upload an MP4 instead.",
+        "reason": "youtube_captions_unavailable",
+        "upload_mp4": True,
+    }), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -746,59 +717,55 @@ def youtube_ingest():
         video_id_match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{10,12})", youtube_url)
         video_id       = video_id_match.group(1) if video_id_match else "unknown"
 
-        workspace  = create_temp_workspace(video_id, authenticated_user_id)
-        video_meta = fetch_video_metadata(youtube_url, diag)
+        workspace = None
+        video_meta = {
+            "title": youtube_url,
+            "source": "youtube-url",
+            "video_id": video_id,
+        }
 
-        # ── Try RapidAPI captions first ───────────────────────────────────────
+        # Captions only. A blocked YouTube download is not retried.
         stages["captions_attempted"] = "active"
         transcript        = ""
         transcript_source = "none"
+        frames            = []
 
-        rapidapi_transcript, _ = fetch_transcript_via_rapidapi(youtube_url, video_id, request_id)
+        rapidapi_transcript, caption_error = fetch_transcript_via_rapidapi(youtube_url, video_id, request_id)
         if rapidapi_transcript:
             transcript        = rapidapi_transcript
             transcript_source = "rapidapi"
             stages["captions_attempted"]  = "done"
+            stages["audio_extracted"]     = "skipped"
             stages["whisper_transcribed"] = "skipped"
+            stages["frames_extracted"]    = "skipped"
             diag["whisper_char_count"]    = len(transcript)
-            log.info("[INGEST:%s] ✓ RapidAPI captions: %d chars", request_id, len(transcript))
+            log.info("[INGEST:%s] Authorized captions: %d chars", request_id, len(transcript))
         else:
             stages["captions_attempted"] = "error"
-
-            # ── yt-dlp audio download ─────────────────────────────────────────
-            stages["audio_extracted"] = "active"
-            audio_path = os.path.join(workspace, "audio_%s.mp3" % video_id)
-            ytdlp_ok   = download_audio_ytdlp(youtube_url, audio_path, diag)
-
-            if ytdlp_ok:
-                stages["audio_extracted"] = "done"
-            else:
-                stages["audio_extracted"] = "error"
-                errors.append("yt-dlp failed: %s" % diag.get("ytdlp_error", "unknown"))
-
-            # ── Whisper transcription ─────────────────────────────────────────
-            if ytdlp_ok and diag.get("audio_file_path"):
-                stages["whisper_transcribed"] = "active"
-                transcript = transcribe_with_whisper(diag["audio_file_path"], diag)
-                if diag["whisper_success"] and diag["whisper_char_count"] > 0:
-                    stages["whisper_transcribed"] = "done"
-                    transcript_source = "whisper"
-                else:
-                    stages["whisper_transcribed"] = "error"
-                    errors.append("Whisper failed: %s" % diag.get("whisper_error", "empty transcript"))
-            else:
-                stages["whisper_transcribed"] = "skipped"
-
-        # ── ffmpeg frame extraction ───────────────────────────────────────────
-        stages["frames_extracted"] = "active"
-        frames_dir = os.path.join(workspace, "frames")
-        frames     = extract_frames_ffmpeg(audio_path=diag.get("audio_file_path", ""), video_url=youtube_url, frames_dir=frames_dir, diag=diag)
-
-        if len(frames) > 0:
-            stages["frames_extracted"] = "done"
-        else:
-            stages["frames_extracted"] = "error"
-            errors.append("ffmpeg frame extraction failed: %s" % diag.get("ffmpeg_error", "no frames"))
+            stages["audio_extracted"] = "skipped"
+            stages["whisper_transcribed"] = "skipped"
+            stages["frames_extracted"] = "skipped"
+            errors.append(caption_error or "youtube_captions_unavailable")
+            log.info("[INGEST:%s] No authorized captions. YouTube download was not attempted.", request_id)
+            return jsonify({
+                "success": False,
+                "source": "caption-source",
+                "blocked": True,
+                "block_reason": "YouTube could not be processed because no authorized captions were available. Upload an MP4 instead.",
+                "reason": "youtube_captions_unavailable",
+                "upload_mp4": True,
+                "transcript": "",
+                "transcript_source": "none",
+                "transcript_char_count": 0,
+                "visual_analysis": "",
+                "frames": [],
+                "frame_source": "none",
+                "frame_count": 0,
+                "video_meta": video_meta,
+                "stages": stages,
+                "errors": errors,
+                "diagnostics": diag,
+            }), 200
 
         transcript_char_count  = len(transcript)
         extracted_frames_count = len(frames)
@@ -881,13 +848,17 @@ def knowledge_analysis():
 
 @app.route("/api/chat-completion", methods=["POST"])
 def chat_completion():
-    """Shared Claude/OpenAI proxy for AI Coach, journal review, and preset suggestions.
-    This route does not read or write saved subscriber knowledge and does not apply the Analyzer plan gate.
-    """
+    """Claude/OpenAI proxy. A valid Elite or trial Elite session is required before any provider call."""
     request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     log.info("[CHAT-COMPLETION:%s] POST /api/chat-completion", request_id)
 
     body = request.get_json(silent=True) or {}
+    _user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), body)
+    if denied:
+        payload, status = denied
+        log.warning("[CHAT-COMPLETION:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
+        return jsonify(payload), status
+
     result, status = handle_chat_completion_request(
         body,
         anthropic_api_key=ANTHROPIC_API_KEY,

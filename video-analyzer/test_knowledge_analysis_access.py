@@ -151,8 +151,10 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
             first_line(knowledge, "guard_analyzer_request"),
             first_line(knowledge, "handle_chat_completion_request"),
         )
-        self.assertFalse(any(node.func.id == "guard_analyzer_request" for node in chat))
-        self.assertIn("handle_chat_completion_request", [node.func.id for node in chat])
+        self.assertLess(
+            first_line(chat, "guard_analyzer_request"),
+            first_line(chat, "handle_chat_completion_request"),
+        )
         self.assertLess(
             first_line(youtube, "guard_analyzer_request"),
             first_line(youtube, "fetch_transcript_via_rapidapi"),
@@ -161,7 +163,54 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
             first_line(transcript, "guard_analyzer_request"),
             first_line(transcript, "fetch_transcript_via_rapidapi"),
         )
+        for route in (youtube, transcript):
+            self.assertFalse(any(node.func.id == "download_audio_ytdlp" for node in route))
+            self.assertFalse(any(node.func.id == "extract_frames_ffmpeg" for node in route))
         self.assertNotIn("knowledge_base", APP_SOURCE)
+
+    def test_unauthorized_chat_with_messages_does_not_call_provider(self):
+        import app as video_app
+        with patch.object(video_app, "handle_chat_completion_request") as handle:
+            response = video_app.app.test_client().post(
+                "/api/chat-completion",
+                json={"provider": "OPENAI", "messages": [{"role": "user", "content": "ping"}]},
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["reason"], "missing_bearer_token")
+        handle.assert_not_called()
+
+    def test_authorized_chat_still_reaches_the_provider_handler(self):
+        import app as video_app
+        with patch.object(video_app, "guard_analyzer_request", return_value=("subscriber", None)), \
+             patch.object(video_app, "handle_chat_completion_request", return_value=({"ok": True}, 200)) as handle:
+            response = video_app.app.test_client().post(
+                "/api/chat-completion",
+                json={"messages": [{"role": "user", "content": "ping"}]},
+                headers={"Authorization": "Bearer elite"},
+            )
+        self.assertEqual(response.status_code, 200)
+        handle.assert_called_once()
+
+    def test_youtube_without_captions_does_not_download_or_analyze(self):
+        import app as video_app
+        with patch.object(video_app, "guard_analyzer_request", return_value=("subscriber", None)), \
+             patch.object(video_app, "fetch_transcript_via_rapidapi", return_value=(None, "RAPIDAPI_KEY not set")), \
+             patch.object(video_app, "download_audio_ytdlp") as download, \
+             patch.object(video_app, "extract_frames_ffmpeg") as frames, \
+             patch.object(video_app, "analyze_with_claude") as claude:
+            response = video_app.app.test_client().post(
+                "/api/youtube-ingest",
+                json={"youtube_url": "https://www.youtube.com/watch?v=DKohGRr18ZA"},
+                headers={"Authorization": "Bearer test"},
+            )
+        body = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(body["success"])
+        self.assertTrue(body["upload_mp4"])
+        self.assertEqual(body["transcript"], "")
+        download.assert_not_called()
+        frames.assert_not_called()
+        claude.assert_not_called()
 
 
 if __name__ == "__main__":
