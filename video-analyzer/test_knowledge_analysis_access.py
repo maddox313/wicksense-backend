@@ -152,8 +152,14 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
             first_line(knowledge, "handle_chat_completion_request"),
         )
         self.assertLess(
-            first_line(chat, "guard_analyzer_request"),
+            first_line(chat, "guard_subscriber_session"),
             first_line(chat, "handle_chat_completion_request"),
+        )
+        self.assertFalse(any(node.func.id == "guard_analyzer_request" for node in chat))
+        audio = route_calls("audio_transcription")
+        self.assertLess(
+            first_line(audio, "guard_analyzer_request"),
+            first_line(audio, "transcribe_with_gpt"),
         )
         self.assertLess(
             first_line(youtube, "guard_analyzer_request"),
@@ -181,7 +187,7 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
 
     def test_authorized_chat_still_reaches_the_provider_handler(self):
         import app as video_app
-        with patch.object(video_app, "guard_analyzer_request", return_value=("subscriber", None)), \
+        with patch.object(video_app, "guard_subscriber_session", return_value=("subscriber", None)), \
              patch.object(video_app, "handle_chat_completion_request", return_value=({"ok": True}, 200)) as handle:
             response = video_app.app.test_client().post(
                 "/api/chat-completion",

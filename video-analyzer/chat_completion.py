@@ -82,7 +82,7 @@ def run_openai_completion(api_key, model, messages, parameters):
         return {"error": "Invalid request: Messages array is required", "details": "No messages"}, 400
 
     payload = {
-        "model": model or "gpt-4o-audio-preview",
+        "model": model or "gpt-4o-mini",
         "messages": messages,
         "max_tokens": int(parameters.get("max_tokens", 4096)),
     }

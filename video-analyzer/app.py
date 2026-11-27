@@ -19,7 +19,8 @@ Exposed routes (ONLY):
   POST /api/extract-youtube-transcript — Analyzer transcript extraction via RapidAPI / fallback
   POST /api/youtube-ingest            — Analyzer YouTube media ingestion pipeline
   POST /api/knowledge-analysis        — Elite-gated Analyzer Claude proxy
-  POST /api/chat-completion           — Shared Claude/OpenAI proxy for other AI features
+  POST /api/audio-transcription       — Elite-gated gpt-transcribe audio endpoint
+  POST /api/chat-completion           — Signed-in subscriber Claude/OpenAI proxy for other AI features
 
 Environment variables required:
   ANTHROPIC_API_KEY         — Claude API key
@@ -48,8 +49,13 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+from audio_transcription import (
+    MAX_UPLOAD_BYTES,
+    prepare_media_for_transcription,
+    transcribe_with_gpt,
+)
 from chat_completion import handle_chat_completion_request
-from supabase_auth import guard_analyzer_request
+from supabase_auth import guard_analyzer_request, guard_subscriber_session
 
 try:
     import requests as http_requests
@@ -75,7 +81,7 @@ log = logging.getLogger("wicksense.video-analyzer")
 log.info("=" * 70)
 log.info("[SERVICE] %s — VIDEO ANALYZER MICROSERVICE", SERVICE_NAME)
 log.info("[SERVICE] Version: %s  Build: %s", BUILD_VERSION, BUILD_DATE)
-log.info("[SERVICE] Routes: GET / | GET /api/video-health | POST /api/extract-youtube-transcript | POST /api/youtube-ingest | POST /api/chat-completion")
+log.info("[SERVICE] Routes: GET / | GET /api/video-health | POST /api/extract-youtube-transcript | POST /api/youtube-ingest | POST /api/audio-transcription | POST /api/knowledge-analysis | POST /api/chat-completion")
 log.info("[SERVICE] NO market scanning. NO TwelveData. NO paper trading. NO signals. NO trade lifecycle.")
 log.info("=" * 70)
 log.info("VIDEO_ANALYZER_V1_0_ACTIVE")
@@ -848,12 +854,12 @@ def knowledge_analysis():
 
 @app.route("/api/chat-completion", methods=["POST"])
 def chat_completion():
-    """Claude/OpenAI proxy. A valid Elite or trial Elite session is required before any provider call."""
+    """Shared Claude/OpenAI proxy. A signed-in subscriber session is required. The Analyzer Elite plan gate stays on the Analyzer routes."""
     request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     log.info("[CHAT-COMPLETION:%s] POST /api/chat-completion", request_id)
 
     body = request.get_json(silent=True) or {}
-    _user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), body)
+    _user_id, denied = guard_subscriber_session(request.headers.get("Authorization", ""), body)
     if denied:
         payload, status = denied
         log.warning("[CHAT-COMPLETION:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
@@ -864,6 +870,39 @@ def chat_completion():
         anthropic_api_key=ANTHROPIC_API_KEY,
         anthropic_model=ANTHROPIC_MODEL,
         openai_api_key=OPENAI_API_KEY,
+    )
+    return jsonify(result), status
+
+
+@app.route("/api/audio-transcription", methods=["POST"])
+def audio_transcription():
+    """Transcribe an uploaded video or audio file. Elite session is required before any OpenAI call."""
+    request_id = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    log.info("[AUDIO-TRANSCRIBE:%s] POST /api/audio-transcription", request_id)
+
+    _user_id, denied = guard_analyzer_request(request.headers.get("Authorization", ""), {})
+    if denied:
+        payload, status = denied
+        log.warning("[AUDIO-TRANSCRIBE:%s] denied status=%s reason=%s", request_id, status, payload.get("reason"))
+        return jsonify(payload), status
+
+    upload = request.files.get("file")
+    if upload is None:
+        return jsonify({"ok": False, "error": "file is required"}), 400
+
+    raw = upload.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        return jsonify({"ok": False, "error": "file is too large to transcribe"}), 413
+
+    prepared, prep_error = prepare_media_for_transcription(raw, upload.filename or "upload.mp4")
+    if prep_error:
+        log.info("[AUDIO-TRANSCRIBE:%s] preparation failed: %s", request_id, prep_error)
+        return jsonify({"ok": False, "error": prep_error}), 422
+
+    result, status = transcribe_with_gpt(
+        OPENAI_API_KEY,
+        prepared["bytes"],
+        prepared["filename"],
     )
     return jsonify(result), status
 

@@ -131,6 +131,36 @@ def guard_analyzer_request(auth_header, body=None, lookup_user=None, lookup_subs
     return user_id, None
 
 
+def guard_subscriber_session(auth_header, body=None, lookup_user=None):
+    """
+    Valid subscriber session for shared AI features such as the coach,
+    journal review, preset suggestions, and signal confirmation.
+    Checks the bearer token and identity. Does not apply the Analyzer Elite plan gate.
+    """
+    body = body or {}
+    lookup_user = lookup_user or get_user_id_from_auth_header
+    user_id, auth_reason = lookup_user(auth_header)
+    if not user_id:
+        return None, (
+            {"error": "Unauthorized", "reason": auth_reason or "missing_bearer_token"},
+            401,
+        )
+
+    for field in IDENTITY_FIELDS:
+        claimed = body.get(field)
+        if claimed is not None and str(claimed).strip() and str(claimed) != str(user_id):
+            return None, (
+                {
+                    "error": "Forbidden",
+                    "reason": "identity_mismatch",
+                    "detail": "%s does not match authenticated user" % field,
+                },
+                403,
+            )
+
+    return user_id, None
+
+
 def get_user_id_from_auth_header(auth_header):
     """
     Returns (user_id, error_reason).

@@ -68,8 +68,9 @@ class KnowledgeAnalysisCorsTests(unittest.TestCase):
         self.assertEqual(chat.headers.get("Access-Control-Allow-Origin"), STAGING_ORIGIN)
         self.assertIsNone(blocked.headers.get("Access-Control-Allow-Origin"))
 
-    def test_shared_chat_route_remains_ungated(self):
+    def test_shared_chat_requires_a_session_and_not_the_analyzer_plan(self):
         self.assertIn("guard_analyzer_request", route_names("knowledge_analysis"))
+        self.assertIn("guard_subscriber_session", route_names("chat_completion"))
         self.assertNotIn("guard_analyzer_request", route_names("chat_completion"))
         self.assertIn("handle_chat_completion_request", route_names("chat_completion"))
 
