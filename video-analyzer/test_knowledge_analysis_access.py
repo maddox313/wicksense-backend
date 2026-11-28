@@ -201,6 +201,7 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
         import app as video_app
         with patch.object(video_app, "guard_analyzer_request", return_value=("subscriber", None)), \
              patch.object(video_app, "fetch_transcript_via_rapidapi", return_value=(None, "RAPIDAPI_KEY not set")), \
+             patch.object(video_app, "fetch_published_youtube_captions", return_value=(None, "No published captions for this video")), \
              patch.object(video_app, "download_audio_ytdlp") as download, \
              patch.object(video_app, "extract_frames_ffmpeg") as frames, \
              patch.object(video_app, "analyze_with_claude") as claude:
@@ -212,7 +213,7 @@ class KnowledgeAnalysisAccessTests(unittest.TestCase):
         body = response.get_json()
         self.assertEqual(response.status_code, 200)
         self.assertFalse(body["success"])
-        self.assertTrue(body["upload_mp4"])
+        self.assertFalse(body["upload_mp4"])
         self.assertEqual(body["transcript"], "")
         download.assert_not_called()
         frames.assert_not_called()

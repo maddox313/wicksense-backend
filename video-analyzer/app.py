@@ -56,6 +56,7 @@ from audio_transcription import (
 )
 from chat_completion import handle_chat_completion_request
 from supabase_auth import guard_analyzer_request, guard_subscriber_session
+from youtube_captions import fetch_published_youtube_captions
 
 try:
     import requests as http_requests
@@ -544,12 +545,12 @@ def fetch_transcript_via_rapidapi(youtube_url, video_id, request_id):
     log.info("[RAPIDAPI:%s] Fetching transcript for video_id=%s via RapidAPI", request_id, video_id)
 
     try:
-        url = "https://%s/transcript" % RAPIDAPI_HOST
+        url = "https://%s/api/transcript" % RAPIDAPI_HOST
         headers = {
             "X-RapidAPI-Key":  RAPIDAPI_KEY,
             "X-RapidAPI-Host": RAPIDAPI_HOST,
         }
-        params = {"videoId": video_id, "lang": "en"}
+        params = {"url": youtube_url, "lang": "en"}
 
         resp = http_requests.get(url, headers=headers, params=params, timeout=30)
         log.info("[RAPIDAPI:%s] Response: HTTP %d", request_id, resp.status_code)
@@ -625,17 +626,24 @@ def extract_youtube_transcript():
     # ── Method 1: RapidAPI ────────────────────────────────────────────────────
     log.info("[YT-TRANSCRIPT:%s] ── Method 1: RapidAPI ──", request_id)
     transcript_text, api_error = fetch_transcript_via_rapidapi(youtube_url, video_id, request_id)
+    transcript_source = "rapidapi"
+
+    if not transcript_text:
+        published, api_error = fetch_published_youtube_captions(video_id, request_id)
+        if published:
+            transcript_text = published["text"]
+            transcript_source = published["source"]
 
     if transcript_text:
         log.info("=" * 70)
-        return jsonify({"ok": True, "transcript_text": transcript_text, "source": "rapidapi"}), 200
+        return jsonify({"ok": True, "transcript_text": transcript_text, "source": transcript_source}), 200
 
-    log.info("[YT-TRANSCRIPT:%s] No authorized captions. YouTube download was not attempted.", request_id)
+    log.info("[YT-TRANSCRIPT:%s] Published captions were not retrieved. YouTube download was not attempted.", request_id)
     return jsonify({
         "ok": False,
-        "error": "YouTube could not be processed because no authorized captions were available. Upload an MP4 instead.",
+        "error": api_error or "No published captions could be retrieved for this YouTube URL.",
         "reason": "youtube_captions_unavailable",
-        "upload_mp4": True,
+        "upload_mp4": False,
     }), 200
 
 
@@ -737,29 +745,32 @@ def youtube_ingest():
         frames            = []
 
         rapidapi_transcript, caption_error = fetch_transcript_via_rapidapi(youtube_url, video_id, request_id)
-        if rapidapi_transcript:
-            transcript        = rapidapi_transcript
-            transcript_source = "rapidapi"
+        published = None
+        if not rapidapi_transcript:
+            published, caption_error = fetch_published_youtube_captions(video_id, request_id)
+        if rapidapi_transcript or published:
+            transcript        = rapidapi_transcript or published["text"]
+            transcript_source = "rapidapi" if rapidapi_transcript else published["source"]
             stages["captions_attempted"]  = "done"
             stages["audio_extracted"]     = "skipped"
             stages["whisper_transcribed"] = "skipped"
             stages["frames_extracted"]    = "skipped"
             diag["whisper_char_count"]    = len(transcript)
-            log.info("[INGEST:%s] Authorized captions: %d chars", request_id, len(transcript))
+            log.info("[INGEST:%s] Published captions: %d chars source=%s", request_id, len(transcript), transcript_source)
         else:
             stages["captions_attempted"] = "error"
             stages["audio_extracted"] = "skipped"
             stages["whisper_transcribed"] = "skipped"
             stages["frames_extracted"] = "skipped"
             errors.append(caption_error or "youtube_captions_unavailable")
-            log.info("[INGEST:%s] No authorized captions. YouTube download was not attempted.", request_id)
+            log.info("[INGEST:%s] Published captions were not retrieved. YouTube download was not attempted.", request_id)
             return jsonify({
                 "success": False,
                 "source": "caption-source",
                 "blocked": True,
-                "block_reason": "YouTube could not be processed because no authorized captions were available. Upload an MP4 instead.",
+                "block_reason": caption_error or "No published captions could be retrieved for this YouTube URL.",
                 "reason": "youtube_captions_unavailable",
-                "upload_mp4": True,
+                "upload_mp4": False,
                 "transcript": "",
                 "transcript_source": "none",
                 "transcript_char_count": 0,
